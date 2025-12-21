@@ -69,4 +69,3 @@ A Streamlit web application that generates personalized children's storybooks in
 - If image generation fails, the app will retry once before using a placeholder
 - Ensure you have a stable internet connection for API calls
 - Make sure your API key has access to both Gemini and Imagen APIs
-
