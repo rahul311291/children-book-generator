@@ -57,6 +57,13 @@ secrets.json
 # Generated PDFs
 *.pdf
 
+# Saved Stories
+saved_stories/
+
+# Logs
+logs/
+*.log
+
 # Python cache
 .pytest_cache/
 .mypy_cache/
