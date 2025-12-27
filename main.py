@@ -1288,10 +1288,7 @@ def main():
         if st.session_state.get("generate_template_book", False):
             st.session_state.generate_template_book = False
 
-            if not st.session_state.api_key:
-                st.error("Please enter your Google Gemini API key in the sidebar to generate images.")
-                return
-
+            # No API key needed for text preview - only for image generation
             generate_template_book(
                 st.session_state.api_key,
                 st.session_state.template_book_data

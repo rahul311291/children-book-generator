@@ -16,7 +16,8 @@ def seed_template_data():
 
     # Initialize Supabase client
     supabase_url = os.getenv("VITE_SUPABASE_URL")
-    supabase_key = os.getenv("VITE_SUPABASE_SUPABASE_ANON_KEY")
+    # Try both possible env var names for anon key
+    supabase_key = os.getenv("VITE_SUPABASE_ANON_KEY") or os.getenv("VITE_SUPABASE_SUPABASE_ANON_KEY")
 
     if not supabase_url or not supabase_key:
         print("Error: SUPABASE_URL or SUPABASE_ANON_KEY not found in environment variables")

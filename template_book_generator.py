@@ -24,7 +24,8 @@ load_dotenv()
 def init_supabase() -> Client:
     """Initialize Supabase client."""
     supabase_url = os.getenv("VITE_SUPABASE_URL")
-    supabase_key = os.getenv("VITE_SUPABASE_SUPABASE_ANON_KEY")
+    # Try both possible env var names for anon key
+    supabase_key = os.getenv("VITE_SUPABASE_ANON_KEY") or os.getenv("VITE_SUPABASE_SUPABASE_ANON_KEY")
 
     if not supabase_url or not supabase_key:
         raise Exception("Supabase credentials not found in environment variables")
@@ -329,7 +330,36 @@ def display_template_book_preview(book_data: Dict):
         if selected_page['image_url']:
             st.image(selected_page['image_url'], use_container_width=True)
         else:
-            st.info("Image will be generated when you proceed to create the final book")
+            from PIL import Image, ImageDraw, ImageFont
+            import io
+
+            # Create a placeholder image
+            img = Image.new('RGB', (800, 800), color=(240, 240, 250))
+            draw = ImageDraw.Draw(img)
+
+            # Draw profession title
+            title_text = selected_page['profession_title']
+            bbox = draw.textbbox((0, 0), title_text)
+            text_width = bbox[2] - bbox[0]
+            text_x = (800 - text_width) // 2
+            draw.text((text_x, 300), title_text, fill=(100, 100, 200))
+
+            # Draw placeholder text
+            placeholder_text = f"{book_data['child_name']} as a {selected_page['profession_title'].title()}"
+            bbox2 = draw.textbbox((0, 0), placeholder_text)
+            text_width2 = bbox2[2] - bbox2[0]
+            text_x2 = (800 - text_width2) // 2
+            draw.text((text_x2, 400), placeholder_text, fill=(150, 150, 150))
+
+            # Draw info text
+            info_text = "AI Image will be generated"
+            bbox3 = draw.textbbox((0, 0), info_text)
+            text_width3 = bbox3[2] - bbox3[0]
+            text_x3 = (800 - text_width3) // 2
+            draw.text((text_x3, 500), info_text, fill=(180, 180, 180))
+
+            st.image(img, use_container_width=True)
+
             with st.expander("View AI Image Prompt"):
                 st.code(selected_page['image_prompt'], language="text")
 
