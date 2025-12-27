@@ -4,12 +4,21 @@ A Streamlit web application that generates personalized children's storybooks in
 
 ## Features
 
+### Custom Stories
 - 📝 Interactive form to collect child details (name, age, gender, physical description)
 - 🎨 AI-powered story generation with consistent character appearance
 - 🖼️ Automatic image generation for each page
 - 📄 PDF generation with professional layout (8.5x8.5 inches)
 - 📱 Mobile-friendly interface
 - 🌍 Support for English and Hindi languages
+
+### Template Books (NEW!)
+- 📚 Pre-designed book templates with professional content
+- 👶 Personalize with child's name, age, gender, and photos
+- 🎯 "When I Grow Up" template featuring 24 inspiring professions
+- 🖼️ AI-generated images showing the child in each profession
+- 💾 Stored in Supabase database for easy management
+- ✨ Rhyming, age-appropriate text for each profession
 
 ## Setup
 
@@ -18,35 +27,60 @@ A Streamlit web application that generates personalized children's storybooks in
    pip install -r requirements.txt
    ```
 
-2. **Get Google Gemini API Key:**
+2. **Configure Supabase (for Template Books):**
+   - Supabase database is already configured in `.env` file
+   - Template data is already seeded in the database
+   - No additional setup required for template books
+
+3. **Get Google Gemini API Key:**
    - Visit https://makersuite.google.com/app/apikey
    - Create a new API key
    - Copy the key
 
-3. **Run the application:**
+4. **Run the application:**
    ```bash
    streamlit run main.py
    ```
 
-4. **Access the app:**
+5. **Access the app:**
    - Open your browser to the URL shown in the terminal (usually http://localhost:8501)
-   - Enter your API key in the sidebar
-   - Fill in the child's details
-   - Click "Generate Story"
+   - Select "Custom Story" or "Template Book" mode
+   - Enter your API key in the sidebar (for image generation)
+   - Fill in the required details
+   - Click "Generate"
 
 ## Usage
 
-1. Enter your Google Gemini API key in the sidebar
-2. Fill in the child's information:
+### For Custom Stories:
+
+1. Select "Custom Story" mode at the top
+2. Enter your Google Gemini API key in the sidebar
+3. Fill in the child's information:
    - Name (required)
    - Age (2-16 years)
    - Gender
    - Physical description (skin tone, hair, eyes, outfit)
    - Problem/Theme for the story (required)
    - Language preference
-3. Click "Generate Story"
-4. Wait for the story, images, and PDF to be generated
-5. Download the PDF and print it on 8.5x8.5 inch paper
+4. Click "Generate Story"
+5. Wait for the story, images, and PDF to be generated
+6. Download the PDF and print it on 8.5x8.5 inch paper
+
+### For Template Books:
+
+1. Select "Template Book" mode at the top
+2. Choose a template (e.g., "When I Grow Up")
+3. Enter child's information:
+   - Name (required)
+   - Age (2-16 years)
+   - Gender (for pronouns)
+4. Upload 3 photos of the child
+5. Click "Generate My Personalized Book"
+6. Preview all 24 profession pages
+7. Generate images and PDF when ready
+8. Download and print
+
+For detailed information about template books, see [TEMPLATE_BOOKS_GUIDE.md](TEMPLATE_BOOKS_GUIDE.md)
 
 ## Technical Details
 

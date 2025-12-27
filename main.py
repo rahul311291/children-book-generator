@@ -14,6 +14,18 @@ from datetime import datetime
 # Import age-specific prompts from the editable prompts file
 from story_prompts import get_full_prompt, get_image_style, IMAGE_STYLES
 
+# Import template book functionality
+try:
+    from template_book_generator import (
+        render_template_book_form,
+        generate_template_book,
+        display_template_book_preview
+    )
+    TEMPLATE_BOOKS_AVAILABLE = True
+except ImportError:
+    TEMPLATE_BOOKS_AVAILABLE = False
+    logger.warning("Template book module not available")
+
 # Setup logging
 log_dir = Path("logs")
 log_dir.mkdir(exist_ok=True)
@@ -1247,6 +1259,53 @@ def main():
     
     st.title("📚 Print-on-Demand Children's Book Generator")
     st.markdown("Create personalized storybooks for children in real-time!")
+
+    # Book Type Selector
+    if 'book_mode' not in st.session_state:
+        st.session_state.book_mode = "Custom Story"
+
+    st.divider()
+
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        book_mode = st.radio(
+            "Select Book Type:",
+            options=["Custom Story", "Template Book"] if TEMPLATE_BOOKS_AVAILABLE else ["Custom Story"],
+            index=0 if st.session_state.book_mode == "Custom Story" else 1,
+            horizontal=True,
+            help="Choose between creating a custom story or using a pre-designed template"
+        )
+
+        if book_mode != st.session_state.book_mode:
+            st.session_state.book_mode = book_mode
+            st.rerun()
+
+    st.divider()
+
+    # Handle Template Book Mode
+    if st.session_state.book_mode == "Template Book" and TEMPLATE_BOOKS_AVAILABLE:
+        # Check if we should generate the book
+        if st.session_state.get("generate_template_book", False):
+            st.session_state.generate_template_book = False
+
+            if not st.session_state.api_key:
+                st.error("Please enter your Google Gemini API key in the sidebar to generate images.")
+                return
+
+            generate_template_book(
+                st.session_state.api_key,
+                st.session_state.template_book_data
+            )
+            return
+
+        # Check if we should show preview
+        if st.session_state.get("template_generated_book"):
+            display_template_book_preview(st.session_state.template_generated_book)
+            return
+
+        # Show template book form
+        render_template_book_form()
+        return
     
     # Sidebar
     with st.sidebar:
