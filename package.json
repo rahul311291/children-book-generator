@@ -1,0 +1,22 @@
+{
+  "name": "childrens-book-generator",
+  "version": "1.0.0",
+  "description": "Print-on-Demand Children's Book Generator with Template Books",
+  "scripts": {
+    "build": "echo 'Python/Streamlit app - no build needed'",
+    "start": "streamlit run main.py",
+    "install": "pip install -r requirements.txt"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "keywords": [
+    "streamlit",
+    "python",
+    "children-books",
+    "ai",
+    "gemini"
+  ],
+  "author": "",
+  "license": "MIT"
+}
