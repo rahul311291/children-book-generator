@@ -14,6 +14,17 @@ from datetime import datetime
 # Import age-specific prompts from the editable prompts file
 from story_prompts import get_full_prompt, get_image_style, IMAGE_STYLES
 
+# Import template book functionality
+try:
+    from template_book_generator import (
+        render_template_book_form,
+        generate_template_book,
+        display_template_book_preview
+    )
+    TEMPLATE_BOOKS_AVAILABLE = True
+except ImportError:
+    TEMPLATE_BOOKS_AVAILABLE = False
+
 # Setup logging
 log_dir = Path("logs")
 log_dir.mkdir(exist_ok=True)
@@ -1320,83 +1331,135 @@ def main():
                 st.rerun()
         
         st.divider()
-        
-        st.header("📝 Child Details")
-        
-        child_name = st.text_input("Child's Name *", placeholder="Enter child's name")
-        
-        age = st.number_input("Age *", min_value=2, max_value=16, value=5, step=1)
-        
-        gender = st.selectbox("Gender *", ["Boy", "Girl", "Non-binary"])
-        
-        st.subheader("Physical Description")
-        skin_tone = st.text_input("Skin Tone", placeholder="e.g., light, medium, dark")
-        hair_style = st.text_input("Hair Style/Color", placeholder="e.g., curly black hair")
-        eye_color = st.text_input("Eye Color", placeholder="e.g., brown eyes")
-        favorite_outfit = st.text_input("Favorite Outfit", placeholder="e.g., blue t-shirt and jeans")
-        
-        # Build physical description from non-empty fields
-        desc_parts = []
-        if skin_tone:
-            desc_parts.append(f"{skin_tone} skin")
-        if hair_style:
-            desc_parts.append(hair_style)
-        if eye_color:
-            desc_parts.append(eye_color)
-        if favorite_outfit:
-            desc_parts.append(f"wearing {favorite_outfit}")
-        physical_desc = ", ".join(desc_parts) if desc_parts else "average appearance"
-        
+
+        # Book Mode Selection
+        if 'book_mode' not in st.session_state:
+            st.session_state.book_mode = "Custom Story"
+
+        st.header("📚 Book Mode")
+        book_mode_options = ["Custom Story", "Template Book"] if TEMPLATE_BOOKS_AVAILABLE else ["Custom Story"]
+        st.session_state.book_mode = st.radio(
+            "Choose creation mode:",
+            options=book_mode_options,
+            help="Custom Story: Create a unique personalized story | Template Book: Use pre-designed profession templates"
+        )
+
         st.divider()
-        
-        # Story Type Selection
-        story_type = st.selectbox(
-            "Story Type *",
-            ["Behavioral/Problem-solving", "Adventure", "Bedtime/Calm", "Educational", "Friendship", "Custom/Free-form"],
-            help="Choose the type of story you want to create"
-        )
-        
-        # Image Style Selection
-        image_style = st.selectbox(
-            "Image Style *",
-            ["Cartoon/Animated (3D Pixar Style)", "Cartoon (2D Flat Style)", "Photorealistic", "Watercolor Illustration", "Storybook Classic"],
-            help="Choose the visual style for images"
-        )
-        st.session_state.image_style = image_style  # Save for image generation
-        
-        problem = st.text_area(
-            "Story Theme / Plot / Idea *",
-            placeholder="Examples:\n• Scared of the dark (behavioral)\n• A magical adventure to find a lost teddy bear\n• Learning about planets and space\n• Making a new friend at school\n• Any story idea you have!",
-            height=120,
-            help="Describe your story idea - can be a problem to solve, an adventure, an educational theme, or any creative plot"
-        )
-        
-        language = st.selectbox("Language *", ["English", "Hindi"])
-        
-        st.divider()
-        
-        st.subheader("Advanced Story Options (Optional)")
-        family_structure = st.text_input(
-            "Family Structure", 
-            placeholder="e.g., Lives with parents and Nani, Has a big brother",
-            help="Describe the child's family context"
-        )
-        hero_trait = st.text_input(
-            "Hero Trait (Child's Strength)", 
-            placeholder="e.g., Brave, Creative, Helpful, Curious",
-            help="The child's natural strength that helps solve the problem"
-        )
-        character_choice = st.text_input(
-            "Famous Character Companion", 
-            placeholder="e.g., Max and Mini, Peppa Pig, Doraemon, Chhota Bheem",
-            help="Famous character to include as a friend in the story. They will appear in the story and images! (optional)"
-        )
-        
-        st.divider()
-        
-        generate_button = st.button("✨ Generate Story", type="primary", use_container_width=True)
+
+        # Only show custom story form if in Custom Story mode
+        if st.session_state.book_mode == "Custom Story":
+            st.header("📝 Child Details")
+
+            child_name = st.text_input("Child's Name *", placeholder="Enter child's name")
+
+            age = st.number_input("Age *", min_value=2, max_value=16, value=5, step=1)
+
+            gender = st.selectbox("Gender *", ["Boy", "Girl", "Non-binary"])
+
+            st.subheader("Physical Description")
+            skin_tone = st.text_input("Skin Tone", placeholder="e.g., light, medium, dark")
+            hair_style = st.text_input("Hair Style/Color", placeholder="e.g., curly black hair")
+            eye_color = st.text_input("Eye Color", placeholder="e.g., brown eyes")
+            favorite_outfit = st.text_input("Favorite Outfit", placeholder="e.g., blue t-shirt and jeans")
+
+            # Build physical description from non-empty fields
+            desc_parts = []
+            if skin_tone:
+                desc_parts.append(f"{skin_tone} skin")
+            if hair_style:
+                desc_parts.append(hair_style)
+            if eye_color:
+                desc_parts.append(eye_color)
+            if favorite_outfit:
+                desc_parts.append(f"wearing {favorite_outfit}")
+            physical_desc = ", ".join(desc_parts) if desc_parts else "average appearance"
+
+            st.divider()
+
+            # Story Type Selection
+            story_type = st.selectbox(
+                "Story Type *",
+                ["Behavioral/Problem-solving", "Adventure", "Bedtime/Calm", "Educational", "Friendship", "Custom/Free-form"],
+                help="Choose the type of story you want to create"
+            )
+
+            # Image Style Selection
+            image_style = st.selectbox(
+                "Image Style *",
+                ["Cartoon/Animated (3D Pixar Style)", "Cartoon (2D Flat Style)", "Photorealistic", "Watercolor Illustration", "Storybook Classic"],
+                help="Choose the visual style for images"
+            )
+            st.session_state.image_style = image_style  # Save for image generation
+
+            problem = st.text_area(
+                "Story Theme / Plot / Idea *",
+                placeholder="Examples:\n• Scared of the dark (behavioral)\n• A magical adventure to find a lost teddy bear\n• Learning about planets and space\n• Making a new friend at school\n• Any story idea you have!",
+                height=120,
+                help="Describe your story idea - can be a problem to solve, an adventure, an educational theme, or any creative plot"
+            )
+
+            language = st.selectbox("Language *", ["English", "Hindi"])
+
+            st.divider()
+
+            st.subheader("Advanced Story Options (Optional)")
+            family_structure = st.text_input(
+                "Family Structure",
+                placeholder="e.g., Lives with parents and Nani, Has a big brother",
+                help="Describe the child's family context"
+            )
+            hero_trait = st.text_input(
+                "Hero Trait (Child's Strength)",
+                placeholder="e.g., Brave, Creative, Helpful, Curious",
+                help="The child's natural strength that helps solve the problem"
+            )
+            character_choice = st.text_input(
+                "Famous Character Companion",
+                placeholder="e.g., Max and Mini, Peppa Pig, Doraemon, Chhota Bheem",
+                help="Famous character to include as a friend in the story. They will appear in the story and images! (optional)"
+            )
+
+            st.divider()
+
+            generate_button = st.button("✨ Generate Story", type="primary", use_container_width=True)
+        else:
+            # Set default values for variables when in Template Book mode
+            child_name = ""
+            age = 5
+            gender = "Boy"
+            physical_desc = ""
+            story_type = ""
+            image_style = ""
+            problem = ""
+            language = "English"
+            family_structure = ""
+            hero_trait = ""
+            character_choice = ""
+            generate_button = False
     
     # Main content area
+    # Handle Template Book Mode
+    if st.session_state.book_mode == "Template Book" and TEMPLATE_BOOKS_AVAILABLE:
+        if not api_key:
+            st.info("👈 Please enter your Google Gemini API key in the sidebar to get started.")
+            return
+
+        if st.session_state.get("generate_template_book", False):
+            st.session_state.generate_template_book = False
+
+            with st.spinner("Generating your personalized template book..."):
+                generate_template_book(
+                    api_key,
+                    st.session_state.template_book_data
+                )
+
+        if st.session_state.get("template_generated_book"):
+            display_template_book_preview(st.session_state.template_generated_book)
+            return
+
+        render_template_book_form()
+        return
+
     # Allow viewing loaded stories even without API key (needed for generating new images)
     if not api_key and not st.session_state.generated_story:
         st.info("👈 Please enter your Google Gemini API key in the sidebar to get started.")
