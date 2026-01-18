@@ -20,7 +20,10 @@ import json
 logger = logging.getLogger(__name__)
 
 env_path = Path(__file__).parent / ".env"
-load_dotenv(env_path)
+if env_path.exists():
+    load_dotenv(env_path)
+else:
+    load_dotenv()
 
 
 def init_supabase() -> Client:
@@ -28,8 +31,22 @@ def init_supabase() -> Client:
     supabase_url = os.getenv("VITE_SUPABASE_URL")
     supabase_key = os.getenv("VITE_SUPABASE_ANON_KEY") or os.getenv("VITE_SUPABASE_SUPABASE_ANON_KEY")
 
+    if not supabase_url:
+        supabase_url = os.getenv("SUPABASE_URL")
+    if not supabase_key:
+        supabase_key = os.getenv("SUPABASE_ANON_KEY")
+
     if not supabase_url or not supabase_key:
-        raise Exception("Supabase credentials not found in environment variables")
+        try:
+            supabase_url = st.secrets.get("VITE_SUPABASE_URL") or st.secrets.get("SUPABASE_URL")
+            supabase_key = st.secrets.get("VITE_SUPABASE_ANON_KEY") or st.secrets.get("SUPABASE_ANON_KEY")
+        except Exception:
+            pass
+
+    if not supabase_url or not supabase_key:
+        error_msg = f"Supabase credentials not found. URL: {'found' if supabase_url else 'missing'}, Key: {'found' if supabase_key else 'missing'}"
+        logger.error(error_msg)
+        raise Exception(error_msg)
 
     return create_client(supabase_url, supabase_key)
 
