@@ -152,12 +152,17 @@ def generate_template_book(api_key: str, book_data: Dict):
         child_name = book_data['child_name']
         gender = book_data['gender']
         age = book_data['age']
+        photos = book_data.get('photos', [])
 
         pages = get_template_pages(template_id)
 
         if not pages:
             st.error("No pages found for this template")
             return
+
+        reference_image_base64 = None
+        if photos:
+            reference_image_base64 = convert_uploaded_file_to_base64(photos[0])
 
         generated_book = {
             'template_id': template_id,
@@ -189,7 +194,11 @@ def generate_template_book(api_key: str, book_data: Dict):
                 age
             )
 
-            image_url = generate_page_image(api_key, personalized_image_prompt)
+            image_url = generate_page_image(
+                api_key,
+                personalized_image_prompt,
+                reference_image_base64
+            )
 
             generated_book['pages'].append({
                 'page_number': page['page_number'],
@@ -210,8 +219,18 @@ def generate_template_book(api_key: str, book_data: Dict):
         st.error(f"Failed to generate book: {e}")
 
 
-def generate_page_image(api_key: str, prompt: str) -> Optional[str]:
-    """Generate a single image using Gemini API."""
+def convert_uploaded_file_to_base64(uploaded_file) -> str:
+    """Convert Streamlit uploaded file to base64 string."""
+    try:
+        bytes_data = uploaded_file.getvalue()
+        return base64.b64encode(bytes_data).decode('utf-8')
+    except Exception as e:
+        logger.error(f"Error converting file to base64: {e}")
+        return None
+
+
+def generate_page_image(api_key: str, prompt: str, reference_image_base64: Optional[str] = None) -> Optional[str]:
+    """Generate a single image using Gemini API with optional reference image."""
     try:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:generate"
 
@@ -227,6 +246,13 @@ def generate_page_image(api_key: str, prompt: str) -> Optional[str]:
             "person_generation": "allow_all"
         }
 
+        if reference_image_base64:
+            payload["referenceImages"] = [{
+                "imageBytes": reference_image_base64,
+                "referenceType": "STYLE"
+            }]
+            payload["prompt"] = f"{prompt}. Match the child's facial features and appearance from the reference image."
+
         response = requests.post(
             f"{url}?key={api_key}",
             headers=headers,
@@ -241,7 +267,7 @@ def generate_page_image(api_key: str, prompt: str) -> Optional[str]:
                 if image_data:
                     return f"data:image/png;base64,{image_data}"
 
-        logger.warning(f"Image generation failed with status {response.status_code}")
+        logger.warning(f"Image generation failed with status {response.status_code}: {response.text if response.text else 'No error message'}")
         return None
 
     except Exception as e:
