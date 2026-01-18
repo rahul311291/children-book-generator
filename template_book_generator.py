@@ -250,42 +250,87 @@ def convert_uploaded_file_to_base64(uploaded_file) -> str:
 def generate_page_image(api_key: str, prompt: str, reference_image_base64: Optional[str] = None) -> Optional[str]:
     """Generate a single image using Gemini API with optional reference image."""
     try:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:generate"
+        # Use the correct Gemini image generation endpoint
+        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent"
 
         headers = {
             "Content-Type": "application/json"
         }
 
-        payload = {
-            "prompt": prompt,
-            "number_of_images": 1,
-            "aspect_ratio": "1:1",
-            "safety_filter_level": "block_some",
-            "person_generation": "allow_all"
-        }
+        # Add no-text guardrail to prompt
+        no_text_instruction = "CRITICAL: NO TEXT in this image. No words, letters, numbers, speech bubbles, captions, signs, or labels. Pure illustration only."
+        style_modifiers = "Watercolor illustration style, soft edges, gentle colors, children's book art, high quality"
+        
+        enhanced_prompt = f"{no_text_instruction}. {prompt}. {style_modifiers}. {no_text_instruction}"
 
+        # Build the payload - with or without reference image
         if reference_image_base64:
-            payload["referenceImages"] = [{
-                "imageBytes": reference_image_base64,
-                "referenceType": "STYLE"
-            }]
-            payload["prompt"] = f"{prompt}. Match the child's facial features and appearance from the reference image."
+            # Include reference image for face matching
+            payload = {
+                "contents": [{
+                    "parts": [
+                        {
+                            "inlineData": {
+                                "mimeType": "image/jpeg",
+                                "data": reference_image_base64
+                            }
+                        },
+                        {
+                            "text": f"{enhanced_prompt}. Make the child look exactly like the person in the reference photo - same facial features, skin tone, and hair."
+                        }
+                    ]
+                }],
+                "generationConfig": {
+                    "temperature": 0.4,
+                    "topK": 32,
+                    "topP": 1,
+                    "imageConfig": {
+                        "aspectRatio": "1:1",
+                        "imageSize": "2K"
+                    }
+                }
+            }
+        else:
+            # No reference image
+            payload = {
+                "contents": [{
+                    "parts": [{
+                        "text": enhanced_prompt
+                    }]
+                }],
+                "generationConfig": {
+                    "temperature": 0.4,
+                    "topK": 32,
+                    "topP": 1,
+                    "imageConfig": {
+                        "aspectRatio": "1:1",
+                        "imageSize": "2K"
+                    }
+                }
+            }
+
+        params = {"key": api_key}
 
         response = requests.post(
-            f"{url}?key={api_key}",
+            url,
             headers=headers,
             json=payload,
-            timeout=60
+            params=params,
+            timeout=120
         )
 
         if response.status_code == 200:
             result = response.json()
-            if 'generatedImages' in result and len(result['generatedImages']) > 0:
-                image_data = result['generatedImages'][0].get('imageBytes')
-                if image_data:
-                    return f"data:image/png;base64,{image_data}"
+            
+            # Extract image from Gemini response format
+            if "candidates" in result and len(result["candidates"]) > 0:
+                parts = result["candidates"][0].get("content", {}).get("parts", [])
+                for part in parts:
+                    if "inlineData" in part:
+                        image_data = part["inlineData"]["data"]
+                        return f"data:image/png;base64,{image_data}"
 
-        logger.warning(f"Image generation failed with status {response.status_code}: {response.text if response.text else 'No error message'}")
+        logger.warning(f"Image generation failed with status {response.status_code}: {response.text[:500] if response.text else 'No error message'}")
         return None
 
     except Exception as e:
