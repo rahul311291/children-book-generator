@@ -19,7 +19,8 @@ import json
 
 logger = logging.getLogger(__name__)
 
-load_dotenv()
+env_path = Path(__file__).parent / ".env"
+load_dotenv(env_path)
 
 
 def init_supabase() -> Client:
