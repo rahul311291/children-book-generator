@@ -96,6 +96,8 @@ if 'edited_story_pages' not in st.session_state:
     st.session_state.edited_story_pages = {}  # Store edited page text
 if 'edited_image_prompts' not in st.session_state:
     st.session_state.edited_image_prompts = {}  # Store edited image prompts
+if 'image_generation_errors' not in st.session_state:
+    st.session_state.image_generation_errors = {}  # Store error messages for failed image generations
 if 'pdf_generation_key' not in st.session_state:
     st.session_state.pdf_generation_key = None  # Track when PDF was generated
 if 'stories_dir' not in st.session_state:
@@ -256,6 +258,7 @@ def reset_story_state():
     """Reset all story-related session state - COMPLETE RESET."""
     st.session_state.generated_story = None
     st.session_state.generated_images = []
+    st.session_state.image_generation_errors = {}
     st.session_state.pdf_path = None
     st.session_state.story_approved = False
     st.session_state.image_approvals = {}
@@ -918,9 +921,12 @@ def generate_story_with_gemini(api_key: str, child_name: str, age: int, gender: 
             st.code(traceback.format_exc())
         return None
 
-def generate_image_with_imagen(api_key: str, prompt: str, retry_count: int = 0, image_style: str = None) -> Image.Image:
+def generate_image_with_imagen(api_key: str, prompt: str, retry_count: int = 0, image_style: str = None, image_index: int = None) -> Image.Image:
     """Generate image using Gemini 3 Pro Image Preview (Nano Banana Pro) via REST API."""
     try:
+        # Clear any previous error for this image
+        if image_index is not None and image_index in st.session_state.image_generation_errors:
+            del st.session_state.image_generation_errors[image_index]
         logger.info(f"Generating image (attempt {retry_count + 1}), prompt: {prompt[:100]}...")
         # ============================================================================
         # IMAGE STYLE PROMPT - Based on user selection
@@ -988,14 +994,29 @@ def generate_image_with_imagen(api_key: str, prompt: str, retry_count: int = 0, 
     except Exception as e:
         error_msg = f"Image generation failed: {e}"
         logger.error(f"{error_msg} (attempt {retry_count + 1})")
+
+        # Store detailed error information
+        error_details = {
+            "error": str(e),
+            "full_error": error_msg,
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "attempt": retry_count + 1
+        }
+
         if retry_count < 1:
             logger.info(f"Retrying image generation...")
             st.warning(f"⚠️ Image generation failed, retrying... ({str(e)[:100]})")
             time.sleep(2)
-            return generate_image_with_imagen(api_key, prompt, retry_count + 1)
+            return generate_image_with_imagen(api_key, prompt, retry_count + 1, image_style, image_index)
         else:
             logger.error(f"Image generation failed after all retries")
+
+            # Store error in session state for this specific image
+            if image_index is not None:
+                st.session_state.image_generation_errors[image_index] = error_details
+
             st.error(f"❌ Failed to generate image after retries: {str(e)[:200]}")
+
             # Return placeholder image
             placeholder = Image.new('RGB', (512, 512), color=(200, 200, 200))
             return placeholder
@@ -1303,7 +1324,8 @@ def main():
         # Show if API key is set from environment
         env_key_set = bool(os.getenv("GEMINI_API_KEY"))
         if env_key_set:
-            st.info("🔐 API key loaded from environment variable (secure)")
+            env_key_value = os.getenv("GEMINI_API_KEY")
+            st.success(f"🔐 API key loaded from environment (length: {len(env_key_value)} chars)")
             api_key = st.session_state.api_key
             if st.button("🔑 Override with Manual Entry", use_container_width=True):
                 st.session_state.use_manual_key = True
@@ -1436,8 +1458,11 @@ def main():
             hero_trait = ""
             character_choice = ""
             generate_button = False
-    
+
     # Main content area
+    # Get API key from session state (sidebar updates session state)
+    api_key = st.session_state.api_key
+
     # Handle Template Book Mode
     if st.session_state.book_mode == "Template Book" and TEMPLATE_BOOKS_AVAILABLE:
         if not api_key:
@@ -1819,7 +1844,20 @@ def main():
             progress_value = min(1.0, approved_count / total_pages if total_pages > 0 else 0)
             st.progress(progress_value)
             st.caption(f"Approved: {approved_count}/{total_pages} images")
-            
+
+            # Check if API key is available for image generation
+            if not api_key:
+                st.error("⚠️ **API Key Required for Image Generation**")
+                st.info("👈 Please enter your Google Gemini API key in the sidebar to generate images.")
+                st.markdown("Get your free API key from: https://makersuite.google.com/app/apikey")
+
+                # Debug information
+                with st.expander("🔍 Debug Information"):
+                    st.write(f"**API Key in session state:** {bool(st.session_state.api_key)}")
+                    st.write(f"**API Key length:** {len(st.session_state.api_key) if st.session_state.api_key else 0}")
+                    st.write(f"**Environment variable set:** {bool(os.getenv('GEMINI_API_KEY'))}")
+                return
+
             # Check if any specific image needs regeneration
             regenerate_idx = None
             for i in range(total_pages):
@@ -1840,7 +1878,7 @@ def main():
                         page.get("image_prompt", "")
                     )
                     logger.info(f"Regenerating image for page {regenerate_idx + 1} with prompt: {image_prompt[:150]}...")
-                    img = generate_image_with_imagen(api_key, image_prompt)
+                    img = generate_image_with_imagen(api_key, image_prompt, image_index=regenerate_idx)
                     # ALWAYS replace at the correct index - ensure list is large enough
                     while len(st.session_state.generated_images) <= regenerate_idx:
                         st.session_state.generated_images.append(None)
@@ -1871,7 +1909,7 @@ def main():
                             page.get("image_prompt", "")
                         )
                         logger.info(f"Generating image for page {missing_idx + 1} with prompt: {image_prompt[:150]}...")
-                        img = generate_image_with_imagen(api_key, image_prompt)
+                        img = generate_image_with_imagen(api_key, image_prompt, image_index=missing_idx)
                         # Ensure list is large enough
                         while len(st.session_state.generated_images) <= missing_idx:
                             st.session_state.generated_images.append(None)
@@ -1917,7 +1955,22 @@ def main():
                         st.session_state.generated_story["pages"][i]["text"] = new_text
                     
                     st.image(st.session_state.generated_images[i], use_container_width=True)
-                    
+
+                    # Display error message if image generation failed
+                    if i in st.session_state.image_generation_errors:
+                        error_info = st.session_state.image_generation_errors[i]
+                        st.error(f"⚠️ **Image Generation Failed**")
+                        with st.expander("Error Details", expanded=False):
+                            st.write(f"**Error:** {error_info.get('error', 'Unknown error')}")
+                            st.write(f"**Time:** {error_info.get('timestamp', 'N/A')}")
+                            st.write(f"**Attempts:** {error_info.get('attempt', 'N/A')}")
+                            st.info("💡 **Common Reasons:**\n"
+                                   "- Invalid or expired API key\n"
+                                   "- API quota exceeded\n"
+                                   "- Network connection issues\n"
+                                   "- API service temporarily unavailable\n\n"
+                                   "Click '🔄 Regenerate' to try again")
+
                     # Show current prompt
                     current_prompt = st.session_state.edited_image_prompts.get(i, page.get("image_prompt", ""))
                     st.write("**Current Image Prompt:**")
@@ -2027,6 +2080,9 @@ def main():
                             # Remove approval for this specific image
                             if i in st.session_state.image_approvals:
                                 del st.session_state.image_approvals[i]
+                            # Clear any error for this image since we're regenerating
+                            if i in st.session_state.image_generation_errors:
+                                del st.session_state.image_generation_errors[i]
                             # Mark this slot for regeneration - don't pop, just set to None
                             # This prevents index shifting which causes text/image mismatch
                             if i < len(st.session_state.generated_images):
@@ -2278,7 +2334,17 @@ def main():
                         
                         # Show image
                         st.image(st.session_state.generated_images[i], use_container_width=True)
-                        
+
+                        # Display error message if image generation failed
+                        if i in st.session_state.image_generation_errors:
+                            error_info = st.session_state.image_generation_errors[i]
+                            st.error(f"⚠️ **Image Generation Failed**")
+                            with st.expander("Error Details", expanded=False):
+                                st.write(f"**Error:** {error_info.get('error', 'Unknown error')}")
+                                st.write(f"**Time:** {error_info.get('timestamp', 'N/A')}")
+                                st.write(f"**Attempts:** {error_info.get('attempt', 'N/A')}")
+                                st.info("💡 Go back to Step 2 to regenerate this image")
+
                         # Regenerate PDF button if text was edited
                         if new_text != edited_text:
                             if st.button(f"🔄 Regenerate PDF with Changes", key=f"regen_pdf_{i}"):
