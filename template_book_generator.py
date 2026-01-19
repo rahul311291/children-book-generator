@@ -368,12 +368,54 @@ def display_template_book_preview(book_data: Dict):
 
     failed_images_count = sum(1 for page in book_data['pages'] if not page.get('image_url'))
     if failed_images_count > 0:
-        st.warning(f"⚠️ {failed_images_count} images failed to generate. You can regenerate them individually below.")
+        col_warn, col_regen_all = st.columns([3, 1])
+        with col_warn:
+            st.warning(f"⚠️ {failed_images_count} images failed to generate. You can regenerate them individually below.")
+        with col_regen_all:
+            if st.button("🔄 Regenerate All Failed", type="secondary", use_container_width=True):
+                api_key = st.session_state.get('api_key') or os.getenv("GEMINI_API_KEY", "")
+                if not api_key:
+                    st.error("API key not found. Please check your API key in the sidebar.")
+                else:
+                    progress_bar = st.progress(0)
+                    status_text = st.empty()
+
+                    failed_pages = [p for p in book_data['pages'] if not p.get('image_url')]
+                    total_failed = len(failed_pages)
+                    success_count = 0
+
+                    for idx, page in enumerate(failed_pages):
+                        page_key = f"{page['page_number']}"
+                        status_text.text(f"Regenerating {idx + 1}/{total_failed}: {page['profession_title']}")
+
+                        prompt = st.session_state.template_edited_prompts.get(page_key, page['image_prompt'])
+
+                        reference_image_base64 = None
+                        if book_data.get('photos'):
+                            try:
+                                reference_image_base64 = convert_uploaded_file_to_base64(book_data['photos'][0])
+                            except Exception:
+                                pass
+
+                        new_image = generate_page_image(api_key, prompt, reference_image_base64)
+                        if new_image:
+                            page['image_url'] = new_image
+                            page['error'] = None
+                            success_count += 1
+
+                        progress_bar.progress((idx + 1) / total_failed)
+
+                    st.session_state.template_generated_book = book_data
+                    status_text.text(f"✅ Regenerated {success_count}/{total_failed} images successfully!")
+                    st.rerun()
 
     for idx, page in enumerate(book_data['pages']):
         page_key = f"{page['page_number']}"
 
-        with st.expander(f"📄 Page {page['page_number']}: {page['profession_title']}", expanded=True):
+        status_icon = "✅" if page.get('image_url') else "❌"
+        expanded_by_default = not page.get('image_url')
+
+        with st.expander(f"{status_icon} Page {page['page_number']}: {page['profession_title']}", expanded=expanded_by_default):
             col1, col2 = st.columns([1, 1])
 
             with col1:
@@ -398,19 +440,28 @@ def display_template_book_preview(book_data: Dict):
                 with col_btn1:
                     if st.button(f"🔄 Regenerate Image", key=f"regen_img_{page_key}", use_container_width=True):
                         with st.spinner("Regenerating image..."):
-                            api_key = os.getenv("GEMINI_API_KEY", "")
+                            api_key = st.session_state.get('api_key') or os.getenv("GEMINI_API_KEY", "")
                             if not api_key:
-                                st.error("API key not found")
+                                st.error("API key not found. Please check your API key in the sidebar.")
                             else:
                                 prompt = st.session_state.template_edited_prompts.get(page_key, page['image_prompt'])
-                                new_image = generate_page_image(api_key, prompt, None)
+
+                                reference_image_base64 = None
+                                if book_data.get('photos'):
+                                    try:
+                                        reference_image_base64 = convert_uploaded_file_to_base64(book_data['photos'][0])
+                                    except Exception:
+                                        pass
+
+                                new_image = generate_page_image(api_key, prompt, reference_image_base64)
                                 if new_image:
                                     page['image_url'] = new_image
+                                    page['error'] = None
                                     st.session_state.template_generated_book = book_data
-                                    st.success("Image regenerated!")
+                                    st.success("Image regenerated successfully!")
                                     st.rerun()
                                 else:
-                                    st.error("Failed to regenerate image")
+                                    st.error("Failed to regenerate image. Please try again or edit the prompt.")
 
                 with col_btn2:
                     if st.button(f"✏️ Edit Prompt", key=f"edit_prompt_{page_key}", use_container_width=True):
