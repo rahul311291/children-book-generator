@@ -228,6 +228,8 @@ def generate_template_book(api_key: str, book_data: Dict, job_id: Optional[str] 
             )
 
             if job_id:
+                logger.info(f"✅ Created new tracking job: {job_id}")
+                st.info(f"📋 Created new job: {job_id}")
                 page_data_for_tracking = []
                 for page in pages:
                     personalized_text = personalize_template_text(page['text_template'], child_name, gender)
@@ -241,7 +243,10 @@ def generate_template_book(api_key: str, book_data: Dict, job_id: Optional[str] 
 
                 tracker.create_page_records(job_id, page_data_for_tracking)
                 st.session_state.current_job_id = job_id
-                logger.info(f"Created tracking job: {job_id}")
+                logger.info(f"Created {len(page_data_for_tracking)} page records for job: {job_id}")
+            else:
+                logger.error("❌ Failed to create job_id - tracking will not work")
+                st.warning("Could not create job tracking - progress will not be saved")
 
         if job_id and tracker:
             existing_pages = tracker.get_job_pages(job_id)
@@ -377,8 +382,10 @@ def generate_template_book(api_key: str, book_data: Dict, job_id: Optional[str] 
         if tracker and job_id:
             if failed_pages == 0:
                 tracker.update_job_progress(job_id, total_pages, successful_pages, status="completed")
+                logger.info(f"✅ Job {job_id} marked as COMPLETED with {successful_pages}/{total_pages} pages")
             else:
                 tracker.update_job_progress(job_id, total_pages, successful_pages, status="in_progress")
+                logger.info(f"⚠️ Job {job_id} marked as IN_PROGRESS with {successful_pages}/{total_pages} pages ({failed_pages} failed)")
 
         if failed_pages > 0:
             error_display.warning(f"⚠️ Book generated with {failed_pages} failed images out of {total_pages} pages. You can regenerate failed images on the preview screen or resume from job history.")

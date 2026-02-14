@@ -16,16 +16,42 @@ logger = logging.getLogger(__name__)
 
 def render_job_history():
     """Render the job history interface."""
-    st.header("📚 Book Generation History")
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        st.header("📚 Book Generation History")
+    with col2:
+        if st.button("🔄 Refresh", use_container_width=True):
+            st.rerun()
 
     try:
         supabase = init_supabase()
+        st.success("✅ Connected to Supabase successfully")
         tracker = ProgressTracker(supabase)
 
         jobs = tracker.get_all_jobs(limit=50)
 
-        if not jobs:
+        logger.info(f"Fetched {len(jobs) if jobs else 0} jobs from database")
+
+        if not jobs or len(jobs) == 0:
             st.info("No book generation history found. Generate your first book to see it here!")
+            with st.expander("🔍 Debug Info - Click to see database status"):
+                st.write("**Checking database connection and tables...**")
+                try:
+                    result = supabase.table("book_generation_jobs").select("*", count="exact").limit(5).execute()
+                    st.write(f"✅ book_generation_jobs table: {result.count} total records found")
+                    if result.data:
+                        st.write("Sample records:")
+                        st.json(result.data)
+                    else:
+                        st.warning("Table is empty - no jobs have been created yet")
+                except Exception as e:
+                    st.error(f"❌ Error querying book_generation_jobs: {e}")
+
+                try:
+                    result = supabase.table("book_generation_pages").select("count", count="exact").execute()
+                    st.write(f"✅ book_generation_pages table: {result.count} total records")
+                except Exception as e:
+                    st.error(f"❌ Error querying book_generation_pages: {e}")
             return
 
         st.markdown(f"**Found {len(jobs)} generation job(s)**")

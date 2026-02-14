@@ -21,7 +21,7 @@ class ProgressTracker:
                    child_age: int, child_gender: str, total_pages: int) -> Optional[str]:
         """Create a new book generation job and return job ID."""
         try:
-            result = self.supabase.table("book_generation_jobs").insert({
+            job_data = {
                 "template_id": template_id,
                 "template_name": template_name,
                 "child_name": child_name,
@@ -31,15 +31,20 @@ class ProgressTracker:
                 "total_pages": total_pages,
                 "pages_completed": 0,
                 "current_page": 0
-            }).execute()
+            }
+            logger.info(f"Creating job with data: {job_data}")
+
+            result = self.supabase.table("book_generation_jobs").insert(job_data).execute()
 
             if result.data:
                 job_id = result.data[0]['id']
-                logger.info(f"Created new job: {job_id}")
+                logger.info(f"✅ Successfully created job: {job_id}")
                 return job_id
-            return None
+            else:
+                logger.error("❌ No data returned from job creation")
+                return None
         except Exception as e:
-            logger.error(f"Error creating job: {e}")
+            logger.error(f"❌ Error creating job: {e}", exc_info=True)
             return None
 
     def create_page_records(self, job_id: str, pages: List[Dict]) -> bool:
@@ -189,9 +194,11 @@ class ProgressTracker:
                 "created_at", desc=True
             ).limit(limit).execute()
 
-            return result.data or []
+            jobs = result.data or []
+            logger.info(f"get_all_jobs returned {len(jobs)} jobs")
+            return jobs
         except Exception as e:
-            logger.error(f"Error fetching jobs: {e}")
+            logger.error(f"Error fetching jobs: {e}", exc_info=True)
             return []
 
     def get_job_summary(self, job_id: str) -> Optional[Dict]:
