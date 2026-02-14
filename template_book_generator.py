@@ -60,27 +60,43 @@ def init_supabase() -> Client:
 
 
 def get_available_templates() -> List[Dict]:
-    """Fetch all available templates from database."""
+    """Fetch all available templates from database, with hardcoded fallback."""
+    # First try to fetch from database
     try:
         supabase = init_supabase()
         response = supabase.table("templates").select("*").execute()
-        return response.data
+        if response.data:
+            return response.data
     except Exception as e:
-        logger.error(f"Error fetching templates: {e}")
-        st.error(f"Failed to load templates: {e}")
-        return []
+        logger.warning(f"Database templates not available: {e}, using hardcoded template")
+
+    # Fallback to hardcoded template
+    from template_data import WHEN_I_GROW_UP_TEMPLATE
+    return [{
+        "id": "when_i_grow_up",
+        "name": WHEN_I_GROW_UP_TEMPLATE["name"],
+        "description": WHEN_I_GROW_UP_TEMPLATE["description"],
+        "total_pages": WHEN_I_GROW_UP_TEMPLATE["total_pages"]
+    }]
 
 
 def get_template_pages(template_id: str) -> List[Dict]:
-    """Fetch all pages for a specific template."""
+    """Fetch all pages for a specific template, with hardcoded fallback."""
+    # First try to fetch from database
     try:
         supabase = init_supabase()
         response = supabase.table("template_pages").select("*").eq("template_id", template_id).order("page_number").execute()
-        return response.data
+        if response.data:
+            return response.data
     except Exception as e:
-        logger.error(f"Error fetching template pages: {e}")
-        st.error(f"Failed to load template pages: {e}")
-        return []
+        logger.warning(f"Database template pages not available: {e}, using hardcoded template")
+
+    # Fallback to hardcoded template
+    if template_id == "when_i_grow_up":
+        from template_data import WHEN_I_GROW_UP_TEMPLATE
+        return WHEN_I_GROW_UP_TEMPLATE["pages"]
+
+    return []
 
 
 def render_template_book_form():
@@ -618,9 +634,9 @@ def create_template_book_pdf(book_data: Dict) -> Optional[str]:
 
                         text_y_position = y_position - 80
 
-                    except Exception as img_error:
-                        logger.error(f"Error adding image to PDF: {img_error}")
-                        text_y_position = height - 150
+                except Exception as img_error:
+                    logger.error(f"Error adding image to PDF: {img_error}")
+                    text_y_position = height - 150
                 else:
                     text_y_position = height - 150
 
