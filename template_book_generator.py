@@ -187,8 +187,17 @@ def render_template_book_form():
             st.rerun()
 
 
-def generate_template_book(api_key: str, book_data: Dict):
-    """Generate a complete template book with AI-generated images."""
+def generate_template_book(api_key: str, book_data: Dict, job_id: Optional[str] = None):
+    """Generate a complete template book with AI-generated images and progress tracking."""
+    from progress_tracking import ProgressTracker
+
+    try:
+        supabase = init_supabase()
+        tracker = ProgressTracker(supabase)
+    except Exception as e:
+        logger.warning(f"Could not initialize progress tracking: {e}")
+        tracker = None
+
     try:
         template_id = book_data['template_id']
         child_name = book_data['child_name']
@@ -206,63 +215,142 @@ def generate_template_book(api_key: str, book_data: Dict):
         if photos:
             reference_image_base64 = convert_uploaded_file_to_base64(photos[0])
 
+        total_pages = len(pages)
+
+        if not job_id and tracker:
+            job_id = tracker.create_job(
+                template_id=template_id,
+                template_name=book_data['template_name'],
+                child_name=child_name,
+                child_age=age,
+                child_gender=gender,
+                total_pages=total_pages
+            )
+
+            if job_id:
+                page_data_for_tracking = []
+                for page in pages:
+                    personalized_text = personalize_template_text(page['text_template'], child_name, gender)
+                    personalized_prompt = personalize_template_image_prompt(page['image_prompt_template'], child_name, gender, age)
+                    page_data_for_tracking.append({
+                        'page_number': page['page_number'],
+                        'profession_title': page['profession_title'],
+                        'text': personalized_text,
+                        'image_prompt': personalized_prompt
+                    })
+
+                tracker.create_page_records(job_id, page_data_for_tracking)
+                st.session_state.current_job_id = job_id
+                logger.info(f"Created tracking job: {job_id}")
+
+        if job_id and tracker:
+            existing_pages = tracker.get_job_pages(job_id)
+            pages_to_generate = []
+            for page in pages:
+                existing_page = next((p for p in existing_pages if p['page_number'] == page['page_number']), None)
+                if existing_page and existing_page['status'] == 'completed' and existing_page.get('image_url'):
+                    pages_to_generate.append({
+                        'page_data': page,
+                        'existing': existing_page
+                    })
+                else:
+                    pages_to_generate.append({
+                        'page_data': page,
+                        'existing': None
+                    })
+        else:
+            pages_to_generate = [{'page_data': page, 'existing': None} for page in pages]
+
         generated_book = {
             'template_id': template_id,
             'template_name': book_data['template_name'],
             'child_name': child_name,
             'gender': gender,
             'age': age,
-            'pages': []
+            'pages': [],
+            'job_id': job_id
         }
 
         progress_bar = st.progress(0)
         status_text = st.empty()
         error_display = st.empty()
+        job_id_display = st.empty()
 
-        total_pages = len(pages)
+        if job_id:
+            job_id_display.info(f"📋 Job ID: `{job_id}` - Progress is being saved automatically")
+
         successful_pages = 0
         failed_pages = 0
 
-        for idx, page in enumerate(pages):
+        for idx, page_info in enumerate(pages_to_generate):
+            page = page_info['page_data']
+            existing = page_info['existing']
+
             try:
-                status_text.text(f"Generating page {idx + 1} of {total_pages}: {page['profession_title']}")
+                page_number = page['page_number']
 
-                personalized_text = personalize_template_text(
-                    page['text_template'],
-                    child_name,
-                    gender
-                )
-
-                personalized_image_prompt = personalize_template_image_prompt(
-                    page['image_prompt_template'],
-                    child_name,
-                    gender,
-                    age
-                )
-
-                logger.info(f"Generating image for page {idx + 1}: {page['profession_title']}")
-
-                image_url = generate_page_image(
-                    api_key,
-                    personalized_image_prompt,
-                    reference_image_base64
-                )
-
-                if image_url:
+                if existing:
+                    status_text.text(f"Loading saved page {idx + 1} of {total_pages}: {page['profession_title']}")
+                    generated_book['pages'].append({
+                        'page_number': existing['page_number'],
+                        'profession_title': existing['profession_title'],
+                        'text': existing['text'],
+                        'image_prompt': existing['image_prompt'],
+                        'image_url': existing['image_url'],
+                        'error': existing.get('error_message')
+                    })
                     successful_pages += 1
-                    logger.info(f"Successfully generated image for page {idx + 1}")
                 else:
-                    failed_pages += 1
-                    logger.warning(f"Failed to generate image for page {idx + 1}")
+                    status_text.text(f"Generating page {idx + 1} of {total_pages}: {page['profession_title']}")
 
-                generated_book['pages'].append({
-                    'page_number': page['page_number'],
-                    'profession_title': page['profession_title'],
-                    'text': personalized_text,
-                    'image_prompt': personalized_image_prompt,
-                    'image_url': image_url,
-                    'error': None if image_url else "Image generation failed"
-                })
+                    if tracker and job_id:
+                        tracker.update_page_status(job_id, page_number, "generating")
+
+                    personalized_text = personalize_template_text(
+                        page['text_template'],
+                        child_name,
+                        gender
+                    )
+
+                    personalized_image_prompt = personalize_template_image_prompt(
+                        page['image_prompt_template'],
+                        child_name,
+                        gender,
+                        age
+                    )
+
+                    logger.info(f"Generating image for page {idx + 1}: {page['profession_title']}")
+
+                    image_url = generate_page_image(
+                        api_key,
+                        personalized_image_prompt,
+                        reference_image_base64
+                    )
+
+                    if image_url:
+                        successful_pages += 1
+                        logger.info(f"Successfully generated image for page {idx + 1}")
+
+                        if tracker and job_id:
+                            tracker.update_page_status(job_id, page_number, "completed", image_url=image_url)
+                    else:
+                        failed_pages += 1
+                        logger.warning(f"Failed to generate image for page {idx + 1}")
+
+                        if tracker and job_id:
+                            tracker.update_page_status(job_id, page_number, "failed", error_message="Image generation failed")
+
+                    generated_book['pages'].append({
+                        'page_number': page['page_number'],
+                        'profession_title': page['profession_title'],
+                        'text': personalized_text,
+                        'image_prompt': personalized_image_prompt,
+                        'image_url': image_url,
+                        'error': None if image_url else "Image generation failed"
+                    })
+
+                if tracker and job_id:
+                    tracker.update_job_progress(job_id, page_number, successful_pages)
 
                 progress_bar.progress((idx + 1) / total_pages)
 
@@ -270,8 +358,13 @@ def generate_template_book(api_key: str, book_data: Dict):
                 logger.error(f"Error generating page {idx + 1}: {page_error}")
                 failed_pages += 1
 
+                page_number = page.get('page_number', idx + 1)
+
+                if tracker and job_id:
+                    tracker.update_page_status(job_id, page_number, "failed", error_message=str(page_error))
+
                 generated_book['pages'].append({
-                    'page_number': page.get('page_number', idx + 1),
+                    'page_number': page_number,
                     'profession_title': page.get('profession_title', 'Unknown'),
                     'text': personalize_template_text(page.get('text_template', ''), child_name, gender),
                     'image_prompt': personalize_template_image_prompt(page.get('image_prompt_template', ''), child_name, gender, age),
@@ -281,8 +374,14 @@ def generate_template_book(api_key: str, book_data: Dict):
 
                 progress_bar.progress((idx + 1) / total_pages)
 
+        if tracker and job_id:
+            if failed_pages == 0:
+                tracker.update_job_progress(job_id, total_pages, successful_pages, status="completed")
+            else:
+                tracker.update_job_progress(job_id, total_pages, successful_pages, status="in_progress")
+
         if failed_pages > 0:
-            error_display.warning(f"⚠️ Book generated with {failed_pages} failed images out of {total_pages} pages. You can regenerate failed images on the preview screen.")
+            error_display.warning(f"⚠️ Book generated with {failed_pages} failed images out of {total_pages} pages. You can regenerate failed images on the preview screen or resume from job history.")
             status_text.text(f"✅ Book generation complete! ({successful_pages}/{total_pages} images generated)")
         else:
             status_text.text("✅ Book generation complete!")
@@ -291,6 +390,10 @@ def generate_template_book(api_key: str, book_data: Dict):
 
     except Exception as e:
         logger.error(f"Error generating template book: {e}", exc_info=True)
+
+        if tracker and job_id:
+            tracker.mark_job_failed(job_id, str(e))
+
         st.error(f"Failed to generate book: {e}")
 
 

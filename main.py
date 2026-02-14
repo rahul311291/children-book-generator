@@ -21,6 +21,7 @@ try:
         generate_template_book,
         display_template_book_preview
     )
+    from job_history_ui import render_job_history
     TEMPLATE_BOOKS_AVAILABLE = True
 except ImportError:
     TEMPLATE_BOOKS_AVAILABLE = False
@@ -1359,11 +1360,11 @@ def main():
             st.session_state.book_mode = "Custom Story"
 
         st.header("📚 Book Mode")
-        book_mode_options = ["Custom Story", "Template Book"] if TEMPLATE_BOOKS_AVAILABLE else ["Custom Story"]
+        book_mode_options = ["Custom Story", "Template Book", "Job History"] if TEMPLATE_BOOKS_AVAILABLE else ["Custom Story"]
         st.session_state.book_mode = st.radio(
             "Choose creation mode:",
             options=book_mode_options,
-            help="Custom Story: Create a unique personalized story | Template Book: Use pre-designed profession templates"
+            help="Custom Story: Create a unique personalized story | Template Book: Use pre-designed profession templates | Job History: View and resume previous generations"
         )
 
         st.divider()
@@ -1463,6 +1464,11 @@ def main():
     # Get API key from session state (sidebar updates session state)
     api_key = st.session_state.api_key
 
+    # Handle Job History Mode
+    if st.session_state.book_mode == "Job History" and TEMPLATE_BOOKS_AVAILABLE:
+        render_job_history()
+        return
+
     # Handle Template Book Mode
     if st.session_state.book_mode == "Template Book" and TEMPLATE_BOOKS_AVAILABLE:
         if not api_key:
@@ -1472,10 +1478,15 @@ def main():
         if st.session_state.get("generate_template_book", False):
             st.session_state.generate_template_book = False
 
+            job_id = st.session_state.get('resume_job_id')
+            if 'resume_job_id' in st.session_state:
+                del st.session_state.resume_job_id
+
             with st.spinner("Generating your personalized template book..."):
                 generate_template_book(
                     api_key,
-                    st.session_state.template_book_data
+                    st.session_state.template_book_data,
+                    job_id=job_id
                 )
 
         if st.session_state.get("template_generated_book"):
