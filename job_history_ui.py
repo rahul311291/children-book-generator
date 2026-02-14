@@ -261,44 +261,50 @@ def render_full_book_preview(job_id: str, tracker: ProgressTracker, job: dict):
         with st.container():
             st.markdown("---")
 
+            book_data = {
+                'template_id': job['template_id'],
+                'template_name': job['template_name'],
+                'child_name': job['child_name'],
+                'gender': job['child_gender'],
+                'age': job['child_age'],
+                'pages': []
+            }
+
+            for page in pages:
+                book_data['pages'].append({
+                    'page_number': page['page_number'],
+                    'profession_title': page['profession_title'],
+                    'text': page['text'],
+                    'image_prompt': page['image_prompt'],
+                    'image_url': page.get('image_url'),
+                    'error': page.get('error_message')
+                })
+
+            if f'pdf_bytes_{job_id}' not in st.session_state:
+                with st.spinner("Preparing PDF for download..."):
+                    pdf_path = create_template_book_pdf(book_data)
+                    if pdf_path:
+                        with open(pdf_path, "rb") as pdf_file:
+                            pdf_bytes = pdf_file.read()
+                        st.session_state[f'pdf_bytes_{job_id}'] = pdf_bytes
+
             col_header1, col_header2 = st.columns([3, 1])
             with col_header1:
                 st.markdown(f"### 📖 {job['template_name']} - {job['child_name']}")
+
             with col_header2:
-                book_data = {
-                    'template_id': job['template_id'],
-                    'template_name': job['template_name'],
-                    'child_name': job['child_name'],
-                    'gender': job['child_gender'],
-                    'age': job['child_age'],
-                    'pages': []
-                }
-
-                for page in pages:
-                    book_data['pages'].append({
-                        'page_number': page['page_number'],
-                        'profession_title': page['profession_title'],
-                        'text': page['text'],
-                        'image_prompt': page['image_prompt'],
-                        'image_url': page.get('image_url'),
-                        'error': page.get('error_message')
-                    })
-
-                if st.button("📥 Download PDF", key=f"download_pdf_{job_id}", type="primary", use_container_width=True):
-                    with st.spinner("Creating PDF..."):
-                        pdf_path = create_template_book_pdf(book_data)
-                        if pdf_path:
-                            with open(pdf_path, "rb") as pdf_file:
-                                pdf_bytes = pdf_file.read()
-                            st.download_button(
-                                label="💾 Save PDF",
-                                data=pdf_bytes,
-                                file_name=f"{job['child_name']}_book_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
-                                mime="application/pdf",
-                                use_container_width=True,
-                                key=f"save_pdf_{job_id}"
-                            )
-                            st.success("PDF ready!")
+                if st.session_state.get(f'pdf_bytes_{job_id}'):
+                    st.download_button(
+                        label="📥 Download PDF",
+                        data=st.session_state[f'pdf_bytes_{job_id}'],
+                        file_name=f"{job['child_name']}_book.pdf",
+                        mime="application/pdf",
+                        type="primary",
+                        use_container_width=True,
+                        key=f"download_pdf_{job_id}"
+                    )
+                else:
+                    st.error("Failed to prepare PDF")
 
             st.markdown("---")
 
