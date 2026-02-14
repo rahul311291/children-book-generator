@@ -666,7 +666,7 @@ def display_template_book_preview(book_data: Dict):
 
 
 def create_template_book_pdf(book_data: Dict) -> Optional[str]:
-    """Create a PDF from the template book data."""
+    """Create a PDF from the template book data with text at top and image taking 60-70% of page."""
     try:
         temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
         pdf_path = temp_file.name
@@ -679,32 +679,34 @@ def create_template_book_pdf(book_data: Dict) -> Optional[str]:
         title_style = ParagraphStyle(
             'CustomTitle',
             parent=styles['Heading1'],
-            fontSize=24,
+            fontSize=28,
             textColor='#2E86AB',
             alignment=TA_CENTER,
-            spaceAfter=30
+            spaceAfter=20,
+            spaceBefore=10
         )
         text_style = ParagraphStyle(
             'CustomBody',
             parent=styles['BodyText'],
-            fontSize=14,
-            leading=20,
-            alignment=TA_CENTER
+            fontSize=16,
+            leading=22,
+            alignment=TA_CENTER,
+            spaceAfter=10
         )
 
         c.setTitle(f"{book_data['child_name']}'s Book")
 
-        title_text = f"{book_data['template_name']}"
-        subtitle_text = f"Personalized for {book_data['child_name']}"
+        title_text = f"<b>{book_data['template_name']}</b>"
+        subtitle_text = f"<i>Personalized for {book_data['child_name']}</i>"
 
         title_para = Paragraph(title_text, title_style)
         subtitle_para = Paragraph(subtitle_text, text_style)
 
         title_para.wrapOn(c, width - 100, height)
-        title_para.drawOn(c, 50, height - 150)
+        title_para.drawOn(c, 50, height - 200)
 
         subtitle_para.wrapOn(c, width - 100, height)
-        subtitle_para.drawOn(c, 50, height - 200)
+        subtitle_para.drawOn(c, 50, height - 250)
 
         c.showPage()
 
@@ -713,6 +715,27 @@ def create_template_book_pdf(book_data: Dict) -> Optional[str]:
             profession = page.get('profession_title', '')
             text = page.get('text', '')
             image_url = page.get('image_url')
+
+            top_margin = 60
+            text_area_height = 140
+
+            current_y = height - top_margin
+
+            c.setFont("Helvetica-Bold", 20)
+            c.setFillColorRGB(0.18, 0.52, 0.67)
+            c.drawCentredString(width / 2, current_y, profession)
+
+            current_y -= 40
+
+            text_para = Paragraph(text.replace('\n', '<br/>'), text_style)
+            text_width = width - 100
+            text_para.wrapOn(c, text_width, text_area_height)
+            text_height = text_para.wrap(text_width, text_area_height)[1]
+
+            text_y = current_y - text_height
+            text_para.drawOn(c, 50, text_y)
+
+            current_y = text_y - 30
 
             if image_url:
                 try:
@@ -723,39 +746,31 @@ def create_template_book_pdf(book_data: Dict) -> Optional[str]:
 
                         img_reader = ImageReader(io.BytesIO(image_bytes))
 
-                        img_width = width - 100
-                        img_height = img_width * (img.size[1] / img.size[0])
+                        available_height = current_y - 80
 
-                        if img_height > height - 300:
-                            img_height = height - 300
-                            img_width = img_height * (img.size[0] / img.size[1])
+                        img_height = min(available_height, height * 0.65)
+                        img_width = img_height * (img.size[0] / img.size[1])
+
+                        if img_width > width - 80:
+                            img_width = width - 80
+                            img_height = img_width * (img.size[1] / img.size[0])
 
                         x_position = (width - img_width) / 2
-                        y_position = height - 150 - img_height
+                        y_position = current_y - img_height
 
-                        c.drawImage(img_reader, x_position, y_position, width=img_width, height=img_height)
-
-                        text_y_position = y_position - 80
+                        c.drawImage(img_reader, x_position, y_position, width=img_width, height=img_height, preserveAspectRatio=True, mask='auto')
 
                 except Exception as img_error:
                     logger.error(f"Error adding image to PDF: {img_error}")
-                    text_y_position = height - 150
-                else:
-                    text_y_position = height - 150
+                    c.setFont("Helvetica", 12)
+                    c.setFillColorRGB(0.7, 0, 0)
+                    c.drawCentredString(width / 2, current_y - 100, "Image unavailable")
 
-                c.setFont("Helvetica-Bold", 16)
-                c.setFillColorRGB(0.18, 0.52, 0.67)
-                c.drawCentredString(width / 2, text_y_position, profession)
+            c.setFont("Helvetica", 10)
+            c.setFillColorRGB(0.5, 0.5, 0.5)
+            c.drawCentredString(width / 2, 30, f"Page {page_number}")
 
-                text_para = Paragraph(text, text_style)
-                text_para.wrapOn(c, width - 100, 100)
-                text_para.drawOn(c, 50, text_y_position - 80)
-
-                c.setFont("Helvetica", 10)
-                c.setFillColorRGB(0.5, 0.5, 0.5)
-                c.drawCentredString(width / 2, 30, f"Page {page_number}")
-
-                c.showPage()
+            c.showPage()
 
         c.save()
         logger.info(f"PDF created successfully: {pdf_path}")

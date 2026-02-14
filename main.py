@@ -1062,111 +1062,93 @@ def create_pdf(story_data: Dict, images: List[Image.Image], child_name: str, out
     for idx, page in enumerate(pages):
         if idx >= len(images):
             break
-        
-        # Layout: 5% top margin, 85% image, 10% text at bottom
+
+        # Layout: Text at top (20-25%), Image below (60-70%)
         top_margin = page_height * 0.05
-        image_area_height = page_height * 0.85
-        text_area_height = page_height * 0.10
-        
-        # Common width for both image and text (aligned)
-        content_width = page_width - 40  # 20px margin on each side
-        content_x_offset = 20  # Left margin
-        
-        # ===== IMAGE AREA (85% - after 5% top margin) =====
-        image_y_start = page_height - top_margin - image_area_height  # Start after top margin
-        image_available_height = image_area_height
-        
-        # Resize and place image
-        img = images[idx]
-        img_width, img_height = img.size
-        aspect_ratio = img_width / img_height
-        
-        # Calculate image dimensions to fit in 85% area, using common width
-        if aspect_ratio > 1:
-            # Landscape image - use common width
-            display_width = content_width
-            display_height = display_width / aspect_ratio
-            if display_height > image_available_height:
-                display_height = image_available_height
-                display_width = display_height * aspect_ratio
-        else:
-            # Portrait/square image - fit to height, but respect max width
-            display_height = image_available_height
-            display_width = display_height * aspect_ratio
-            if display_width > content_width:
-                display_width = content_width
-                display_height = display_width / aspect_ratio
-        
-        # Center image horizontally
-        image_x_offset = (page_width - display_width) / 2
-        # Position image in the 85% area, centered vertically
-        image_y_offset = image_y_start + (image_available_height - display_height) / 2
-        
-        img_resized = img.resize((int(display_width), int(display_height)), Image.Resampling.LANCZOS)
-        img_io = io.BytesIO()
-        img_resized.save(img_io, format='PNG')
-        img_io.seek(0)
-        
-        c.drawImage(ImageReader(img_io), image_x_offset, image_y_offset, 
-                   width=display_width, height=display_height, preserveAspectRatio=True)
-        
-        # ===== TEXT AREA (Bottom 10%) =====
-        # Make text width match image width (or slightly less) and center-align with image
-        text_width = display_width * 0.95  # Slightly less than image width (5% smaller)
-        text_x_offset = image_x_offset + (display_width - text_width) / 2  # Center with image
-        
+        text_area_height = page_height * 0.20
+        bottom_margin = page_height * 0.05
+
+        content_width = page_width - 60
+
+        current_y = page_height - top_margin
+
+        # ===== TEXT AREA AT TOP =====
         text = page.get("text", "")
-        
-        # Dynamic font size adjustment based on text length
-        # Start with base font size
+
         base_font_size = 18
-        min_font_size = 12
-        max_font_size = 20
-        
-        # Estimate text length (rough calculation)
+        min_font_size = 14
+        max_font_size = 22
+
         text_length = len(text)
-        char_per_line_estimate = int(text_width / (base_font_size * 0.6))  # Rough chars per line
-        estimated_lines = max(1, text_length / char_per_line_estimate)
-        
-        # Adjust font size based on estimated lines needed
-        if estimated_lines > 3:
-            # Text is long, reduce font size
-            font_size = max(min_font_size, base_font_size - (estimated_lines - 3) * 1.5)
+        estimated_lines = max(1, text_length / 50)
+
+        if estimated_lines > 4:
+            font_size = max(min_font_size, base_font_size - (estimated_lines - 4) * 1)
         else:
-            font_size = min(max_font_size, base_font_size + (3 - estimated_lines) * 0.5)
-        
-        # Create text style with dynamic font size
+            font_size = min(max_font_size, base_font_size)
+
         dynamic_text_style = ParagraphStyle(
             'DynamicText',
             parent=text_style,
             fontSize=font_size,
             textColor='black',
             alignment=TA_CENTER,
-            leading=font_size * 1.3  # Line spacing proportional to font size
+            leading=font_size * 1.4,
+            spaceBefore=10,
+            spaceAfter=15
         )
-        
-        para = Paragraph(text, dynamic_text_style)
-        para_height = para.wrap(text_width, text_area_height)[1]
-        
-        # If text still doesn't fit, reduce font size further
-        if para_height > text_area_height * 0.95:  # 95% of available space
-            # Reduce font size more aggressively
-            font_size = max(min_font_size, font_size * 0.85)
+
+        para = Paragraph(text.replace('\n', '<br/>'), dynamic_text_style)
+        para_width = content_width
+        para_height = para.wrap(para_width, text_area_height)[1]
+
+        if para_height > text_area_height:
+            font_size = max(min_font_size, font_size * 0.8)
             dynamic_text_style = ParagraphStyle(
                 'DynamicText',
                 parent=text_style,
                 fontSize=font_size,
                 textColor='black',
                 alignment=TA_CENTER,
-                leading=font_size * 1.3
+                leading=font_size * 1.3,
+                spaceBefore=10,
+                spaceAfter=15
             )
-            para = Paragraph(text, dynamic_text_style)
-            para_height = para.wrap(text_width, text_area_height)[1]
-        
-        # Position text at bottom 10%, centered vertically in text area, aligned with image center
-        text_y = (text_area_height - para_height) / 2
-        para.drawOn(c, text_x_offset, text_y)
-        
+            para = Paragraph(text.replace('\n', '<br/>'), dynamic_text_style)
+            para_height = para.wrap(para_width, text_area_height)[1]
+
+        text_x_offset = (page_width - para_width) / 2
+        text_y_position = current_y - para_height - 10
+        para.drawOn(c, text_x_offset, text_y_position)
+
+        current_y = text_y_position - 30
+
+        # ===== IMAGE AREA (60-70% of page) =====
+        available_height = current_y - bottom_margin
+        target_image_height = page_height * 0.65
+
+        img = images[idx]
+        img_width, img_height = img.size
+        aspect_ratio = img_width / img_height
+
+        display_height = min(available_height, target_image_height)
+        display_width = display_height * aspect_ratio
+
+        if display_width > content_width:
+            display_width = content_width
+            display_height = display_width / aspect_ratio
+
+        image_x_offset = (page_width - display_width) / 2
+        image_y_offset = current_y - display_height
+
+        img_resized = img.resize((int(display_width), int(display_height)), Image.Resampling.LANCZOS)
+        img_io = io.BytesIO()
+        img_resized.save(img_io, format='PNG')
+        img_io.seek(0)
+
+        c.drawImage(ImageReader(img_io), image_x_offset, image_y_offset,
+                   width=display_width, height=display_height, preserveAspectRatio=True)
+
         c.showPage()
     
     c.save()
