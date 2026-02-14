@@ -6,8 +6,10 @@ import streamlit as st
 import logging
 from typing import Optional
 from datetime import datetime
+import base64
+import io
 from progress_tracking import ProgressTracker
-from template_book_generator import init_supabase
+from template_book_generator import init_supabase, create_template_book_pdf
 
 logger = logging.getLogger(__name__)
 
@@ -114,8 +116,11 @@ def render_job_card(job: dict, tracker: ProgressTracker):
 
         with col_actions3:
             if status == 'completed':
-                if st.button("📄 Load Book", key=f"load_{job_id}", use_container_width=True):
-                    load_completed_book(job_id, tracker)
+                if st.button("👁️ View & Download", key=f"view_book_{job_id}", use_container_width=True):
+                    if st.session_state.get('viewing_full_book_id') == job_id:
+                        st.session_state.viewing_full_book_id = None
+                    else:
+                        st.session_state.viewing_full_book_id = job_id
 
         with col_actions4:
             if st.button("🗑️ Delete", key=f"delete_{job_id}", use_container_width=True):
@@ -127,6 +132,9 @@ def render_job_card(job: dict, tracker: ProgressTracker):
 
         if st.session_state.get('viewing_job_id') == job_id:
             render_job_details(job_id, tracker)
+
+        if st.session_state.get('viewing_full_book_id') == job_id:
+            render_full_book_preview(job_id, tracker, job)
 
         st.markdown("---")
 
@@ -239,3 +247,99 @@ def load_completed_book(job_id: str, tracker: ProgressTracker):
     except Exception as e:
         logger.error(f"Error loading completed book: {e}")
         st.error(f"Failed to load book: {e}")
+
+
+def render_full_book_preview(job_id: str, tracker: ProgressTracker, job: dict):
+    """Render full book preview with download option directly in history."""
+    try:
+        pages = tracker.get_job_pages(job_id)
+
+        if not pages:
+            st.error("No pages found for this book")
+            return
+
+        with st.container():
+            st.markdown("---")
+
+            col_header1, col_header2 = st.columns([3, 1])
+            with col_header1:
+                st.markdown(f"### 📖 {job['template_name']} - {job['child_name']}")
+            with col_header2:
+                book_data = {
+                    'template_id': job['template_id'],
+                    'template_name': job['template_name'],
+                    'child_name': job['child_name'],
+                    'gender': job['child_gender'],
+                    'age': job['child_age'],
+                    'pages': []
+                }
+
+                for page in pages:
+                    book_data['pages'].append({
+                        'page_number': page['page_number'],
+                        'profession_title': page['profession_title'],
+                        'text': page['text'],
+                        'image_prompt': page['image_prompt'],
+                        'image_url': page.get('image_url'),
+                        'error': page.get('error_message')
+                    })
+
+                if st.button("📥 Download PDF", key=f"download_pdf_{job_id}", type="primary", use_container_width=True):
+                    with st.spinner("Creating PDF..."):
+                        pdf_path = create_template_book_pdf(book_data)
+                        if pdf_path:
+                            with open(pdf_path, "rb") as pdf_file:
+                                pdf_bytes = pdf_file.read()
+                            st.download_button(
+                                label="💾 Save PDF",
+                                data=pdf_bytes,
+                                file_name=f"{job['child_name']}_book_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+                                mime="application/pdf",
+                                use_container_width=True,
+                                key=f"save_pdf_{job_id}"
+                            )
+                            st.success("PDF ready!")
+
+            st.markdown("---")
+
+            completed_pages = [p for p in pages if p.get('image_url')]
+            failed_pages = [p for p in pages if not p.get('image_url')]
+
+            if failed_pages:
+                st.warning(f"⚠️ {len(failed_pages)} pages have missing images")
+
+            st.markdown(f"**Book Preview** ({len(completed_pages)}/{len(pages)} pages with images)")
+
+            for page in pages:
+                status_icon = "✅" if page.get('image_url') else "❌"
+
+                with st.expander(f"{status_icon} Page {page['page_number']}: {page['profession_title']}", expanded=False):
+                    col1, col2 = st.columns([1, 1])
+
+                    with col1:
+                        st.markdown("#### 🖼️ Image")
+                        if page.get('image_url'):
+                            try:
+                                if page['image_url'].startswith('data:image'):
+                                    image_data = page['image_url'].split(',')[1]
+                                    image_bytes = base64.b64decode(image_data)
+                                    st.image(image_bytes, use_container_width=True)
+                                else:
+                                    st.image(page['image_url'], use_container_width=True)
+                            except Exception as e:
+                                st.error(f"Failed to display image: {e}")
+                        else:
+                            st.warning("❌ Image not available")
+                            if page.get('error_message'):
+                                st.caption(f"Error: {page['error_message']}")
+
+                    with col2:
+                        st.markdown("#### 📝 Story Text")
+                        st.markdown(f"*{page['text']}*")
+
+            if st.button("🔄 Load to Editor", key=f"load_to_editor_{job_id}", use_container_width=True):
+                load_completed_book(job_id, tracker)
+
+    except Exception as e:
+        logger.error(f"Error rendering full book preview: {e}")
+        st.error(f"Could not load book preview: {e}")
