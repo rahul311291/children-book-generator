@@ -137,12 +137,12 @@ growing food with gentle hands!""",
         },
         {
             "page_number": 15,
-            "profession_title": "CONSTRUCTION WORKER",
-            "text_template": """Maybe {name} will hammer and nail,
-building structures without fail.
-With tools and teamwork every day,
-making buildings that are here to stay!""",
-            "image_prompt_template": "Watercolor illustration of a {age} year old {gender} child named {name} wearing a hard hat, safety vest, and work boots, holding a hammer or tools, standing at a construction site with building materials and equipment, strong and capable expression, children's book art style, active construction scene"
+            "profession_title": "SOFTWARE ENGINEER",
+            "text_template": """Maybe {name} will code and create,
+apps and programs truly great.
+With computers, logic, and lines of code,
+building software on this digital road!""",
+            "image_prompt_template": "Watercolor illustration of a {age} year old {gender} child named {name} sitting at a desk with multiple computer screens showing colorful code and graphics, wearing casual tech attire, surrounded by tech gadgets and sticky notes, focused and innovative expression, children's book art style, modern tech office atmosphere with bright digital elements"
         },
         {
             "page_number": 16,
@@ -182,12 +182,12 @@ inspiring audiences through and through!""",
         },
         {
             "page_number": 20,
-            "profession_title": "MAIL CARRIER",
-            "text_template": """Perhaps {name} will deliver mail,
-through sunshine, wind, and even hail.
-Bringing letters, cards, and packages too,
-connecting people just like glue!""",
-            "image_prompt_template": "Watercolor illustration of a {age} year old {gender} child named {name} wearing a mail carrier uniform with postal hat and bag full of letters, delivering mail on a friendly neighborhood street with mailboxes, cheerful and reliable expression, children's book art style, sunny suburban scene"
+            "profession_title": "IAS OFFICER",
+            "text_template": """Perhaps {name} will serve with pride,
+as an IAS officer nationwide.
+Leading people, making policies fair,
+helping citizens everywhere!""",
+            "image_prompt_template": "Watercolor illustration of a {age} year old {gender} child named {name} wearing formal professional attire with an official badge, standing confidently in front of government buildings or office with Indian national symbols, documents and files on desk, dignified and responsible expression, children's book art style, prestigious administrative setting with warm patriotic colors"
         },
         {
             "page_number": 21,
