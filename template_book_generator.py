@@ -9,6 +9,7 @@ import base64
 from pathlib import Path
 from typing import List, Dict, Optional
 from datetime import datetime
+import uuid
 from supabase import create_client, Client
 from dotenv import load_dotenv
 from template_data import personalize_template_text, personalize_template_image_prompt, WHEN_I_GROW_UP_TEMPLATE
@@ -626,13 +627,18 @@ def seed_default_templates_if_missing(supabase: Client, show_errors_in_ui: bool 
                 else:
                     logger.info(f"Creating new template '{name}'...")
                     try:
-                        insert_resp = supabase.table("templates").insert(
-                            {
-                                "name": name,
-                                "description": tmpl.get("description", ""),
-                                "total_pages": tmpl.get("total_pages", len(tmpl.get("pages", []))),
-                            }
-                        ).execute()
+                        # Generate UUID for id if Supabase table requires it (some tables don't auto-generate)
+                        insert_data = {
+                            "id": str(uuid.uuid4()),  # Generate UUID for the id column
+                            "name": name,
+                            "description": tmpl.get("description", ""),
+                            "total_pages": tmpl.get("total_pages", len(tmpl.get("pages", []))),
+                        }
+                        # If template already has an id, use it instead
+                        if "id" in tmpl and tmpl["id"]:
+                            insert_data["id"] = tmpl["id"]
+                        
+                        insert_resp = supabase.table("templates").insert(insert_data).execute()
                         if not insert_resp.data:
                             error_msg = f"Failed to insert template '{name}' - no data returned from Supabase"
                             logger.error(error_msg)
@@ -664,15 +670,18 @@ def seed_default_templates_if_missing(supabase: Client, show_errors_in_ui: bool 
                 # Prepare pages payload
                 pages_payload = []
                 for page in tmpl.get("pages", []):
-                    pages_payload.append(
-                        {
-                            "template_id": template_id,
-                            "page_number": page["page_number"],
-                            "profession_title": page["profession_title"],
-                            "text_template": page["text_template"],
-                            "image_prompt_template": page["image_prompt_template"],
-                        }
-                    )
+                    page_data = {
+                        "id": str(uuid.uuid4()),  # Generate UUID for each page id
+                        "template_id": template_id,
+                        "page_number": page["page_number"],
+                        "profession_title": page["profession_title"],
+                        "text_template": page["text_template"],
+                        "image_prompt_template": page["image_prompt_template"],
+                    }
+                    # If page already has an id, use it instead
+                    if "id" in page and page["id"]:
+                        page_data["id"] = page["id"]
+                    pages_payload.append(page_data)
                 
                 if pages_payload:
                     logger.info(f"Inserting {len(pages_payload)} pages for template '{name}'...")
