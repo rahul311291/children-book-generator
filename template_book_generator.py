@@ -39,8 +39,10 @@ else:
 DEFAULT_TEMPLATES: List[Dict] = [
     {
         # Template 1: Existing "When I Grow Up" template
+        "id": "a1111111-1111-1111-1111-111111111111",
         "name": "When I Grow Up",
         "description": "A 24-page personalized book featuring different professions {name} might pursue when they grow up - astronaut, doctor, teacher, and more!",
+        "cover_image": "https://images.pexels.com/photos/8613089/pexels-photo-8613089.jpeg?auto=compress&cs=tinysrgb&w=800",
         "total_pages": 24,
         "pages": [
             {
@@ -54,8 +56,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
     },
     {
         # Template 2: Snow White
+        "id": "a2222222-2222-2222-2222-222222222222",
         "name": "Snow White and the Kind-Hearted Child",
         "description": "A gentle Snow White retelling where {name} faces unkind sisters and a cruel stepmother, but finds courage, friends, and a kind prince.",
+        "cover_image": "https://images.pexels.com/photos/5706019/pexels-photo-5706019.jpeg?auto=compress&cs=tinysrgb&w=800",
         "total_pages": 10,
         "pages": [
             {
@@ -194,8 +198,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
         ],
     },
     {
+        "id": "a3333333-3333-3333-3333-333333333333",
         "name": "Cricket Champion – Mastering Every Shot",
         "description": "A coaching-style book where {name} learns 10 classic cricket shots with clear posture and body-position tips.",
+        "cover_image": "https://images.pexels.com/photos/8224459/pexels-photo-8224459.jpeg?auto=compress&cs=tinysrgb&w=800",
         "total_pages": 10,
         "pages": [
             {
@@ -322,8 +328,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
         ],
     },
     {
+        "id": "a4444444-4444-4444-4444-444444444444",
         "name": "Cinderella and the Brave Heart",
         "description": "A Cinderella retelling where {name} overcomes unkindness from stepfamily and finds confidence, magic, and a caring prince.",
+        "cover_image": "https://images.pexels.com/photos/7148655/pexels-photo-7148655.jpeg?auto=compress&cs=tinysrgb&w=800",
         "total_pages": 10,
         "pages": [
             {
@@ -451,8 +459,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
         ],
     },
     {
+        "id": "a5555555-5555-5555-5555-555555555555",
         "name": "Sports Day Champion",
         "description": "{name} discovers ten different sports on school sports day and imagines becoming a champion in each one.",
+        "cover_image": "https://images.pexels.com/photos/9295860/pexels-photo-9295860.jpeg?auto=compress&cs=tinysrgb&w=800",
         "total_pages": 10,
         "pages": [
             {
@@ -633,6 +643,7 @@ def seed_default_templates_if_missing(supabase: Client, show_errors_in_ui: bool 
                             "name": name,
                             "description": tmpl.get("description", ""),
                             "total_pages": tmpl.get("total_pages", len(tmpl.get("pages", []))),
+                            "cover_image": tmpl.get("cover_image", ""),
                         }
                         # If template already has an id, use it instead
                         if "id" in tmpl and tmpl["id"]:
@@ -840,6 +851,12 @@ def render_template_book_form():
                         """,
                         unsafe_allow_html=True,
                     )
+
+                    # Display cover image if available
+                    cover_img = tmpl.get("cover_image", "")
+                    if cover_img:
+                        st.image(cover_img, use_container_width=True)
+
                     st.markdown(f"#### {tmpl.get('name', 'Template')}")
                     desc = tmpl.get("description", "")
                     # Truncate long descriptions
