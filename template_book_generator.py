@@ -611,15 +611,20 @@ def seed_default_templates_if_missing(supabase: Client) -> None:
     try:
         logger.info(f"Seeding {len(DEFAULT_TEMPLATES)} default templates into Supabase...")
         seeded_count = 0
-        for tmpl in DEFAULT_TEMPLATES:
+        errors = []
+        
+        for idx, tmpl in enumerate(DEFAULT_TEMPLATES):
             name = tmpl["name"]
             try:
+                logger.info(f"Processing template {idx+1}/{len(DEFAULT_TEMPLATES)}: '{name}'")
+                
                 # Find or create template row by name
                 existing = supabase.table("templates").select("id").eq("name", name).execute()
                 if existing.data:
                     template_id = existing.data[0]["id"]
                     logger.info(f"Template '{name}' already exists (ID: {template_id})")
                 else:
+                    logger.info(f"Creating new template '{name}'...")
                     insert_resp = supabase.table("templates").insert(
                         {
                             "name": name,
@@ -628,10 +633,12 @@ def seed_default_templates_if_missing(supabase: Client) -> None:
                         }
                     ).execute()
                     if not insert_resp.data:
-                        logger.warning(f"Failed to insert template '{name}' - no data returned")
+                        error_msg = f"Failed to insert template '{name}' - no data returned from Supabase"
+                        logger.error(error_msg)
+                        errors.append(error_msg)
                         continue
                     template_id = insert_resp.data[0]["id"]
-                    logger.info(f"Created new template '{name}' (ID: {template_id})")
+                    logger.info(f"✅ Created new template '{name}' (ID: {template_id})")
                     seeded_count += 1
 
                 # Only insert pages if none exist yet for this template_id
@@ -640,6 +647,7 @@ def seed_default_templates_if_missing(supabase: Client) -> None:
                     logger.info(f"Template '{name}' already has pages, skipping page insertion")
                     continue
 
+                # Prepare pages payload
                 pages_payload = []
                 for page in tmpl.get("pages", []):
                     pages_payload.append(
@@ -651,21 +659,38 @@ def seed_default_templates_if_missing(supabase: Client) -> None:
                             "image_prompt_template": page["image_prompt_template"],
                         }
                     )
+                
                 if pages_payload:
+                    logger.info(f"Inserting {len(pages_payload)} pages for template '{name}'...")
                     page_insert = supabase.table("template_pages").insert(pages_payload).execute()
                     if page_insert.data:
-                        logger.info(f"Inserted {len(pages_payload)} pages for template '{name}'")
+                        logger.info(f"✅ Inserted {len(pages_payload)} pages for template '{name}'")
                     else:
-                        logger.warning(f"Failed to insert pages for template '{name}'")
+                        error_msg = f"Failed to insert pages for template '{name}' - no data returned"
+                        logger.error(error_msg)
+                        errors.append(error_msg)
+                else:
+                    logger.warning(f"No pages to insert for template '{name}'")
+                    
             except Exception as e:
-                logger.error(f"Error seeding template '{name}': {e}")
+                error_msg = f"Error seeding template '{name}': {str(e)}"
+                logger.error(error_msg)
                 import traceback
                 logger.error(traceback.format_exc())
-        logger.info(f"Template seeding complete. Created {seeded_count} new templates.")
+                errors.append(error_msg)
+        
+        logger.info(f"Template seeding complete. Created {seeded_count} new templates out of {len(DEFAULT_TEMPLATES)}.")
+        if errors:
+            logger.error(f"Encountered {len(errors)} errors during seeding:")
+            for err in errors:
+                logger.error(f"  - {err}")
+                
     except Exception as e:
-        logger.error(f"Error in seed_default_templates_if_missing: {e}")
+        error_msg = f"Critical error in seed_default_templates_if_missing: {str(e)}"
+        logger.error(error_msg)
         import traceback
         logger.error(traceback.format_exc())
+        raise  # Re-raise to surface the error
 
 
 def get_available_templates() -> List[Dict]:
@@ -673,11 +698,28 @@ def get_available_templates() -> List[Dict]:
     try:
         supabase = init_supabase()
         # Seed built-in templates if they are missing (idempotent; skips if already present)
-        seed_default_templates_if_missing(supabase)
+        try:
+            seed_default_templates_if_missing(supabase)
+        except Exception as seed_error:
+            logger.error(f"Seeding failed: {seed_error}")
+            st.warning(f"⚠️ Template seeding encountered an issue. Check logs for details. Error: {str(seed_error)[:200]}")
+        
         response = supabase.table("templates").select("*").execute()
-        return response.data
+        templates = response.data or []
+        logger.info(f"Retrieved {len(templates)} templates from Supabase")
+        
+        # Debug: Show template names
+        if templates:
+            template_names = [t.get("name", "Unknown") for t in templates]
+            logger.info(f"Templates found: {', '.join(template_names)}")
+        else:
+            logger.warning("No templates found in Supabase after seeding!")
+            
+        return templates
     except Exception as e:
         logger.error(f"Error fetching templates: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         st.error(f"Failed to load templates: {e}")
         return []
 
@@ -700,8 +742,19 @@ def render_template_book_form():
 
     templates = get_available_templates()
 
+    # Debug section to help troubleshoot
+    with st.expander("🔧 Debug: Template Status", expanded=False):
+        st.write(f"**Templates found:** {len(templates)}")
+        if templates:
+            for t in templates:
+                st.write(f"- {t.get('name', 'Unknown')} (ID: {t.get('id', 'N/A')}, Pages: {t.get('total_pages', 'N/A')})")
+        else:
+            st.error("No templates found! Check Supabase connection and seeding logs.")
+        st.caption("Expected: 5 templates (When I Grow Up, Snow White, Cricket, Cinderella, Sports Day)")
+
     if not templates:
         st.warning("No templates available. Please contact support.")
+        st.info("💡 Check the Debug section above for details. You may need to manually seed templates in Supabase.")
         return
 
     st.markdown("### Choose a template")
