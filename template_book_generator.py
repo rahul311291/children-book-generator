@@ -882,6 +882,7 @@ def render_template_book_form():
         return
 
     selected_template_id = st.session_state.selected_template_id
+    selected_template_name = st.session_state.selected_template_name
     template_info = next((t for t in templates if t["id"] == selected_template_id), None)
 
     if template_info:
