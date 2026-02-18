@@ -19,11 +19,15 @@ try:
     from template_book_generator import (
         render_template_book_form,
         generate_template_book,
-        display_template_book_preview
+        display_template_book_preview,
+        seed_default_templates_if_missing,
+        init_supabase
     )
     TEMPLATE_BOOKS_AVAILABLE = True
 except ImportError:
     TEMPLATE_BOOKS_AVAILABLE = False
+    seed_default_templates_if_missing = None
+    init_supabase = None
 
 # Setup logging
 log_dir = Path("logs")
@@ -101,7 +105,8 @@ if 'image_generation_errors' not in st.session_state:
 if 'pdf_generation_key' not in st.session_state:
     st.session_state.pdf_generation_key = None  # Track when PDF was generated
 if 'stories_dir' not in st.session_state:
-    st.session_state.stories_dir = Path("saved_stories")
+    # Use absolute path so saves are always in the same place (fixes history not showing when cwd differs)
+    st.session_state.stories_dir = Path(__file__).resolve().parent / "saved_stories"
     st.session_state.stories_dir.mkdir(exist_ok=True)
 if 'current_child_name' not in st.session_state:
     st.session_state.current_child_name = ""  # Track current child name for auto-save
@@ -185,6 +190,45 @@ def save_story(story_data: Dict, child_name: str, metadata: Dict = None):
     except Exception as e:
         st.error(f"Failed to save story: {e}")
         return None
+
+
+def save_template_book_to_history(book_data: Dict):
+    """Persist template-generated book to story history (same storage as custom stories)."""
+    try:
+        child_name = book_data.get("child_name", "Child")
+        template_name = book_data.get("template_name", "Template Book")
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"{child_name}_{timestamp}.json"
+        filepath = st.session_state.stories_dir / filename
+        # Match save_story shape so get_story_history and load_story work unchanged
+        story_payload = {
+            "title": f"{template_name} - {child_name}",
+            "pages": book_data.get("pages", []),
+            "template_id": book_data.get("template_id"),
+            "template_name": template_name,
+        }
+        save_data = {
+            "story": story_payload,
+            "metadata": {"template_id": book_data.get("template_id"), "template_name": template_name},
+            "timestamp": timestamp,
+            "child_name": child_name,
+            "journey_state": {
+                "story_approved": True,
+                "all_images_approved": True,
+                "image_approvals": {},
+                "edited_story_pages": {},
+                "edited_image_prompts": {},
+                "current_step": "step3",
+            },
+        }
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(save_data, f, indent=2, ensure_ascii=False)
+        return filepath
+    except Exception as e:
+        st.error(f"Failed to save template book to history: {e}")
+        logger.exception("save_template_book_to_history failed")
+        return None
+
 
 def load_story(filepath) -> Dict:
     """Load story from history."""
@@ -1171,6 +1215,18 @@ def create_pdf(story_data: Dict, images: List[Image.Image], child_name: str, out
     c.save()
 
 def main():
+    # Seed templates on app startup (only once per session)
+    if TEMPLATE_BOOKS_AVAILABLE and 'templates_seeded' not in st.session_state:
+        try:
+            if init_supabase and seed_default_templates_if_missing:
+                supabase = init_supabase()
+                seed_default_templates_if_missing(supabase)
+                st.session_state.templates_seeded = True
+                logger.info("Templates seeded on app startup")
+        except Exception as e:
+            logger.error(f"Failed to seed templates on startup: {e}")
+            # Don't block the app if seeding fails, but log it
+    
     # Initialize show_history state
     if 'show_history' not in st.session_state:
         st.session_state.show_history = False
@@ -1186,6 +1242,26 @@ def main():
         st.divider()
         
         history = get_story_history()
+
+        # Developer: verify where data is saved and how to check Supabase
+        with st.expander("🔧 Developer: verify saves & Supabase"):
+            stories_dir = st.session_state.stories_dir
+            st.code(str(stories_dir), language="text")
+            st.caption("Stories (custom + template) are saved here as JSON files.")
+            if stories_dir.exists():
+                files = sorted(stories_dir.glob("*.json"), reverse=True)
+                st.write(f"**{len(files)}** JSON file(s) in folder:")
+                for f in files[:20]:
+                    st.caption(f"• {f.name}")
+                if len(files) > 20:
+                    st.caption(f"… and {len(files) - 20} more")
+            else:
+                st.warning("Folder does not exist yet (no stories saved).")
+            st.markdown("---")
+            st.markdown("**Supabase** stores template *definitions* (tables `templates`, `template_pages`), not generated books. To check Supabase:")
+            st.markdown("1. Open your [Supabase Dashboard](https://supabase.com/dashboard) → your project → **Table Editor**.")
+            st.markdown("2. Open tables **`templates`** (list of templates) and **`template_pages`** (pages per template).")
+            st.markdown("3. Generated books (custom and template) are saved **locally** in the folder above, not in Supabase.")
         
         if history:
             st.info(f"Found {len(history)} saved stories. These are your backups - you can load any story to view, edit, and regenerate images or PDF.")
@@ -1220,7 +1296,23 @@ def main():
                                     if "pages" in story_data and len(story_data.get("pages", [])) > 0:
                                         st.session_state.generated_story = story_data
                                         st.session_state.current_child_name = loaded_data.get("child_name", story_info.get('child_name', 'Story'))
-                                        
+                                        # Template books: restore images from saved image_url so PDF works without regenerating
+                                        if story_data.get("template_id"):
+                                            img_list = []
+                                            for p in story_data.get("pages", []):
+                                                url = p.get("image_url")
+                                                if url and url.startswith("data:image"):
+                                                    try:
+                                                        b64 = url.split(",", 1)[-1]
+                                                        raw = base64.b64decode(b64)
+                                                        img_list.append(Image.open(io.BytesIO(raw)).convert("RGB"))
+                                                    except Exception:
+                                                        img_list.append(Image.new("RGB", (512, 512), color=(220, 220, 220)))
+                                                else:
+                                                    img_list.append(Image.new("RGB", (512, 512), color=(220, 220, 220)))
+                                            st.session_state.generated_images = img_list
+                                            st.session_state.pdf_path = None
+                                            st.session_state.pdf_generation_key = None
                                         # Restore journey state if available
                                         journey_state = loaded_data.get("journey_state", {})
                                         child_name_from_file = loaded_data.get("child_name", story_info.get('child_name', 'Story'))
@@ -1234,8 +1326,9 @@ def main():
                                             st.session_state.edited_image_prompts = journey_state.get("edited_image_prompts", {})
                                             current_step = journey_state.get("current_step", "step1")
                                             
-                                            # Images aren't saved (too large), so clear them but preserve approval state
-                                            st.session_state.generated_images = []
+                                            # Images aren't saved for custom stories; template books already had images restored above
+                                            if not story_data.get("template_id"):
+                                                st.session_state.generated_images = []
                                             st.session_state.pdf_path = None
                                             st.session_state.pdf_generation_key = None
                                             
@@ -1249,13 +1342,14 @@ def main():
                                             
                                             logger.info(f"Restored journey state: {current_step}, story_approved={st.session_state.story_approved}, images_approved={st.session_state.all_images_approved}")
                                         else:
-                                            # No journey state saved - start fresh
+                                            # No journey state saved - start fresh (keep template images if already restored)
                                             st.session_state.story_approved = False
                                             st.session_state.all_images_approved = False
                                             st.session_state.edited_story_pages = {}
                                             st.session_state.edited_image_prompts = {}
                                             st.session_state.image_approvals = {}
-                                            st.session_state.generated_images = []
+                                            if not story_data.get("template_id"):
+                                                st.session_state.generated_images = []
                                             st.session_state.pdf_path = None
                                             st.session_state.pdf_generation_key = None
                                             st.success(f"✅ Loaded story: {display_name} ({len(story_data.get('pages', []))} pages). Please review the story below.")
@@ -1477,9 +1571,12 @@ def main():
                     api_key,
                     st.session_state.template_book_data
                 )
+            # Persist template book to history so it appears in Story History (same as custom stories)
+            if st.session_state.get("template_generated_book"):
+                save_template_book_to_history(st.session_state.template_generated_book)
 
         if st.session_state.get("template_generated_book"):
-            display_template_book_preview(st.session_state.template_generated_book)
+            display_template_book_preview(st.session_state.template_generated_book, api_key=api_key)
             return
 
         render_template_book_form()
