@@ -11,7 +11,7 @@ from typing import List, Dict, Optional
 from datetime import datetime
 from supabase import create_client, Client
 from dotenv import load_dotenv
-from template_data import personalize_template_text, personalize_template_image_prompt
+from template_data import personalize_template_text, personalize_template_image_prompt, WHEN_I_GROW_UP_TEMPLATE
 from PIL import Image
 import io
 import logging
@@ -34,8 +34,25 @@ else:
 
 
 # Built-in default templates we seed into Supabase if missing
+# Include the existing "When I Grow Up" template plus 4 new ones = 5 total templates
 DEFAULT_TEMPLATES: List[Dict] = [
     {
+        # Template 1: Existing "When I Grow Up" template
+        "name": "When I Grow Up",
+        "description": "A 24-page personalized book featuring different professions {name} might pursue when they grow up - astronaut, doctor, teacher, and more!",
+        "total_pages": 24,
+        "pages": [
+            {
+                "page_number": page["page_number"],
+                "profession_title": page["profession_title"],
+                "text_template": page["text_template"],
+                "image_prompt_template": page["image_prompt_template"],
+            }
+            for page in WHEN_I_GROW_UP_TEMPLATE["pages"]
+        ],
+    },
+    {
+        # Template 2: Snow White
         "name": "Snow White and the Kind-Hearted Child",
         "description": "A gentle Snow White retelling where {name} faces unkind sisters and a cruel stepmother, but finds courage, friends, and a kind prince.",
         "total_pages": 10,
@@ -592,44 +609,63 @@ def init_supabase() -> Client:
 def seed_default_templates_if_missing(supabase: Client) -> None:
     """Ensure our built-in templates exist in Supabase without overwriting user content."""
     try:
+        logger.info(f"Seeding {len(DEFAULT_TEMPLATES)} default templates into Supabase...")
+        seeded_count = 0
         for tmpl in DEFAULT_TEMPLATES:
             name = tmpl["name"]
-            # Find or create template row by name
-            existing = supabase.table("templates").select("id").eq("name", name).execute()
-            if existing.data:
-                template_id = existing.data[0]["id"]
-            else:
-                insert_resp = supabase.table("templates").insert(
-                    {
-                        "name": name,
-                        "description": tmpl.get("description", ""),
-                        "total_pages": tmpl.get("total_pages", len(tmpl.get("pages", []))),
-                    }
-                ).execute()
-                if not insert_resp.data:
+            try:
+                # Find or create template row by name
+                existing = supabase.table("templates").select("id").eq("name", name).execute()
+                if existing.data:
+                    template_id = existing.data[0]["id"]
+                    logger.info(f"Template '{name}' already exists (ID: {template_id})")
+                else:
+                    insert_resp = supabase.table("templates").insert(
+                        {
+                            "name": name,
+                            "description": tmpl.get("description", ""),
+                            "total_pages": tmpl.get("total_pages", len(tmpl.get("pages", []))),
+                        }
+                    ).execute()
+                    if not insert_resp.data:
+                        logger.warning(f"Failed to insert template '{name}' - no data returned")
+                        continue
+                    template_id = insert_resp.data[0]["id"]
+                    logger.info(f"Created new template '{name}' (ID: {template_id})")
+                    seeded_count += 1
+
+                # Only insert pages if none exist yet for this template_id
+                pages_existing = supabase.table("template_pages").select("id").eq("template_id", template_id).limit(1).execute()
+                if pages_existing.data:
+                    logger.info(f"Template '{name}' already has pages, skipping page insertion")
                     continue
-                template_id = insert_resp.data[0]["id"]
 
-            # Only insert pages if none exist yet for this template_id
-            pages_existing = supabase.table("template_pages").select("id").eq("template_id", template_id).limit(1).execute()
-            if pages_existing.data:
-                continue
-
-            pages_payload = []
-            for page in tmpl.get("pages", []):
-                pages_payload.append(
-                    {
-                        "template_id": template_id,
-                        "page_number": page["page_number"],
-                        "profession_title": page["profession_title"],
-                        "text_template": page["text_template"],
-                        "image_prompt_template": page["image_prompt_template"],
-                    }
-                )
-            if pages_payload:
-                supabase.table("template_pages").insert(pages_payload).execute()
+                pages_payload = []
+                for page in tmpl.get("pages", []):
+                    pages_payload.append(
+                        {
+                            "template_id": template_id,
+                            "page_number": page["page_number"],
+                            "profession_title": page["profession_title"],
+                            "text_template": page["text_template"],
+                            "image_prompt_template": page["image_prompt_template"],
+                        }
+                    )
+                if pages_payload:
+                    page_insert = supabase.table("template_pages").insert(pages_payload).execute()
+                    if page_insert.data:
+                        logger.info(f"Inserted {len(pages_payload)} pages for template '{name}'")
+                    else:
+                        logger.warning(f"Failed to insert pages for template '{name}'")
+            except Exception as e:
+                logger.error(f"Error seeding template '{name}': {e}")
+                import traceback
+                logger.error(traceback.format_exc())
+        logger.info(f"Template seeding complete. Created {seeded_count} new templates.")
     except Exception as e:
-        logger.error(f"Error seeding default templates: {e}")
+        logger.error(f"Error in seed_default_templates_if_missing: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
 
 
 def get_available_templates() -> List[Dict]:
@@ -669,26 +705,57 @@ def render_template_book_form():
         return
 
     st.markdown("### Choose a template")
+    st.caption(f"Select from {len(templates)} available templates below:")
 
-    # Template cards grid for easier selection
+    # Template cards grid - use 3 columns for better layout
     if "selected_template_id" not in st.session_state:
         st.session_state.selected_template_id = None
         st.session_state.selected_template_name = None
 
-    cols = st.columns(2)
-    for idx, tmpl in enumerate(templates):
-        with cols[idx % 2]:
-            st.subheader(tmpl.get("name", "Template"))
-            st.caption(tmpl.get("description", ""))
-            total_pages = tmpl.get("total_pages") or tmpl.get("page_count") or len(tmpl.get("pages", []))
-            if total_pages:
-                st.markdown(f"_Approx. {total_pages} pages_")
-            if st.button("Use this template", key=f"use_template_{tmpl.get('id')}", use_container_width=True):
-                st.session_state.selected_template_id = tmpl.get("id")
-                st.session_state.selected_template_name = tmpl.get("name")
+    # Display templates in a grid (3 columns, wraps to next row)
+    num_cols = 3
+    for row_start in range(0, len(templates), num_cols):
+        cols = st.columns(num_cols)
+        for col_idx, col in enumerate(cols):
+            idx = row_start + col_idx
+            if idx < len(templates):
+                tmpl = templates[idx]
+                with col:
+                    # Card-like container with border
+                    st.markdown(
+                        f"""
+                        <div style="
+                            border: 2px solid #e0e0e0;
+                            border-radius: 10px;
+                            padding: 15px;
+                            margin-bottom: 15px;
+                            background-color: {'#f0f8ff' if st.session_state.selected_template_id == tmpl.get('id') else '#ffffff'};
+                        ">
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                    st.markdown(f"#### {tmpl.get('name', 'Template')}")
+                    desc = tmpl.get("description", "")
+                    # Truncate long descriptions
+                    if len(desc) > 100:
+                        desc = desc[:97] + "..."
+                    st.caption(desc)
+                    total_pages = tmpl.get("total_pages") or tmpl.get("page_count") or 0
+                    if total_pages:
+                        st.markdown(f"📄 **{total_pages} pages**")
+                    if st.button(
+                        "✨ Use This Template",
+                        key=f"use_template_{tmpl.get('id')}",
+                        use_container_width=True,
+                        type="primary" if st.session_state.selected_template_id == tmpl.get("id") else "secondary",
+                    ):
+                        st.session_state.selected_template_id = tmpl.get("id")
+                        st.session_state.selected_template_name = tmpl.get("name")
+                        st.rerun()
+                    st.markdown("</div>", unsafe_allow_html=True)
 
     if not st.session_state.selected_template_id:
-        st.info("Select a template above to continue.")
+        st.info("👆 Select a template above to continue creating your personalized book.")
         return
 
     selected_template_id = st.session_state.selected_template_id
