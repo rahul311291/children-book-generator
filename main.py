@@ -2241,7 +2241,23 @@ def main():
         
         st.header("📚 Step 3: Download Your Storybook")
         st.success("🎉 All content approved! Your storybook is ready to download.")
-        
+
+        # Download button at the top - most prominent
+        if st.session_state.pdf_path and os.path.exists(st.session_state.pdf_path):
+            with open(st.session_state.pdf_path, "rb") as pdf_file:
+                pdf_bytes = pdf_file.read()
+                st.download_button(
+                    label="📥 Download PDF",
+                    data=pdf_bytes,
+                    file_name=f"{child_name}_Storybook.pdf",
+                    mime="application/pdf",
+                    type="primary",
+                    use_container_width=True
+                )
+            st.info("💡 Print this PDF on 8.5x8.5 inch paper for best results!")
+
+        st.divider()
+
         # Navigation buttons to go back
         col_nav1, col_nav2, col_nav3 = st.columns(3)
         with col_nav1:
@@ -2254,23 +2270,10 @@ def main():
                 st.rerun()
         with col_nav3:
             st.write("")  # Spacing
-        
+
         st.divider()
-        
+
         if st.session_state.pdf_path and os.path.exists(st.session_state.pdf_path):
-            with open(st.session_state.pdf_path, "rb") as pdf_file:
-                pdf_bytes = pdf_file.read()
-                st.download_button(
-                    label="📥 Download PDF",
-                    data=pdf_bytes,
-                    file_name=f"{child_name}_Storybook.pdf",
-                    mime="application/pdf",
-                    type="primary",
-                    use_container_width=True
-                )
-            
-            st.info("💡 Print this PDF on 8.5x8.5 inch paper for best results!")
-            
             # Final Preview with editing capabilities
             st.subheader("Final Preview & Edit")
             st.markdown("You can edit text, delete pages, or rearrange pages here. Changes will require regenerating the PDF.")
