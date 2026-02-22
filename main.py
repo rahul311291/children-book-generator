@@ -2242,20 +2242,6 @@ def main():
         st.header("📚 Step 3: Download Your Storybook")
         st.success("🎉 All content approved! Your storybook is ready to download.")
 
-        # Download button at the top - most prominent
-        if st.session_state.pdf_path and os.path.exists(st.session_state.pdf_path):
-            with open(st.session_state.pdf_path, "rb") as pdf_file:
-                pdf_bytes = pdf_file.read()
-                st.download_button(
-                    label="📥 Download PDF",
-                    data=pdf_bytes,
-                    file_name=f"{child_name}_Storybook.pdf",
-                    mime="application/pdf",
-                    type="primary",
-                    use_container_width=True
-                )
-            st.info("💡 Print this PDF on 8.5x8.5 inch paper for best results!")
-
         st.divider()
 
         # Navigation buttons to go back
@@ -2449,6 +2435,21 @@ def main():
                         if new_text != edited_text:
                             if st.button(f"🔄 Regenerate PDF with Changes", key=f"regen_pdf_{i}"):
                                 st.rerun()
+
+            # Download button at the bottom - after all preview content
+            st.divider()
+            st.subheader("📥 Download Your Storybook")
+            with open(st.session_state.pdf_path, "rb") as pdf_file:
+                pdf_bytes = pdf_file.read()
+                st.download_button(
+                    label="📥 Download PDF",
+                    data=pdf_bytes,
+                    file_name=f"{child_name}_Storybook.pdf",
+                    mime="application/pdf",
+                    type="primary",
+                    use_container_width=True
+                )
+            st.info("💡 Print this PDF on 8.5x8.5 inch paper for best results!")
         else:
             st.warning("PDF not available")
 
