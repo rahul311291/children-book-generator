@@ -1047,7 +1047,10 @@ def _template_page_image_to_pil(page: Dict) -> Optional[Image.Image]:
 
 
 def create_template_pdf(book_data: Dict, output_path_or_buffer):
-    """Create PDF from template book (same layout as main create_pdf: 8.5x8.5, dedication, image+text per page)."""
+    """Create PDF from template book (same layout as main create_pdf: 8.5x8.5, dedication, image+text per page).
+
+    Special handling for Cricket template: separate pages for image and text with themed background.
+    """
     page_width = 8.5 * inch
     page_height = 8.5 * inch
     c = canvas.Canvas(output_path_or_buffer, pagesize=(page_width, page_height))
@@ -1062,6 +1065,10 @@ def create_template_pdf(book_data: Dict, output_path_or_buffer):
     )
     child_name = book_data.get("child_name", "Child")
     pages = book_data.get("pages", [])
+    template_id = book_data.get("template_id", "")
+
+    # Check if this is the Cricket template
+    is_cricket_template = template_id == "a3333333-3333-3333-3333-333333333333"
 
     # Dedication page
     c.setFont("Helvetica-Bold", 28)
@@ -1074,52 +1081,135 @@ def create_template_pdf(book_data: Dict, output_path_or_buffer):
         img_pil = _template_page_image_to_pil(page)
         if img_pil is None:
             img_pil = Image.new("RGB", (512, 512), color=(220, 220, 220))
-        top_margin = page_height * 0.05
-        image_area_height = page_height * 0.85
-        text_area_height = page_height * 0.10
-        content_width = page_width - 40
-        image_y_start = page_height - top_margin - image_area_height
-        image_available_height = image_area_height
-        img_width, img_height = img_pil.size
-        aspect_ratio = img_width / img_height
-        if aspect_ratio > 1:
-            display_width = content_width
-            display_height = display_width / aspect_ratio
-            if display_height > image_available_height:
-                display_height = image_available_height
-                display_width = display_height * aspect_ratio
-        else:
-            display_height = image_available_height
-            display_width = display_height * aspect_ratio
-            if display_width > content_width:
+
+        if is_cricket_template:
+            # Cricket template: separate pages for image and text
+
+            # PAGE 1: Full-page image
+            content_width = page_width * 0.95
+            content_height = page_height * 0.95
+            margin = page_width * 0.025
+
+            img_width, img_height = img_pil.size
+            aspect_ratio = img_width / img_height
+
+            if aspect_ratio > 1:
                 display_width = content_width
                 display_height = display_width / aspect_ratio
-        image_x_offset = (page_width - display_width) / 2
-        image_y_offset = image_y_start + (image_available_height - display_height) / 2
-        img_resized = img_pil.resize((int(display_width), int(display_height)), Image.Resampling.LANCZOS)
-        img_io = io.BytesIO()
-        img_resized.save(img_io, format="PNG")
-        img_io.seek(0)
-        c.drawImage(ImageReader(img_io), image_x_offset, image_y_offset, width=display_width, height=display_height, preserveAspectRatio=True)
-        text = page.get("text", "")
-        text_width = display_width * 0.95
-        text_x_offset = image_x_offset + (display_width - text_width) / 2
-        base_font_size = 18
-        min_font_size = 12
-        char_per_line_estimate = max(1, int(text_width / (base_font_size * 0.6)))
-        estimated_lines = max(1, len(text) / char_per_line_estimate)
-        font_size = max(min_font_size, base_font_size - (estimated_lines - 3) * 1.5) if estimated_lines > 3 else base_font_size
-        dynamic_style = ParagraphStyle("DynamicText", parent=text_style, fontSize=font_size, textColor="black", alignment=TA_CENTER, leading=font_size * 1.3)
-        para = Paragraph(text, dynamic_style)
-        para_height = para.wrap(text_width, text_area_height)[1]
-        if para_height > text_area_height * 0.95:
-            font_size = max(min_font_size, font_size * 0.85)
+                if display_height > content_height:
+                    display_height = content_height
+                    display_width = display_height * aspect_ratio
+            else:
+                display_height = content_height
+                display_width = display_height * aspect_ratio
+                if display_width > content_width:
+                    display_width = content_width
+                    display_height = display_width / aspect_ratio
+
+            image_x_offset = (page_width - display_width) / 2
+            image_y_offset = (page_height - display_height) / 2
+
+            img_resized = img_pil.resize((int(display_width), int(display_height)), Image.Resampling.LANCZOS)
+            img_io = io.BytesIO()
+            img_resized.save(img_io, format="PNG")
+            img_io.seek(0)
+            c.drawImage(ImageReader(img_io), image_x_offset, image_y_offset, width=display_width, height=display_height, preserveAspectRatio=True)
+            c.showPage()
+
+            # PAGE 2: Text with cricket-themed background
+            from reportlab.lib.colors import HexColor
+            bg_color = HexColor("#E8F5E9")
+            c.setFillColor(bg_color)
+            c.rect(0, 0, page_width, page_height, fill=True, stroke=False)
+
+            text = page.get("text", "")
+            text_width = page_width * 0.85
+            text_x_offset = (page_width - text_width) / 2
+
+            base_font_size = 22
+            min_font_size = 16
+            leading_multiplier = 1.5
+
+            text_style_cricket = ParagraphStyle(
+                "CricketText",
+                parent=styles["BodyText"],
+                fontSize=base_font_size,
+                textColor="black",
+                alignment=TA_CENTER,
+                leading=base_font_size * leading_multiplier,
+                spaceAfter=20,
+                spaceBefore=20,
+            )
+
+            para = Paragraph(text, text_style_cricket)
+            available_height = page_height * 0.8
+            para_width, para_height = para.wrap(text_width, available_height)
+
+            if para_height > available_height:
+                base_font_size = max(min_font_size, base_font_size * 0.85)
+                text_style_cricket = ParagraphStyle(
+                    "CricketText",
+                    parent=styles["BodyText"],
+                    fontSize=base_font_size,
+                    textColor="black",
+                    alignment=TA_CENTER,
+                    leading=base_font_size * leading_multiplier,
+                )
+                para = Paragraph(text, text_style_cricket)
+                para_width, para_height = para.wrap(text_width, available_height)
+
+            text_y = (page_height - para_height) / 2
+            para.drawOn(c, text_x_offset, text_y)
+            c.showPage()
+
+        else:
+            # Standard layout: image + text on same page
+            top_margin = page_height * 0.05
+            image_area_height = page_height * 0.85
+            text_area_height = page_height * 0.10
+            content_width = page_width - 40
+            image_y_start = page_height - top_margin - image_area_height
+            image_available_height = image_area_height
+            img_width, img_height = img_pil.size
+            aspect_ratio = img_width / img_height
+            if aspect_ratio > 1:
+                display_width = content_width
+                display_height = display_width / aspect_ratio
+                if display_height > image_available_height:
+                    display_height = image_available_height
+                    display_width = display_height * aspect_ratio
+            else:
+                display_height = image_available_height
+                display_width = display_height * aspect_ratio
+                if display_width > content_width:
+                    display_width = content_width
+                    display_height = display_width / aspect_ratio
+            image_x_offset = (page_width - display_width) / 2
+            image_y_offset = image_y_start + (image_available_height - display_height) / 2
+            img_resized = img_pil.resize((int(display_width), int(display_height)), Image.Resampling.LANCZOS)
+            img_io = io.BytesIO()
+            img_resized.save(img_io, format="PNG")
+            img_io.seek(0)
+            c.drawImage(ImageReader(img_io), image_x_offset, image_y_offset, width=display_width, height=display_height, preserveAspectRatio=True)
+            text = page.get("text", "")
+            text_width = display_width * 0.95
+            text_x_offset = image_x_offset + (display_width - text_width) / 2
+            base_font_size = 18
+            min_font_size = 12
+            char_per_line_estimate = max(1, int(text_width / (base_font_size * 0.6)))
+            estimated_lines = max(1, len(text) / char_per_line_estimate)
+            font_size = max(min_font_size, base_font_size - (estimated_lines - 3) * 1.5) if estimated_lines > 3 else base_font_size
             dynamic_style = ParagraphStyle("DynamicText", parent=text_style, fontSize=font_size, textColor="black", alignment=TA_CENTER, leading=font_size * 1.3)
             para = Paragraph(text, dynamic_style)
             para_height = para.wrap(text_width, text_area_height)[1]
-        text_y = (text_area_height - para_height) / 2
-        para.drawOn(c, text_x_offset, text_y)
-        c.showPage()
+            if para_height > text_area_height * 0.95:
+                font_size = max(min_font_size, font_size * 0.85)
+                dynamic_style = ParagraphStyle("DynamicText", parent=text_style, fontSize=font_size, textColor="black", alignment=TA_CENTER, leading=font_size * 1.3)
+                para = Paragraph(text, dynamic_style)
+                para_height = para.wrap(text_width, text_area_height)[1]
+            text_y = (text_area_height - para_height) / 2
+            para.drawOn(c, text_x_offset, text_y)
+            c.showPage()
     c.save()
 
 
