@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import json
 import os
 import tempfile
@@ -311,18 +312,38 @@ def reset_story_state():
     st.session_state.edited_image_prompts = {}
     st.session_state.pdf_generation_key = None
     st.session_state.current_child_name = ""
+    # Clear template-related states
+    if "template_generated_book" in st.session_state:
+        del st.session_state.template_generated_book
+    if "template_book_data" in st.session_state:
+        del st.session_state.template_book_data
+    if "generate_template_book" in st.session_state:
+        del st.session_state.generate_template_book
+    if "selected_template_id" in st.session_state:
+        del st.session_state.selected_template_id
+    if "selected_template_name" in st.session_state:
+        del st.session_state.selected_template_name
+    if "scroll_to_details" in st.session_state:
+        del st.session_state.scroll_to_details
+    if "just_approved_story" in st.session_state:
+        del st.session_state.just_approved_story
+    if "regenerate_template_page_idx" in st.session_state:
+        del st.session_state.regenerate_template_page_idx
     # Clear ALL dynamic flags that might be left over
     keys_to_delete = []
     for key in st.session_state.keys():
-        if (key.startswith("regen_from_page_") or 
-            key.startswith("regen_page_prompt_") or 
+        if (key.startswith("regen_from_page_") or
+            key.startswith("regen_page_prompt_") or
             key.startswith("editing_prompt_") or
             key.startswith("regenerate_image_") or
             key.startswith("story_text_") or
             key.startswith("image_prompt_") or
             key.startswith("move_") or
             key.startswith("regen_") or
-            key.startswith("final_edit_")):
+            key.startswith("final_edit_") or
+            key.startswith("template_page_text_") or
+            key.startswith("template_text_area_") or
+            key.startswith("template_photo_")):
             keys_to_delete.append(key)
     for key in keys_to_delete:
         del st.session_state[key]
@@ -1452,13 +1473,28 @@ def main():
         if 'book_mode' not in st.session_state:
             st.session_state.book_mode = "Custom Story"
 
+        # Store previous mode to detect changes
+        previous_mode = st.session_state.get("previous_book_mode", st.session_state.book_mode)
+
         st.header("📚 Book Mode")
         book_mode_options = ["Custom Story", "Template Book"] if TEMPLATE_BOOKS_AVAILABLE else ["Custom Story"]
-        st.session_state.book_mode = st.radio(
+        current_mode = st.radio(
             "Choose creation mode:",
             options=book_mode_options,
             help="Custom Story: Create a unique personalized story | Template Book: Use pre-designed profession templates"
         )
+
+        # Detect mode change and clear template state if switching TO Template Book mode
+        if current_mode != previous_mode and current_mode == "Template Book":
+            # User switched to Template Book mode, clear template state to start fresh
+            for key in list(st.session_state.keys()):
+                if key in ("template_generated_book", "template_book_data", "generate_template_book",
+                          "selected_template_id", "selected_template_name", "scroll_to_details",
+                          "regenerate_template_page_idx") or key.startswith("template_page_text_") or key.startswith("template_text_area_"):
+                    del st.session_state[key]
+
+        st.session_state.book_mode = current_mode
+        st.session_state.previous_book_mode = current_mode
 
         st.divider()
 
@@ -1899,6 +1935,7 @@ def main():
                     if i in st.session_state.edited_story_pages:
                         st.session_state.generated_story["pages"][i]["text"] = st.session_state.edited_story_pages[i]
                 st.session_state.story_approved = True
+                st.session_state.just_approved_story = True
                 # Auto-save story with updated journey state
                 if st.session_state.generated_story and st.session_state.current_child_name:
                     save_story(st.session_state.generated_story, st.session_state.current_child_name)
@@ -1911,6 +1948,26 @@ def main():
     
     # Step 2: Image Generation with Review
     if st.session_state.generated_story and st.session_state.story_approved:
+        # Add anchor for auto-scrolling
+        st.markdown('<div id="image-generation-section"></div>', unsafe_allow_html=True)
+
+        # Auto-scroll to image generation section if just approved
+        if st.session_state.get("just_approved_story"):
+            st.session_state.just_approved_story = False
+            components.html(
+                """
+                <script>
+                    setTimeout(function() {
+                        const element = window.parent.document.getElementById('image-generation-section');
+                        if (element) {
+                            element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }
+                    }, 100);
+                </script>
+                """,
+                height=0
+            )
+
         pages = st.session_state.generated_story.get("pages", [])
         total_pages = len(pages)
         approved_count = len([k for k, v in st.session_state.image_approvals.items() if v])

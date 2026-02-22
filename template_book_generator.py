@@ -4,6 +4,7 @@ Handles "When I Grow Up" and other template-based personalized books
 """
 
 import streamlit as st
+import streamlit.components.v1
 import os
 import base64
 from pathlib import Path
@@ -787,6 +788,13 @@ def render_template_book_form():
     """Render the form for template book creation."""
     st.header("📖 Create Your Personalized Template Book")
 
+    # Check if user wants to start fresh (no template selected yet but has generated book)
+    if st.session_state.get("template_generated_book") and not st.session_state.get("selected_template_id"):
+        # User navigated back to template selection, clear generated book
+        for key in list(st.session_state.keys()):
+            if key in ("template_generated_book", "template_book_data", "generate_template_book") or key.startswith("template_page_text_") or key == "regenerate_template_page_idx":
+                del st.session_state[key]
+
     templates = get_available_templates()
 
     # Debug section to help troubleshoot
@@ -874,6 +882,7 @@ def render_template_book_form():
                     ):
                         st.session_state.selected_template_id = tmpl.get("id")
                         st.session_state.selected_template_name = tmpl.get("name")
+                        st.session_state.scroll_to_details = True
                         st.rerun()
                     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -889,6 +898,24 @@ def render_template_book_form():
         st.markdown("---")
         st.info(f"📚 **{template_info['name']}** – {template_info.get('description', '')}")
         st.caption(f"This template includes {template_info.get('total_pages', 'multiple')} pages")
+
+    # Auto-scroll to details section when template is selected
+    if st.session_state.get("scroll_to_details"):
+        st.session_state.scroll_to_details = False
+        st.markdown('<div id="details-section"></div>', unsafe_allow_html=True)
+        st.components.v1.html(
+            """
+            <script>
+                setTimeout(function() {
+                    const element = window.parent.document.getElementById('details-section');
+                    if (element) {
+                        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                }, 100);
+            </script>
+            """,
+            height=0
+        )
 
     st.markdown("---")
     st.markdown("### Personalize your book")
