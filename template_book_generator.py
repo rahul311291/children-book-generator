@@ -366,7 +366,7 @@ DEFAULT_TEMPLATES: List[Dict] = [
         "id": "a4444444-4444-4444-4444-444444444444",
         "name": "Cinderella and the Brave Heart",
         "description": "A Cinderella retelling where {name} overcomes unkindness from stepfamily and finds confidence, magic, and a caring prince.",
-        "cover_image": "https://images.pexels.com/photos/5560517/pexels-photo-5560517.jpeg?auto=compress&cs=tinysrgb&w=800",
+        "cover_image": "https://images.pexels.com/photos/19845247/pexels-photo-19845247.jpeg?auto=compress&cs=tinysrgb&w=800",
         "total_pages": 10,
         "pages": [
             {
