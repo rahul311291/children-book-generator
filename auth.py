@@ -166,19 +166,6 @@ def load_user_api_key(user_id: str) -> str:
 
 
 def render_auth_page():
-    st.markdown(
-        """
-        <style>
-            .auth-container {
-                max-width: 440px;
-                margin: 0 auto;
-                padding: 2rem 0;
-            }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
     col_left, col_center, col_right = st.columns([1, 2, 1])
 
     with col_center:
@@ -199,9 +186,14 @@ def render_auth_page():
             st.success(st.session_state.auth_success)
             st.session_state.auth_success = None
 
-        tab_login, tab_signup = st.tabs(["Log In", "Sign Up"])
+        mode = st.radio(
+            "Choose an option",
+            ["Log In", "Sign Up"],
+            horizontal=True,
+            key="auth_mode_radio",
+        )
 
-        with tab_login:
+        if mode == "Log In":
             with st.form("login_form", clear_on_submit=False):
                 st.markdown("#### Welcome back")
                 login_email = st.text_input(
@@ -229,8 +221,7 @@ def render_auth_page():
                             st.rerun()
                         else:
                             st.rerun()
-
-        with tab_signup:
+        else:
             with st.form("signup_form", clear_on_submit=False):
                 st.markdown("#### Create your account")
                 signup_email = st.text_input(
