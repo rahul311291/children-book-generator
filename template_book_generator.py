@@ -742,27 +742,12 @@ def seed_default_templates_if_missing(supabase: Client, show_errors_in_ui: bool 
 
 
 def get_available_templates() -> List[Dict]:
-    """Fetch all available templates from database."""
+    """Fetch all available templates from database (seeded via SQL migration)."""
     try:
         supabase = init_supabase()
-        # Seed built-in templates if they are missing (idempotent; skips if already present)
-        try:
-            seed_default_templates_if_missing(supabase)
-        except Exception as seed_error:
-            logger.error(f"Seeding failed: {seed_error}")
-            st.warning(f"⚠️ Template seeding encountered an issue. Check logs for details. Error: {str(seed_error)[:200]}")
-        
         response = supabase.table("templates").select("*").execute()
         templates = response.data or []
         logger.info(f"Retrieved {len(templates)} templates from Supabase")
-        
-        # Debug: Show template names
-        if templates:
-            template_names = [t.get("name", "Unknown") for t in templates]
-            logger.info(f"Templates found: {', '.join(template_names)}")
-        else:
-            logger.warning("No templates found in Supabase after seeding!")
-            
         return templates
     except Exception as e:
         logger.error(f"Error fetching templates: {e}")

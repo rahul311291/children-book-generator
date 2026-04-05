@@ -15,6 +15,17 @@ from datetime import datetime
 # Import age-specific prompts from the editable prompts file
 from story_prompts import get_full_prompt, get_image_style, IMAGE_STYLES
 
+# Import auth
+from auth import (
+    init_auth_state,
+    is_authenticated,
+    get_current_user_id,
+    sign_out,
+    save_user_api_key,
+    load_user_api_key,
+    render_auth_page,
+)
+
 # Import template book functionality
 try:
     from template_book_generator import (
@@ -80,10 +91,11 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+# Initialize auth state
+init_auth_state()
+
 # Initialize session state
-# Try to load API key from environment variable first (for secure backend storage)
 if 'api_key' not in st.session_state:
-    # Check environment variable first, then use empty string
     st.session_state.api_key = os.getenv("GEMINI_API_KEY", "")
 if 'generated_story' not in st.session_state:
     st.session_state.generated_story = None
@@ -1236,18 +1248,13 @@ def create_pdf(story_data: Dict, images: List[Image.Image], child_name: str, out
     c.save()
 
 def main():
-    # Seed templates on app startup (only once per session)
-    if TEMPLATE_BOOKS_AVAILABLE and 'templates_seeded' not in st.session_state:
-        try:
-            if init_supabase and seed_default_templates_if_missing:
-                supabase = init_supabase()
-                seed_default_templates_if_missing(supabase)
-                st.session_state.templates_seeded = True
-                logger.info("Templates seeded on app startup")
-        except Exception as e:
-            logger.error(f"Failed to seed templates on startup: {e}")
-            # Don't block the app if seeding fails, but log it
-    
+    # Auth gate: show login/signup if not authenticated
+    if not is_authenticated():
+        render_auth_page()
+        return
+
+    # Templates are now seeded via SQL migration, no app-level seeding needed
+
     # Initialize show_history state
     if 'show_history' not in st.session_state:
         st.session_state.show_history = False
@@ -1392,81 +1399,54 @@ def main():
         
         return
     
-    st.title("📚 Print-on-Demand Children's Book Generator")
+    st.title("Print-on-Demand Children's Book Generator")
     st.markdown("Create personalized storybooks for children in real-time!")
-    
+
     # Sidebar
     with st.sidebar:
-        st.header("⚙️ Settings")
-        
+        # User info and logout
+        user_email = st.session_state.auth_user.get("email", "")
+        st.markdown(f"Logged in as **{user_email}**")
+        if st.button("Log Out", use_container_width=True, type="secondary"):
+            sign_out()
+            st.rerun()
+
+        st.divider()
+
         # New Story Button
-        if st.button("🆕 New Story", type="primary", use_container_width=True):
+        if st.button("New Story", type="primary", use_container_width=True):
             reset_story_state()
             st.rerun()
-        
+
         st.divider()
-        
-        # Story History - Button to open history page
-        if st.button("📚 Story History", use_container_width=True, type="secondary"):
+
+        # Story History
+        if st.button("Story History", use_container_width=True, type="secondary"):
             st.session_state.show_history = True
             st.rerun()
-        
+
         st.divider()
-        
-        # Log Viewer
-        with st.expander("📋 View Logs", expanded=False):
-            if log_file.exists():
-                try:
-                    with open(log_file, 'r') as f:
-                        log_lines = f.readlines()
-                        # Show last 50 lines
-                        recent_logs = log_lines[-50:] if len(log_lines) > 50 else log_lines
-                        st.code(''.join(recent_logs))
-                    if st.button("Clear Logs", key="clear_logs"):
-                        with open(log_file, 'w') as f:
-                            f.write("")
-                        st.success("Logs cleared")
-                        st.rerun()
-                except Exception as e:
-                    st.error(f"Could not read logs: {e}")
-            else:
-                st.info("No logs yet")
-            st.caption(f"Log file: {log_file}")
-        
-        st.divider()
-        
-        # API Key Input
-        # Show if API key is set from environment
-        env_key_set = bool(os.getenv("GEMINI_API_KEY"))
-        if env_key_set:
-            env_key_value = os.getenv("GEMINI_API_KEY")
-            st.success(f"🔐 API key loaded from environment (length: {len(env_key_value)} chars)")
-            api_key = st.session_state.api_key
-            if st.button("🔑 Override with Manual Entry", use_container_width=True):
-                st.session_state.use_manual_key = True
-                st.rerun()
+
+        # API Key Input - persisted per user
+        st.subheader("API Key")
+        current_key = st.session_state.api_key
+        api_key = st.text_input(
+            "Google Gemini API Key",
+            type="password",
+            value=current_key,
+            help="Enter your Google Gemini API key. Get one from https://makersuite.google.com/app/apikey",
+        )
+        if api_key != current_key:
+            st.session_state.api_key = api_key
+            user_id = get_current_user_id()
+            if user_id and api_key:
+                save_user_api_key(user_id, api_key)
+
+        if api_key:
+            st.caption(f"Key saved ({len(api_key)} chars)")
         else:
-            api_key = st.text_input(
-                "Google Gemini API Key",
-                type="password",
-                value=st.session_state.api_key,
-                help="Enter your Google Gemini API key. Get one from https://makersuite.google.com/app/apikey. Or set GEMINI_API_KEY environment variable for secure storage."
-            )
-            st.session_state.api_key = api_key
-        
-        # Allow manual override even if env var is set
-        if env_key_set and st.session_state.get("use_manual_key", False):
-            api_key = st.text_input(
-                "Manual API Key (Override)",
-                type="password",
-                value=st.session_state.api_key,
-                help="Override environment variable with manual entry"
-            )
-            st.session_state.api_key = api_key
-            if st.button("✅ Use Manual Key", use_container_width=True):
-                st.session_state.use_manual_key = False
-                st.rerun()
-        
+            st.caption("No API key set. Enter your key above.")
+
         st.divider()
 
         # Book Mode Selection
