@@ -58,7 +58,7 @@ DEFAULT_TEMPLATES: List[Dict] = [
         "id": "a2222222-2222-2222-2222-222222222222",
         "name": "Snow White and the Kind-Hearted Child",
         "description": "A gentle Snow White retelling where {name} faces unkind sisters and a cruel stepmother, but finds courage, friends, and a kind prince.",
-        "cover_image": "https://images.pexels.com/photos/8501420/pexels-photo-8501420.jpeg?auto=compress&cs=tinysrgb&w=800",
+        "cover_image": "https://images.pexels.com/photos/11890414/pexels-photo-11890414.jpeg?auto=compress&cs=tinysrgb&w=800",
         "total_pages": 10,
         "pages": [
             {
@@ -70,10 +70,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "who made {him_her} do all the chores while they wore fine dresses and laughed."
                 ),
                 "image_prompt_template": (
-                    "Detailed watercolor fairy-tale illustration: a {age}-year-old {gender} child named {name} in simple "
+                    "Cartoon animated children's storybook illustration in vibrant cel-shaded style: a {age}-year-old {gender} child named {name} in simple "
                     "patched clothes, carrying a heavy wicker basket through a grand stone castle kitchen. Two elaborately "
                     "dressed sisters point and snicker while a stern stepmother watches from a throne-like chair. Warm "
-                    "candlelight, cobblestone floor, copper pots hanging on walls. Classic storybook style, no text."
+                    "candlelight, cobblestone floor, copper pots hanging on walls. Bold outlines, bright saturated colors, smooth shading, animated movie quality, no text."
                 ),
             },
             {
@@ -85,10 +85,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "is a special kind of magic no one can take away."
                 ),
                 "image_prompt_template": (
-                    "Detailed watercolor fairy-tale illustration: a {age}-year-old {gender} child named {name} sitting "
+                    "Cartoon animated children's storybook illustration in vibrant cel-shaded style: a {age}-year-old {gender} child named {name} sitting "
                     "on a stone castle windowsill, smiling softly while feeding colorful songbirds from {name}'s open palm. "
                     "Morning sunlight streams through the arched window. Two sisters frown in the shadowy background. "
-                    "Soft pastel colors, gentle atmosphere, classic storybook style, no text."
+                    "Bold outlines, bright saturated colors, smooth shading, animated movie quality, no text."
                 ),
             },
             {
@@ -100,10 +100,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "{name} walked into the deep green forest, not knowing what would happen next."
                 ),
                 "image_prompt_template": (
-                    "Detailed watercolor fairy-tale illustration: a {age}-year-old {gender} child named {name} walking "
+                    "Cartoon animated children's storybook illustration in vibrant cel-shaded style: a {age}-year-old {gender} child named {name} walking "
                     "along a winding path into a tall, ancient forest. Golden rays of sunlight filter through the canopy. "
                     "A rabbit peeks from behind ferns, a bluebird perches on a branch overhead. The mood shifts from "
-                    "sadness to quiet hope. Rich greens, dappled light, classic storybook style, no text."
+                    "sadness to quiet hope. Rich greens, dappled light, bold outlines, bright saturated colors, smooth shading, animated movie quality, no text."
                 ),
             },
             {
@@ -115,10 +115,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "humming softly to feel less afraid."
                 ),
                 "image_prompt_template": (
-                    "Detailed watercolor fairy-tale illustration: a charming thatched-roof cottage nestled among tall "
+                    "Cartoon animated children's storybook illustration in vibrant cel-shaded style: a charming thatched-roof cottage nestled among tall "
                     "forest trees with a mushroom-lined path leading to the door. Inside, a {age}-year-old {gender} child "
                     "named {name} sweeps the wooden floor while sunlight pours through small round windows. Seven tiny "
-                    "chairs, seven tiny beds, cozy hearth. Warm golden tones, classic storybook style, no text."
+                    "chairs, seven tiny beds, cozy hearth. Bold outlines, bright saturated colors, smooth shading, animated movie quality, no text."
                 ),
             },
             {
@@ -130,10 +130,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "We will be your family and keep you safe.'"
                 ),
                 "image_prompt_template": (
-                    "Detailed watercolor fairy-tale illustration: a {age}-year-old {gender} child named {name} sitting at "
-                    "a small round wooden table surrounded by seven cheerful dwarfs of different heights and personalities, "
+                    "Cartoon animated children's storybook illustration in vibrant cel-shaded style: a {age}-year-old {gender} child named {name} sitting at "
+                    "a small round wooden table surrounded by seven cheerful cartoon dwarfs of different heights and personalities, "
                     "all sharing a warm meal. Cozy candlelight, wooden beams overhead, a crackling fireplace. Everyone smiles "
-                    "kindly at {name}. Warm amber tones, classic storybook style, no text."
+                    "kindly at {name}. Bold outlines, bright saturated colors, smooth shading, animated movie quality, no text."
                 ),
             },
             {
@@ -145,10 +145,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "suddenly turned dark."
                 ),
                 "image_prompt_template": (
-                    "Detailed watercolor fairy-tale illustration: a cloaked old woman with hidden eyes offers a single "
+                    "Cartoon animated children's storybook illustration in vibrant cel-shaded style: a cloaked old woman with hidden eyes offers a single "
                     "gleaming red apple to a {age}-year-old {gender} child named {name} at the cottage door. The apple "
-                    "glows ominously. Shadows creep at the edges while the cottage remains warm. Subtle tension, "
-                    "rich deep colors, classic storybook style, no text."
+                    "glows ominously. Shadows creep at the edges while the cottage remains warm. Dramatic lighting, "
+                    "bold outlines, rich deep colors, smooth shading, animated movie quality, no text."
                 ),
             },
             {
@@ -160,10 +160,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "hope and kindness."
                 ),
                 "image_prompt_template": (
-                    "Detailed watercolor fairy-tale illustration: a crystal glass coffin resting on a flower-covered "
+                    "Cartoon animated children's storybook illustration in vibrant cel-shaded style: a crystal glass coffin resting on a flower-covered "
                     "hilltop under a canopy of blossoming trees. A {age}-year-old {gender} child named {name} lies "
-                    "peacefully inside with folded hands. Seven dwarfs weep nearby while forest animals -- deer, rabbits, "
-                    "birds -- gather in a circle. Tender, bittersweet mood, soft light, classic storybook style, no text."
+                    "peacefully inside with folded hands. Seven cartoon dwarfs weep nearby while forest animals -- deer, rabbits, "
+                    "birds -- gather in a circle. Tender, bittersweet mood, bold outlines, bright colors, smooth shading, animated movie quality, no text."
                 ),
             },
             {
@@ -175,10 +175,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "{name}'s throat, and {he_she} woke up with a gentle gasp."
                 ),
                 "image_prompt_template": (
-                    "Detailed watercolor fairy-tale illustration: a gentle young prince on a white horse arriving at the "
+                    "Cartoon animated children's storybook illustration in vibrant cel-shaded style: a gentle young prince on a white horse arriving at the "
                     "glass coffin on the hilltop. A {age}-year-old {gender} child named {name} begins to stir awake, "
-                    "eyes fluttering open. Dwarfs look up in astonished hope, golden sunlight breaking through clouds. "
-                    "Magical moment, bright hopeful colors, classic storybook style, no text."
+                    "eyes fluttering open. Cartoon dwarfs look up in astonished hope, golden sunlight breaking through clouds. "
+                    "Magical moment, bold outlines, bright hopeful colors, smooth shading, animated movie quality, no text."
                 ),
             },
             {
@@ -189,10 +189,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "{name}. Would you like to come to my castle, where people will treat you the way you deserve?'"
                 ),
                 "image_prompt_template": (
-                    "Detailed watercolor fairy-tale illustration: a {age}-year-old {gender} child named {name} standing "
-                    "between the kind prince and the seven dwarfs, holding a dwarf's hand in farewell. A winding forest "
-                    "path leads to a sunlit white castle on a distant hill. Warm hopeful atmosphere, golden hour lighting, "
-                    "classic storybook style, no text."
+                    "Cartoon animated children's storybook illustration in vibrant cel-shaded style: a {age}-year-old {gender} child named {name} standing "
+                    "between the kind prince and the seven cartoon dwarfs, holding a dwarf's hand in farewell. A winding forest "
+                    "path leads to a sunlit white castle on a distant hill. Bold outlines, bright saturated colors, warm golden hour lighting, "
+                    "smooth shading, animated movie quality, no text."
                 ),
             },
             {
@@ -204,10 +204,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "brighter than ever. From that day on, {name} knew that being gentle and brave could change {his_her} story."
                 ),
                 "image_prompt_template": (
-                    "Detailed watercolor fairy-tale illustration: a grand castle courtyard celebration with banners and "
+                    "Cartoon animated children's storybook illustration in vibrant cel-shaded style: a grand castle courtyard celebration with banners and "
                     "flowers. A {age}-year-old {gender} child named {name} in beautiful royal clothes stands at the center, "
-                    "surrounded by the prince, the seven dwarfs visiting, and new friends all smiling. Warm golden "
-                    "sunlight, joyful atmosphere, classic storybook happily-ever-after ending, no text."
+                    "surrounded by the prince, the seven cartoon dwarfs visiting, and new friends all smiling. Bright golden "
+                    "sunlight, joyful atmosphere, bold outlines, bright saturated colors, smooth shading, animated movie quality happily-ever-after ending, no text."
                 ),
             },
         ],
@@ -366,7 +366,7 @@ DEFAULT_TEMPLATES: List[Dict] = [
         "id": "a4444444-4444-4444-4444-444444444444",
         "name": "Cinderella and the Brave Heart",
         "description": "A Cinderella retelling where {name} overcomes unkindness from stepfamily and finds confidence, magic, and a caring prince.",
-        "cover_image": "https://images.pexels.com/photos/19845247/pexels-photo-19845247.jpeg?auto=compress&cs=tinysrgb&w=800",
+        "cover_image": "https://images.pexels.com/photos/17892641/pexels-photo-17892641.jpeg?auto=compress&cs=tinysrgb&w=800",
         "total_pages": 10,
         "pages": [
             {
@@ -377,10 +377,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "{name} swept floors, washed dishes, and cooked meals, keeping {his_her} gentle heart safe inside."
                 ),
                 "image_prompt_template": (
-                    "Detailed watercolor fairy-tale illustration: a {age}-year-old {gender} child named {name} in simple "
+                    "Cartoon animated children's storybook illustration in vibrant cel-shaded style: a {age}-year-old {gender} child named {name} in simple "
                     "worn clothes, scrubbing a large wooden table in a grand old kitchen. Two overdressed stepsisters "
                     "lounge on cushioned chairs pointing at {name}, while a stern stepmother supervises from the doorway. "
-                    "Warm but melancholy firelight, stone walls, hanging herbs. Classic storybook style, no text."
+                    "Warm but melancholy firelight, stone walls, hanging herbs. Bold outlines, bright saturated colors, smooth shading, animated movie quality, no text."
                 ),
             },
             {
@@ -391,10 +391,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "{He_She} whispered wishes into the smoke, hoping that one day, someone would see {his_her} true worth."
                 ),
                 "image_prompt_template": (
-                    "Detailed watercolor fairy-tale illustration: a {age}-year-old {gender} child named {name} sitting "
+                    "Cartoon animated children's storybook illustration in vibrant cel-shaded style: a {age}-year-old {gender} child named {name} sitting "
                     "curled up on a small stool beside a crackling fireplace, chin resting on knees, gazing into the "
                     "dancing orange flames. Soft embers float upward like tiny stars. An old broom and bucket rest nearby. "
-                    "Warm amber glow, dreamy peaceful atmosphere, classic storybook style, no text."
+                    "Warm amber glow, dreamy atmosphere, bold outlines, bright saturated colors, smooth shading, animated movie quality, no text."
                 ),
             },
             {
@@ -406,10 +406,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "{he_she} was far too dirty and plain to go."
                 ),
                 "image_prompt_template": (
-                    "Detailed watercolor fairy-tale illustration: a royal messenger in a plumed hat presenting a golden "
+                    "Cartoon animated children's storybook illustration in vibrant cel-shaded style: a royal messenger in a plumed hat presenting a golden "
                     "scroll at the door. Two excited stepsisters twirl in half-finished ball gowns. A {age}-year-old "
                     "{gender} child named {name} stands in the background holding a simple apron, looking hopeful "
-                    "but sad. Stern stepmother blocks the way. Rich colors, classic storybook style, no text."
+                    "but sad. Stern stepmother blocks the way. Bold outlines, rich bright colors, smooth shading, animated movie quality, no text."
                 ),
             },
             {
@@ -420,10 +420,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "smiled at {him_her}. 'Your kindness shines brighter than any dress,' she said. 'You shall go to the ball.'"
                 ),
                 "image_prompt_template": (
-                    "Detailed watercolor fairy-tale illustration: a glowing fairy godmother in a flowing silver gown, "
+                    "Cartoon animated children's storybook illustration in vibrant cel-shaded style: a glowing fairy godmother in a flowing silver gown, "
                     "holding a sparkling wand, appearing in a moonlit garden before a {age}-year-old {gender} child "
-                    "named {name} who looks up in wonder. A pumpkin sits on the garden path, mice peek from behind "
-                    "flower pots. Magical blue and gold light radiates outward. Classic storybook style, no text."
+                    "named {name} who looks up in wonder. A pumpkin sits on the garden path, cartoon mice peek from behind "
+                    "flower pots. Magical blue and gold light radiates outward. Bold outlines, bright saturated colors, smooth shading, animated movie quality, no text."
                 ),
             },
             {
@@ -434,10 +434,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "A pumpkin became a carriage, and the mice turned into horses. 'Be back by midnight,' she warned gently."
                 ),
                 "image_prompt_template": (
-                    "Detailed watercolor fairy-tale illustration: a {age}-year-old {gender} child named {name} spinning "
+                    "Cartoon animated children's storybook illustration in vibrant cel-shaded style: a {age}-year-old {gender} child named {name} spinning "
                     "joyfully as rags transform into a magnificent glittering outfit with glass slippers that catch the "
-                    "moonlight. Behind {name}, a pumpkin morphs into a golden carriage, mice transform into elegant white "
-                    "horses. Sparkles and fairy dust fill the air. Magical transformation scene, classic storybook style, no text."
+                    "moonlight. Behind {name}, a pumpkin morphs into a golden carriage, cartoon mice transform into elegant white "
+                    "horses. Sparkles and fairy dust fill the air. Bold outlines, bright saturated colors, smooth shading, animated movie quality, magical transformation scene, no text."
                 ),
             },
             {
@@ -448,10 +448,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "He asked {name} to dance, and together they glided across the floor like they had always been meant to meet."
                 ),
                 "image_prompt_template": (
-                    "Detailed watercolor fairy-tale illustration: a grand palace ballroom with crystal chandeliers, marble "
-                    "columns, and elegantly dressed guests. A {age}-year-old {gender} child named {name} in a magnificent "
+                    "Cartoon animated children's storybook illustration in vibrant cel-shaded style: a grand palace ballroom with crystal chandeliers, marble "
+                    "columns, and elegantly dressed cartoon guests. A {age}-year-old {gender} child named {name} in a magnificent "
                     "outfit dances gracefully with a kind young prince at the center of the room. Golden candlelight "
-                    "reflects off the polished floor. Enchanting atmosphere, classic storybook style, no text."
+                    "reflects off the polished floor. Bold outlines, bright saturated colors, smooth shading, animated movie quality, enchanting atmosphere, no text."
                 ),
             },
             {
@@ -462,10 +462,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "On the palace steps, one glass shoe slipped off, but there was no time to turn back."
                 ),
                 "image_prompt_template": (
-                    "Detailed watercolor fairy-tale illustration: a {age}-year-old {gender} child named {name} running "
+                    "Cartoon animated children's storybook illustration in vibrant cel-shaded style: a {age}-year-old {gender} child named {name} running "
                     "down wide marble palace stairs under a midnight sky full of stars. One sparkling glass slipper sits "
                     "on a step behind. A large clock tower in the background shows midnight. Outfit beginning to shimmer "
-                    "and fade. Dramatic but child-friendly urgency, classic storybook style, no text."
+                    "and fade. Bold outlines, bright colors, smooth shading, animated movie quality, dramatic but child-friendly urgency, no text."
                 ),
             },
             {
@@ -476,10 +476,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "He promised himself he would find the person whose kindness had touched his heart."
                 ),
                 "image_prompt_template": (
-                    "Detailed watercolor fairy-tale illustration: a determined young prince traveling through a village "
+                    "Cartoon animated children's storybook illustration in vibrant cel-shaded style: a determined young cartoon prince traveling through a village "
                     "in a horse-drawn carriage, holding up a single sparkling glass slipper on a velvet cushion. "
-                    "Villagers peer out from doorways and windows. Cobblestone streets, thatched-roof cottages, bright "
-                    "daytime scene. Hopeful atmosphere, classic storybook style, no text."
+                    "Cartoon villagers peer out from doorways and windows. Cobblestone streets, thatched-roof cottages, bright "
+                    "daytime scene. Bold outlines, bright saturated colors, smooth shading, animated movie quality, hopeful atmosphere, no text."
                 ),
             },
             {
@@ -490,10 +490,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "When {name} gently tried it on, it slid perfectly over {his_her} foot, shining like it had always belonged there."
                 ),
                 "image_prompt_template": (
-                    "Detailed watercolor fairy-tale illustration: inside a modest room, the prince kneels to place the "
+                    "Cartoon animated children's storybook illustration in vibrant cel-shaded style: inside a modest room, the cartoon prince kneels to place the "
                     "glass slipper on a {age}-year-old {gender} child named {name}'s foot. The slipper glows as it fits "
-                    "perfectly. Two stepsisters and the stepmother look shocked and dismayed in the background. Warm "
-                    "hopeful golden light fills the room, classic storybook style, no text."
+                    "perfectly. Two cartoon stepsisters and the stepmother look shocked and dismayed in the background. Bold outlines, "
+                    "warm hopeful golden light, bright saturated colors, smooth shading, animated movie quality, no text."
                 ),
             },
             {
@@ -505,10 +505,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "{name} learned that {his_her} bravery and kindness were the strongest magic of all."
                 ),
                 "image_prompt_template": (
-                    "Detailed watercolor fairy-tale illustration: a beautiful palace garden with fountains, rose bushes, "
+                    "Cartoon animated children's storybook illustration in vibrant cel-shaded style: a beautiful palace garden with fountains, rose bushes, "
                     "and butterflies. A {age}-year-old {gender} child named {name} in elegant royal attire walks happily "
-                    "with the prince and new friends through the garden. Bright blue sky, warm sunshine, flowers in "
-                    "full bloom. Peaceful, joyful fairy-tale ending, classic storybook style, no text."
+                    "with the cartoon prince and new friends through the garden. Bright blue sky, warm sunshine, flowers in "
+                    "full bloom. Bold outlines, bright saturated colors, smooth shading, animated movie quality, joyful fairy-tale ending, no text."
                 ),
             },
         ],
@@ -1319,10 +1319,12 @@ def generate_page_image(api_key: str, prompt: str, reference_image_base64: Optio
             "Content-Type": "application/json"
         }
 
-        # Add no-text guardrail to prompt
         no_text_instruction = "CRITICAL: NO TEXT in this image. No words, letters, numbers, speech bubbles, captions, signs, or labels. Pure illustration only."
-        style_modifiers = "Watercolor illustration style, soft edges, gentle colors, children's book art, high quality"
-        
+        if "cartoon animated" in prompt.lower() or "cel-shaded" in prompt.lower():
+            style_modifiers = "Children's book art, high quality, bold clean outlines, smooth cel shading"
+        else:
+            style_modifiers = "Watercolor illustration style, soft edges, gentle colors, children's book art, high quality"
+
         enhanced_prompt = f"{no_text_instruction}. {prompt}. {style_modifiers}. {no_text_instruction}"
 
         # Build the payload - with or without reference image
