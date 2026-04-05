@@ -96,7 +96,7 @@ init_auth_state()
 
 # Initialize session state
 if 'api_key' not in st.session_state:
-    st.session_state.api_key = os.getenv("GEMINI_API_KEY", "")
+    st.session_state.api_key = ""
 if 'generated_story' not in st.session_state:
     st.session_state.generated_story = None
 if 'generated_images' not in st.session_state:

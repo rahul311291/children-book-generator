@@ -39,11 +39,10 @@ else:
 # Include the existing "When I Grow Up" template plus 4 new ones = 5 total templates
 DEFAULT_TEMPLATES: List[Dict] = [
     {
-        # Template 1: Existing "When I Grow Up" template
         "id": "a1111111-1111-1111-1111-111111111111",
         "name": "When I Grow Up",
         "description": "A 24-page personalized book featuring different professions {name} might pursue when they grow up - astronaut, doctor, teacher, and more!",
-        "cover_image": "https://images.pexels.com/photos/8613089/pexels-photo-8613089.jpeg?auto=compress&cs=tinysrgb&w=800",
+        "cover_image": "https://images.pexels.com/photos/5560536/pexels-photo-5560536.jpeg?auto=compress&cs=tinysrgb&w=800",
         "total_pages": 24,
         "pages": [
             {
@@ -56,25 +55,25 @@ DEFAULT_TEMPLATES: List[Dict] = [
         ],
     },
     {
-        # Template 2: Snow White
         "id": "a2222222-2222-2222-2222-222222222222",
         "name": "Snow White and the Kind-Hearted Child",
         "description": "A gentle Snow White retelling where {name} faces unkind sisters and a cruel stepmother, but finds courage, friends, and a kind prince.",
-        "cover_image": "https://images.pexels.com/photos/5706019/pexels-photo-5706019.jpeg?auto=compress&cs=tinysrgb&w=800",
+        "cover_image": "https://images.pexels.com/photos/8501420/pexels-photo-8501420.jpeg?auto=compress&cs=tinysrgb&w=800",
         "total_pages": 10,
         "pages": [
             {
                 "page_number": 1,
                 "profession_title": "Once Upon a Time",
                 "text_template": (
-                    "Long ago, in a peaceful kingdom, there lived a kind child named {name}. "
-                    "{He_She} had two jealous sisters and a cruel stepmother who treated {him_her} badly, "
-                    "making {him_her} do all the chores while they rested and laughed."
+                    "Long ago, in a peaceful kingdom surrounded by mountains and meadows, "
+                    "there lived a kind child named {name}. {He_She} had two jealous sisters and a cruel stepmother "
+                    "who made {him_her} do all the chores while they wore fine dresses and laughed."
                 ),
                 "image_prompt_template": (
-                    "Watercolor illustration of a {age} year old {gender} child named {name} in simple clothes, "
-                    "carrying a heavy basket in a grand castle kitchen while two fancy-dressed sisters and a stern stepmother "
-                    "point and whisper, warm fairy-tale lighting, cozy storybook style."
+                    "Detailed watercolor fairy-tale illustration: a {age}-year-old {gender} child named {name} in simple "
+                    "patched clothes, carrying a heavy wicker basket through a grand stone castle kitchen. Two elaborately "
+                    "dressed sisters point and snicker while a stern stepmother watches from a throne-like chair. Warm "
+                    "candlelight, cobblestone floor, copper pots hanging on walls. Classic storybook style, no text."
                 ),
             },
             {
@@ -86,9 +85,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "is a special kind of magic no one can take away."
                 ),
                 "image_prompt_template": (
-                    "{age} year old {gender} child {name} smiling softly while feeding birds at a castle window, "
-                    "two sisters frowning in the background, soft pastel colors, classic fairy-tale illustration, "
-                    "focus on {name}'s kind expression."
+                    "Detailed watercolor fairy-tale illustration: a {age}-year-old {gender} child named {name} sitting "
+                    "on a stone castle windowsill, smiling softly while feeding colorful songbirds from {name}'s open palm. "
+                    "Morning sunlight streams through the arched window. Two sisters frown in the shadowy background. "
+                    "Soft pastel colors, gentle atmosphere, classic storybook style, no text."
                 ),
             },
             {
@@ -100,9 +100,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "{name} walked into the deep green forest, not knowing what would happen next."
                 ),
                 "image_prompt_template": (
-                    "{age} year old {gender} child {name} walking into a tall green forest with rays of sunlight "
-                    "shining through the trees, small animals peeking out curiously, storybook watercolor style, "
-                    "mood of sadness turning to quiet hope."
+                    "Detailed watercolor fairy-tale illustration: a {age}-year-old {gender} child named {name} walking "
+                    "along a winding path into a tall, ancient forest. Golden rays of sunlight filter through the canopy. "
+                    "A rabbit peeks from behind ferns, a bluebird perches on a branch overhead. The mood shifts from "
+                    "sadness to quiet hope. Rich greens, dappled light, classic storybook style, no text."
                 ),
             },
             {
@@ -114,22 +115,25 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "humming softly to feel less afraid."
                 ),
                 "image_prompt_template": (
-                    "Small cottage interior in the forest, {age} year old {gender} child {name} sweeping the floor, "
-                    "washing dishes, and opening windows, warm golden light coming in, seven tiny chairs and beds, "
-                    "classic fairy-tale illustration."
+                    "Detailed watercolor fairy-tale illustration: a charming thatched-roof cottage nestled among tall "
+                    "forest trees with a mushroom-lined path leading to the door. Inside, a {age}-year-old {gender} child "
+                    "named {name} sweeps the wooden floor while sunlight pours through small round windows. Seven tiny "
+                    "chairs, seven tiny beds, cozy hearth. Warm golden tones, classic storybook style, no text."
                 ),
             },
             {
                 "page_number": 5,
                 "profession_title": "New Friends",
                 "text_template": (
-                    "When the owners of the cottage came home—seven kind dwarfs—they were surprised to find their house "
+                    "When the owners of the cottage came home -- seven kind dwarfs -- they were surprised to find their house "
                     "sparkling clean. They listened to {name}'s story and promised, 'You can stay with us. "
                     "We will be your family and keep you safe.'"
                 ),
                 "image_prompt_template": (
-                    "{age} year old {gender} child {name} sitting at a small wooden table with seven friendly dwarfs, "
-                    "all smiling kindly, cozy candlelight, wooden cottage interior, storybook watercolor style."
+                    "Detailed watercolor fairy-tale illustration: a {age}-year-old {gender} child named {name} sitting at "
+                    "a small round wooden table surrounded by seven cheerful dwarfs of different heights and personalities, "
+                    "all sharing a warm meal. Cozy candlelight, wooden beams overhead, a crackling fireplace. Everyone smiles "
+                    "kindly at {name}. Warm amber tones, classic storybook style, no text."
                 ),
             },
             {
@@ -137,12 +141,14 @@ DEFAULT_TEMPLATES: List[Dict] = [
                 "profession_title": "The Poisoned Gift",
                 "text_template": (
                     "Far away, the stepmother learned that {name} was still alive and happy. Disguised as an old woman, "
-                    "she brought a beautiful red apple to the cottage. Trusting others, {name} took a bite—and everything "
+                    "she brought a beautiful red apple to the cottage. Trusting others, {name} took a bite -- and everything "
                     "suddenly turned dark."
                 ),
                 "image_prompt_template": (
-                    "An old woman in a cloak handing a shiny red apple to {age} year old {gender} child {name} "
-                    "at the cottage door, subtle hint of danger in the shadows, rich colors, classic fairy-tale mood."
+                    "Detailed watercolor fairy-tale illustration: a cloaked old woman with hidden eyes offers a single "
+                    "gleaming red apple to a {age}-year-old {gender} child named {name} at the cottage door. The apple "
+                    "glows ominously. Shadows creep at the edges while the cottage remains warm. Subtle tension, "
+                    "rich deep colors, classic storybook style, no text."
                 ),
             },
             {
@@ -154,8 +160,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "hope and kindness."
                 ),
                 "image_prompt_template": (
-                    "Glass coffin on a flowery hill, {age} year old {gender} child {name} lying peacefully inside "
-                    "with folded hands, seven dwarfs weeping nearby, forest animals gathered around, tender fairy-tale scene."
+                    "Detailed watercolor fairy-tale illustration: a crystal glass coffin resting on a flower-covered "
+                    "hilltop under a canopy of blossoming trees. A {age}-year-old {gender} child named {name} lies "
+                    "peacefully inside with folded hands. Seven dwarfs weep nearby while forest animals -- deer, rabbits, "
+                    "birds -- gather in a circle. Tender, bittersweet mood, soft light, classic storybook style, no text."
                 ),
             },
             {
@@ -167,8 +175,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "{name}'s throat, and {he_she} woke up with a gentle gasp."
                 ),
                 "image_prompt_template": (
-                    "Gentle prince on horseback near the glass coffin, {age} year old {gender} child {name} beginning to wake, "
-                    "dwarfs looking surprised and hopeful, bright forest clearing, romantic but child-friendly style."
+                    "Detailed watercolor fairy-tale illustration: a gentle young prince on a white horse arriving at the "
+                    "glass coffin on the hilltop. A {age}-year-old {gender} child named {name} begins to stir awake, "
+                    "eyes fluttering open. Dwarfs look up in astonished hope, golden sunlight breaking through clouds. "
+                    "Magical moment, bright hopeful colors, classic storybook style, no text."
                 ),
             },
             {
@@ -179,30 +189,34 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "{name}. Would you like to come to my castle, where people will treat you the way you deserve?'"
                 ),
                 "image_prompt_template": (
-                    "{age} year old {gender} child {name} standing beside the prince, holding hands with a dwarf in farewell, "
-                    "forest path leading to a bright castle in the distance, hopeful storybook illustration."
+                    "Detailed watercolor fairy-tale illustration: a {age}-year-old {gender} child named {name} standing "
+                    "between the kind prince and the seven dwarfs, holding a dwarf's hand in farewell. A winding forest "
+                    "path leads to a sunlit white castle on a distant hill. Warm hopeful atmosphere, golden hour lighting, "
+                    "classic storybook style, no text."
                 ),
             },
             {
                 "page_number": 10,
                 "profession_title": "Happily Ever After",
                 "text_template": (
-                    "{name} went to the prince’s castle, where {he_she} was finally treated with love and respect. "
+                    "{name} went to the prince's castle, where {he_she} was finally treated with love and respect. "
                     "{His_Her} unkind stepmother and sisters had to live with their choices, while {name}'s kindness shone "
                     "brighter than ever. From that day on, {name} knew that being gentle and brave could change {his_her} story."
                 ),
                 "image_prompt_template": (
-                    "Grand castle hall celebration, {age} year old {gender} child {name} dressed in royal clothes, "
-                    "smiling with the prince and new friends, warm golden light, joyful fairy-tale ending illustration."
+                    "Detailed watercolor fairy-tale illustration: a grand castle courtyard celebration with banners and "
+                    "flowers. A {age}-year-old {gender} child named {name} in beautiful royal clothes stands at the center, "
+                    "surrounded by the prince, the seven dwarfs visiting, and new friends all smiling. Warm golden "
+                    "sunlight, joyful atmosphere, classic storybook happily-ever-after ending, no text."
                 ),
             },
         ],
     },
     {
         "id": "a3333333-3333-3333-3333-333333333333",
-        "name": "Cricket Champion – Mastering Every Shot",
+        "name": "Cricket Champion - Mastering Every Shot",
         "description": "A coaching-style book where {name} learns 10 classic cricket shots with clear posture and body-position tips.",
-        "cover_image": "https://images.pexels.com/photos/8224459/pexels-photo-8224459.jpeg?auto=compress&cs=tinysrgb&w=800",
+        "cover_image": "https://images.pexels.com/photos/3718433/pexels-photo-3718433.jpeg?auto=compress&cs=tinysrgb&w=800",
         "total_pages": 10,
         "pages": [
             {
@@ -210,12 +224,14 @@ DEFAULT_TEMPLATES: List[Dict] = [
                 "profession_title": "Forward Defensive",
                 "text_template": (
                     "Today, {name} is learning the forward defensive shot. {He_She} stands with feet shoulder-width apart, "
-                    "eyes on the ball, front foot stepping forward. The bat comes down straight, close to the pad, "
-                    "blocking the ball safely under {his_her} eyes."
+                    "eyes locked on the ball, front foot stepping forward. The bat comes down straight, close to the pad, "
+                    "blocking the ball safely under {his_her} steady gaze."
                 ),
                 "image_prompt_template": (
-                    "{age} year old {gender} child {name} in cricket whites, helmet on, playing a perfect forward defensive: "
-                    "front foot forward, bat straight and close to pad, head still over the ball, side-on stance on a sunny ground."
+                    "Detailed children's book illustration: a {age}-year-old {gender} child named {name} in crisp white "
+                    "cricket gear and blue helmet, executing a textbook forward defensive shot on a sunlit cricket ground. "
+                    "Front foot planted forward, bat perfectly straight next to the front pad, head still and eyes watching "
+                    "the ball. Green pitch, white crease lines, clear blue sky. Clean coaching-diagram style, no text."
                 ),
             },
             {
@@ -226,8 +242,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "and swings the bat straight down the line of the ball, sending it smoothly back past the bowler."
                 ),
                 "image_prompt_template": (
-                    "{age} year old {gender} child {name} playing a straight drive, front knee bent, bat following through straight "
-                    "toward the bowler, head over the ball, front shoulder pointing down the pitch, clear coaching illustration."
+                    "Detailed children's book illustration: a {age}-year-old {gender} child named {name} in cricket whites "
+                    "and helmet, executing a beautiful straight drive. Front knee bent, bat following through in a full arc "
+                    "toward the sightscreen, head perfectly over the ball. The ball races along the green pitch toward the "
+                    "boundary. Sunny cricket ground, clear coaching illustration, no text."
                 ),
             },
             {
@@ -238,8 +256,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "and drives the ball through the covers with a smooth arc, elbows high and head close to the line of the ball."
                 ),
                 "image_prompt_template": (
-                    "{age} year old {gender} child {name} playing an elegant cover drive, front foot across to off side, "
-                    "bat following through high, ball flying through cover region, classic cricket coaching pose."
+                    "Detailed children's book illustration: a {age}-year-old {gender} child named {name} playing an elegant "
+                    "cover drive, front foot reaching toward off side, bat sweeping through in a graceful high arc. The ball "
+                    "flies through the cover region between fielders. Beautiful side-on stance, arms extended. Lush green "
+                    "cricket field, classic coaching pose, no text."
                 ),
             },
             {
@@ -250,8 +270,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "to the pad, and swings through the line of the ball with a straight face, guiding it past the bowler."
                 ),
                 "image_prompt_template": (
-                    "{age} year old {gender} child {name} playing an on drive toward mid-on, front foot pointing slightly to leg side, "
-                    "bat straight, wrists firm, balanced stance, detailed lower-body and head position."
+                    "Detailed children's book illustration: a {age}-year-old {gender} child named {name} in cricket gear "
+                    "playing a controlled on drive. Front foot angled toward mid-on, bat face straight, wrists firm. Ball "
+                    "glides past the bowler on the leg side. Balanced stance with weight transferred forward. Clean green "
+                    "pitch, coaching-style illustration, no text."
                 ),
             },
             {
@@ -262,8 +284,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "and swings the bat horizontally. The front shoulder turns and {name} rolls {his_her} wrists to keep the ball down."
                 ),
                 "image_prompt_template": (
-                    "{age} year old {gender} child {name} playing a pull shot off the back foot, body rotating, back foot anchored, "
-                    "front leg slightly lifted, bat horizontal, ball going toward mid-wicket, dynamic coaching-style pose."
+                    "Detailed children's book illustration: a {age}-year-old {gender} child named {name} in cricket whites "
+                    "and helmet, executing a powerful pull shot. Body rotating on the back foot, bat swinging horizontally, "
+                    "front leg lifting slightly. The ball rockets toward mid-wicket. Dynamic action pose with motion energy. "
+                    "Sunny cricket ground, coaching-style illustration, no text."
                 ),
             },
             {
@@ -274,8 +298,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "then slices it square through the off side with a firm, controlled bat, keeping {his_her} head still."
                 ),
                 "image_prompt_template": (
-                    "{age} year old {gender} child {name} playing a square cut, back foot across toward off stump, body slightly open, "
-                    "bat cutting across the ball toward point, clear line of shoulders, arms, and bat."
+                    "Detailed children's book illustration: a {age}-year-old {gender} child named {name} executing a crisp "
+                    "square cut shot. Back foot planted across toward off stump, body opening slightly, bat slicing "
+                    "horizontally through the ball toward the point boundary. Head perfectly still. Cricket field with "
+                    "fielders in background, coaching-style illustration, no text."
                 ),
             },
             {
@@ -286,8 +312,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "the pitch of the ball, and sweeps the bat in a smooth arc, keeping {his_her} head over the ball."
                 ),
                 "image_prompt_template": (
-                    "{age} year old {gender} child {name} playing a classic sweep, front knee on the ground, back leg folded, "
-                    "bat sweeping low in front, head forward over the ball, spinner in the background."
+                    "Detailed children's book illustration: a {age}-year-old {gender} child named {name} in cricket whites "
+                    "playing a classic sweep shot against a spin bowler. Front knee down on the pitch, back leg folded, "
+                    "bat sweeping in a low arc in front of the body. Head leaning forward over the ball. Spinner visible "
+                    "in the background. Clean coaching-style illustration, no text."
                 ),
             },
             {
@@ -298,8 +326,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "and swings the bat upward through the line, lifting the ball over the infield while still watching carefully."
                 ),
                 "image_prompt_template": (
-                    "{age} year old {gender} child {name} playing a lofted drive, front foot planted firmly, bat following through high "
-                    "above the shoulder, ball flying over extra cover, stable lower body, expressive coaching style."
+                    "Detailed children's book illustration: a {age}-year-old {gender} child named {name} playing a confident "
+                    "lofted drive. Front foot firmly planted, bat following through high above the shoulder, ball soaring "
+                    "over the infield toward the boundary. Stable lower body, eyes following the ball. Blue sky, green "
+                    "outfield, coaching-style illustration, no text."
                 ),
             },
             {
@@ -310,8 +340,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "then meets it with a straight bat close to the body, using soft hands to drop the ball near {his_her} feet."
                 ),
                 "image_prompt_template": (
-                    "{age} year old {gender} child {name} playing a back-foot defensive shot, back foot on the crease, "
-                    "front foot slightly forward, bat straight and close to pads, ball dropping near feet."
+                    "Detailed children's book illustration: a {age}-year-old {gender} child named {name} in cricket gear "
+                    "playing a solid back-foot defensive shot. Back foot planted on the crease line, bat straight and close "
+                    "to the pads, ball dropping gently near the feet. Composed posture, soft hands. Cricket pitch with "
+                    "stumps visible, coaching-style illustration, no text."
                 ),
             },
             {
@@ -322,8 +354,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "last moment, guiding it softly past the slips toward third man with gentle hands and precise timing."
                 ),
                 "image_prompt_template": (
-                    "{age} year old {gender} child {name} playing a late cut, bat angled with soft hands, body slightly open, "
-                    "ball running down to third man, wicket-keeper and slips in background."
+                    "Detailed children's book illustration: a {age}-year-old {gender} child named {name} executing a delicate "
+                    "late cut shot. Bat angled with soft wrists, body slightly open, ball guided past the slip fielders "
+                    "toward third man. Wicket-keeper reaching behind, slips watching. Precise timing captured in a still "
+                    "moment. Cricket ground setting, coaching-style illustration, no text."
                 ),
             },
         ],
@@ -332,7 +366,7 @@ DEFAULT_TEMPLATES: List[Dict] = [
         "id": "a4444444-4444-4444-4444-444444444444",
         "name": "Cinderella and the Brave Heart",
         "description": "A Cinderella retelling where {name} overcomes unkindness from stepfamily and finds confidence, magic, and a caring prince.",
-        "cover_image": "https://images.pexels.com/photos/7148655/pexels-photo-7148655.jpeg?auto=compress&cs=tinysrgb&w=800",
+        "cover_image": "https://images.pexels.com/photos/5560517/pexels-photo-5560517.jpeg?auto=compress&cs=tinysrgb&w=800",
         "total_pages": 10,
         "pages": [
             {
@@ -343,8 +377,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "{name} swept floors, washed dishes, and cooked meals, keeping {his_her} gentle heart safe inside."
                 ),
                 "image_prompt_template": (
-                    "{age} year old {gender} child {name} in simple clothes cleaning a big old kitchen, "
-                    "two fancy stepsisters and a strict stepmother ordering {him_her} around, warm but slightly sad fairy-tale style."
+                    "Detailed watercolor fairy-tale illustration: a {age}-year-old {gender} child named {name} in simple "
+                    "worn clothes, scrubbing a large wooden table in a grand old kitchen. Two overdressed stepsisters "
+                    "lounge on cushioned chairs pointing at {name}, while a stern stepmother supervises from the doorway. "
+                    "Warm but melancholy firelight, stone walls, hanging herbs. Classic storybook style, no text."
                 ),
             },
             {
@@ -355,8 +391,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "{He_She} whispered wishes into the smoke, hoping that one day, someone would see {his_her} true worth."
                 ),
                 "image_prompt_template": (
-                    "{age} year old {gender} child {name} sitting by a fireplace in a small corner, "
-                    "soft orange light on {his_her} face, old broom and bucket nearby, dreamy fairy-tale atmosphere."
+                    "Detailed watercolor fairy-tale illustration: a {age}-year-old {gender} child named {name} sitting "
+                    "curled up on a small stool beside a crackling fireplace, chin resting on knees, gazing into the "
+                    "dancing orange flames. Soft embers float upward like tiny stars. An old broom and bucket rest nearby. "
+                    "Warm amber glow, dreamy peaceful atmosphere, classic storybook style, no text."
                 ),
             },
             {
@@ -368,8 +406,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "{he_she} was far too dirty and plain to go."
                 ),
                 "image_prompt_template": (
-                    "Royal messenger delivering a scroll in a hallway, two excited stepsisters twirling in half-finished dresses, "
-                    "{age} year old {gender} child {name} holding a simple apron, looking hopeful, stern stepmother nearby."
+                    "Detailed watercolor fairy-tale illustration: a royal messenger in a plumed hat presenting a golden "
+                    "scroll at the door. Two excited stepsisters twirl in half-finished ball gowns. A {age}-year-old "
+                    "{gender} child named {name} stands in the background holding a simple apron, looking hopeful "
+                    "but sad. Stern stepmother blocks the way. Rich colors, classic storybook style, no text."
                 ),
             },
             {
@@ -380,8 +420,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "smiled at {him_her}. 'Your kindness shines brighter than any dress,' she said. 'You shall go to the ball.'"
                 ),
                 "image_prompt_template": (
-                    "Magical fairy godmother with sparkling wand appearing before {age} year old {gender} child {name} in a garden, "
-                    "pumpkin and mice nearby, glowing soft blue and gold light, storybook style."
+                    "Detailed watercolor fairy-tale illustration: a glowing fairy godmother in a flowing silver gown, "
+                    "holding a sparkling wand, appearing in a moonlit garden before a {age}-year-old {gender} child "
+                    "named {name} who looks up in wonder. A pumpkin sits on the garden path, mice peek from behind "
+                    "flower pots. Magical blue and gold light radiates outward. Classic storybook style, no text."
                 ),
             },
             {
@@ -392,8 +434,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "A pumpkin became a carriage, and the mice turned into horses. 'Be back by midnight,' she warned gently."
                 ),
                 "image_prompt_template": (
-                    "{age} year old {gender} child {name} spinning in a glowing magical dress or suit, glass slippers shining, "
-                    "pumpkin transforming into a carriage, mice into horses, sparkling fairy dust everywhere."
+                    "Detailed watercolor fairy-tale illustration: a {age}-year-old {gender} child named {name} spinning "
+                    "joyfully as rags transform into a magnificent glittering outfit with glass slippers that catch the "
+                    "moonlight. Behind {name}, a pumpkin morphs into a golden carriage, mice transform into elegant white "
+                    "horses. Sparkles and fairy dust fill the air. Magical transformation scene, classic storybook style, no text."
                 ),
             },
             {
@@ -404,8 +448,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "He asked {name} to dance, and together they glided across the floor like they had always been meant to meet."
                 ),
                 "image_prompt_template": (
-                    "Grand palace ballroom, {age} year old {gender} child {name} dancing with a kind prince, chandeliers and guests "
-                    "in the background, warm golden colors, elegant fairy-tale scene."
+                    "Detailed watercolor fairy-tale illustration: a grand palace ballroom with crystal chandeliers, marble "
+                    "columns, and elegantly dressed guests. A {age}-year-old {gender} child named {name} in a magnificent "
+                    "outfit dances gracefully with a kind young prince at the center of the room. Golden candlelight "
+                    "reflects off the polished floor. Enchanting atmosphere, classic storybook style, no text."
                 ),
             },
             {
@@ -416,8 +462,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "On the palace steps, one glass shoe slipped off, but there was no time to turn back."
                 ),
                 "image_prompt_template": (
-                    "{age} year old {gender} child {name} running down palace stairs at midnight, one glass slipper left behind, "
-                    "clock tower showing twelve, flowing dress or outfit, dramatic but child-friendly scene."
+                    "Detailed watercolor fairy-tale illustration: a {age}-year-old {gender} child named {name} running "
+                    "down wide marble palace stairs under a midnight sky full of stars. One sparkling glass slipper sits "
+                    "on a step behind. A large clock tower in the background shows midnight. Outfit beginning to shimmer "
+                    "and fade. Dramatic but child-friendly urgency, classic storybook style, no text."
                 ),
             },
             {
@@ -428,8 +476,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "He promised himself he would find the person whose kindness had touched his heart."
                 ),
                 "image_prompt_template": (
-                    "Prince traveling in a carriage through villages, holding a glass slipper, trying it on different feet, "
-                    "people watching curiously, bright daytime fairy-tale illustration."
+                    "Detailed watercolor fairy-tale illustration: a determined young prince traveling through a village "
+                    "in a horse-drawn carriage, holding up a single sparkling glass slipper on a velvet cushion. "
+                    "Villagers peer out from doorways and windows. Cobblestone streets, thatched-roof cottages, bright "
+                    "daytime scene. Hopeful atmosphere, classic storybook style, no text."
                 ),
             },
             {
@@ -440,8 +490,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "When {name} gently tried it on, it slid perfectly over {his_her} foot, shining like it had always belonged there."
                 ),
                 "image_prompt_template": (
-                    "Inside a modest room, prince kneeling to place glass slipper on {age} year old {gender} child {name}'s foot, "
-                    "stepsisters and stepmother shocked in the background, warm hopeful colors."
+                    "Detailed watercolor fairy-tale illustration: inside a modest room, the prince kneels to place the "
+                    "glass slipper on a {age}-year-old {gender} child named {name}'s foot. The slipper glows as it fits "
+                    "perfectly. Two stepsisters and the stepmother look shocked and dismayed in the background. Warm "
+                    "hopeful golden light fills the room, classic storybook style, no text."
                 ),
             },
             {
@@ -453,8 +505,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "{name} learned that {his_her} bravery and kindness were the strongest magic of all."
                 ),
                 "image_prompt_template": (
-                    "Palace garden scene, {age} year old {gender} child {name} walking happily with the prince and new friends, "
-                    "flowers, fountains, and bright sky, peaceful fairy-tale ending."
+                    "Detailed watercolor fairy-tale illustration: a beautiful palace garden with fountains, rose bushes, "
+                    "and butterflies. A {age}-year-old {gender} child named {name} in elegant royal attire walks happily "
+                    "with the prince and new friends through the garden. Bright blue sky, warm sunshine, flowers in "
+                    "full bloom. Peaceful, joyful fairy-tale ending, classic storybook style, no text."
                 ),
             },
         ],
@@ -463,7 +517,7 @@ DEFAULT_TEMPLATES: List[Dict] = [
         "id": "a5555555-5555-5555-5555-555555555555",
         "name": "Sports Day Champion",
         "description": "{name} discovers ten different sports on school sports day and imagines becoming a champion in each one.",
-        "cover_image": "https://images.pexels.com/photos/9295860/pexels-photo-9295860.jpeg?auto=compress&cs=tinysrgb&w=800",
+        "cover_image": "https://images.pexels.com/photos/8035133/pexels-photo-8035133.jpeg?auto=compress&cs=tinysrgb&w=800",
         "total_pages": 10,
         "pages": [
             {
@@ -474,8 +528,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "and focuses on the finish line. With each strong step, {name} feels faster and more confident."
                 ),
                 "image_prompt_template": (
-                    "{age} year old {gender} child {name} sprinting on a school track, leaning slightly forward, "
-                    "arms pumping, knees lifting, cheering crowd and 'Sports Day' banner in background."
+                    "Detailed children's book illustration: a determined {age}-year-old {gender} child named {name} in "
+                    "bright athletic clothes and running shoes, sprinting on a red school track. Arms pumping, knees "
+                    "lifting high, hair flowing. A cheering crowd of parents and students behind a colorful 'Sports Day' "
+                    "banner. Bright sunny day, dynamic motion, no text."
                 ),
             },
             {
@@ -486,8 +542,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "and uses quick steps to move past defenders. A strong, clean kick sends the ball spinning toward the goal."
                 ),
                 "image_prompt_template": (
-                    "{age} year old {gender} child {name} dribbling a football on a green field, defenders nearby, "
-                    "legs in motion, focused eyes on the ball, school sports ground setting."
+                    "Detailed children's book illustration: an agile {age}-year-old {gender} child named {name} dribbling "
+                    "a black-and-white football past two defenders on a lush green school field. Eyes focused on the ball, "
+                    "legs in dynamic motion. White goalposts visible ahead, teammates cheering from the sideline. Bright "
+                    "energetic atmosphere, no text."
                 ),
             },
             {
@@ -498,8 +556,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "With a smooth push and flick of the wrists, the ball arcs through the air toward the net."
                 ),
                 "image_prompt_template": (
-                    "{age} year old {gender} child {name} shooting a basketball, knees bent, arms extended, "
-                    "ball in mid-air heading to the hoop, indoor school gym, bright colors."
+                    "Detailed children's book illustration: a focused {age}-year-old {gender} child named {name} in a "
+                    "basketball jersey, shooting a basketball toward an orange hoop. Knees bent, arms fully extended, "
+                    "the ball at the peak of its arc. Indoor school gymnasium with polished wooden floor, colorful "
+                    "bleachers, bright overhead lights, no text."
                 ),
             },
             {
@@ -510,8 +570,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "striking the ball in front of the body and following through high, sending it neatly over the net."
                 ),
                 "image_prompt_template": (
-                    "{age} year old {gender} child {name} playing tennis on a court, side-on stance, racket following through, "
-                    "ball crossing the net, sunny outdoor scene."
+                    "Detailed children's book illustration: an athletic {age}-year-old {gender} child named {name} on a "
+                    "green tennis court, hitting a forehand with perfect form. Side-on stance, racket following through "
+                    "high, tennis ball crossing the white net. Sunny outdoor court with green trees in the background. "
+                    "Clean sporty atmosphere, no text."
                 ),
             },
             {
@@ -522,8 +584,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "Each stroke feels smoother as {he_she} glides through the water like a fast, friendly dolphin."
                 ),
                 "image_prompt_template": (
-                    "{age} year old {gender} child {name} swimming in a clean blue pool, freestyle stroke, "
-                    "face turning to breathe, lane lines visible, bright indoor lighting."
+                    "Detailed children's book illustration: a streamlined {age}-year-old {gender} child named {name} in a "
+                    "swim cap and goggles, gliding through crystal-clear blue pool water in a freestyle stroke. Face "
+                    "turning to the side to breathe, water splashing gently. Lane lines and pool tiles visible. Bright "
+                    "indoor pool lighting, refreshing atmosphere, no text."
                 ),
             },
             {
@@ -534,8 +598,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "Slow, steady breaths help {him_her} stay calm as {he_she} takes graceful steps across."
                 ),
                 "image_prompt_template": (
-                    "{age} year old {gender} child {name} balancing on a gymnastics beam, arms out for balance, "
-                    "focused face, coach and mats in the background, bright gym setting."
+                    "Detailed children's book illustration: a graceful {age}-year-old {gender} child named {name} in a "
+                    "gymnastics leotard, walking along a balance beam with arms extended for balance. Focused determined "
+                    "expression. Safety mats below, a supportive coach watching nearby. Bright gym with colorful "
+                    "equipment in background, no text."
                 ),
             },
             {
@@ -546,8 +612,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "jumps for a high shot, and swings the racket with a quick snap to send the shuttle back over the net."
                 ),
                 "image_prompt_template": (
-                    "{age} year old {gender} child {name} playing badminton indoors, jumping to hit a shuttlecock, "
-                    "racket arm stretched up, net and court lines visible."
+                    "Detailed children's book illustration: a nimble {age}-year-old {gender} child named {name} leaping "
+                    "to smash a badminton shuttlecock, racket arm stretched high overhead. Indoor court with a white "
+                    "net, court lines on the floor, and a competitor on the other side. Athletic jump captured mid-air. "
+                    "Bright indoor lighting, dynamic action, no text."
                 ),
             },
             {
@@ -558,8 +626,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "Strong legs and sharp eyes help {him_her} move down the field like a true team warrior."
                 ),
                 "image_prompt_template": (
-                    "{age} year old {gender} child {name} playing field hockey, slightly crouched, stick controlling the ball, "
-                    "teammates in background, school sports field."
+                    "Detailed children's book illustration: a {age}-year-old {gender} child named {name} in a hockey "
+                    "uniform with shin guards, crouching low and dribbling a ball with a hockey stick on a green turf "
+                    "field. Teammates run alongside in matching jerseys. School field with goal cage visible. "
+                    "Determined teamwork atmosphere, no text."
                 ),
             },
             {
@@ -570,8 +640,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "{He_She} lifts off the ground, flying through the air before landing softly in the sand."
                 ),
                 "image_prompt_template": (
-                    "{age} year old {gender} child {name} mid-air in a long jump, knees up, arms forward, "
-                    "sand pit below, white takeoff board visible, outdoor track setting."
+                    "Detailed children's book illustration: a {age}-year-old {gender} child named {name} captured mid-flight "
+                    "in a long jump, legs tucked forward, arms reaching ahead. A sand pit stretches below, a white "
+                    "takeoff board visible behind. Outdoor school track with spectators clapping. Sense of weightless "
+                    "flight and freedom, no text."
                 ),
             },
             {
@@ -583,9 +655,11 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "{name} knows {he_she} can become a champion in any sport {he_she} loves."
                 ),
                 "image_prompt_template": (
-                    "{age} year old {gender} child {name} standing proudly with a small medal or ribbon, "
-                    "various sports equipment (football, racket, bat, ball) around, school field in background, "
-                    "bright celebratory children’s book style."
+                    "Detailed children's book illustration: a proud {age}-year-old {gender} child named {name} standing "
+                    "on a winners' podium wearing a shiny gold medal on a ribbon, arms raised in celebration. Scattered "
+                    "around the podium are a football, tennis racket, basketball, hockey stick, swim goggles, and "
+                    "badminton shuttlecock. Friends and family cheer, colorful confetti falls. Triumphant celebratory "
+                    "mood, bright storybook style, no text."
                 ),
             },
         ],

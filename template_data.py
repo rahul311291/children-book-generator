@@ -1,8 +1,3 @@
-"""
-Template data for 'When {name} Grows Up' book
-Contains 24 professions with text and image prompts
-"""
-
 WHEN_I_GROW_UP_TEMPLATE = {
     "name": "When {name} Grows Up",
     "description": "A 24-page personalized book featuring different professions the child might pursue when they grow up",
@@ -16,7 +11,7 @@ WHEN_I_GROW_UP_TEMPLATE = {
 an astronaut floating free.
 Among the stars and planets bright,
 exploring space both day and night!""",
-            "image_prompt_template": "Watercolor illustration of a {age} year old {gender} child named {name} dressed as an astronaut in a white spacesuit with helmet, floating in space surrounded by colorful planets, stars, and galaxies, dreamy cosmic background, children's book art style, inspiring and adventurous mood"
+            "image_prompt_template": "Detailed watercolor children's book illustration: a cheerful {age}-year-old {gender} child named {name} wearing a bright white spacesuit with a round glass helmet, floating weightlessly in outer space. Colorful planets, swirling nebulae, and twinkling stars surround {name}. Earth glows blue below. Soft brush strokes, warm pastel palette, whimsical storybook style, no text."
         },
         {
             "page_number": 2,
@@ -25,7 +20,7 @@ exploring space both day and night!""",
 with a stethoscope around {his_her} throat.
 Helping people feel better each day,
 making all the sickness go away!""",
-            "image_prompt_template": "Watercolor illustration of a {age} year old {gender} child named {name} wearing a white doctor's coat and stethoscope, standing in a cheerful hospital room, holding a medical chart, warm and caring expression, children's book art style, soft colors, compassionate and professional mood"
+            "image_prompt_template": "Detailed watercolor children's book illustration: a caring {age}-year-old {gender} child named {name} in a crisp white doctor's coat and a shiny silver stethoscope, standing in a cheerful hospital room with colorful wall art. {name} holds a clipboard and smiles warmly at a plush teddy bear patient on the bed. Soft pastel tones, gentle lighting, storybook style, no text."
         },
         {
             "page_number": 3,
@@ -34,7 +29,7 @@ making all the sickness go away!""",
 with wisdom, patience, and pride.
 Sharing knowledge every day,
 helping students find their way!""",
-            "image_prompt_template": "Watercolor illustration of a {age} year old {gender} child named {name} as a teacher standing in front of a colorful classroom with a chalkboard, books, and happy students, holding a book or pointer, kind and enthusiastic expression, children's book art style, bright educational setting"
+            "image_prompt_template": "Detailed watercolor children's book illustration: a {age}-year-old {gender} child named {name} standing confidently at a colorful classroom chalkboard with ABCs and numbers, holding an open storybook. Small students sit on a rainbow rug listening eagerly. Bright classroom with bookshelves, globe, and hanging art. Warm sunny lighting, storybook style, no text."
         },
         {
             "page_number": 4,
@@ -43,7 +38,7 @@ helping students find their way!""",
 {he_she} might fight fires all day long.
 With a helmet and a hose so bright,
 saving people day and night!""",
-            "image_prompt_template": "Watercolor illustration of a {age} year old {gender} child named {name} wearing firefighter gear with helmet and protective coat, holding a fire hose, standing in front of a fire truck, brave and heroic expression, children's book art style, action-packed scene with warm colors"
+            "image_prompt_template": "Detailed watercolor children's book illustration: a brave {age}-year-old {gender} child named {name} wearing a shiny red firefighter helmet and yellow turnout coat, standing proudly next to a bright red fire truck with a golden ladder. A Dalmatian dog sits beside {name}. Blue sky, neighborhood houses in background. Bold warm colors, heroic mood, storybook style, no text."
         },
         {
             "page_number": 5,
@@ -52,7 +47,7 @@ saving people day and night!""",
 delicious meals and birthday cake.
 With a chef's hat upon {his_her} head,
 making food that's perfectly spread!""",
-            "image_prompt_template": "Watercolor illustration of a {age} year old {gender} child named {name} wearing a white chef's hat and apron in a professional kitchen, surrounded by fresh ingredients, pots, and pans, mixing or cooking something delicious, joyful expression, children's book art style, warm kitchen atmosphere"
+            "image_prompt_template": "Detailed watercolor children's book illustration: a joyful {age}-year-old {gender} child named {name} wearing a tall white chef's hat and apron, stirring a big pot in a warm kitchen. Fresh vegetables, colorful fruits, stacked cupcakes, and a rising cake surround {name}. Steam wisps, copper pots on shelves, checkered tiles. Cozy warm tones, storybook style, no text."
         },
         {
             "page_number": 6,
@@ -61,7 +56,7 @@ making food that's perfectly spread!""",
 high above in the bright blue sky.
 Piloting planes from here to there,
 traveling everywhere with care!""",
-            "image_prompt_template": "Watercolor illustration of a {age} year old {gender} child named {name} in a pilot's uniform with cap and wings badge, sitting in an airplane cockpit with controls and dials, confident smile, view of clouds through windows, children's book art style, adventurous aviation scene"
+            "image_prompt_template": "Detailed watercolor children's book illustration: an adventurous {age}-year-old {gender} child named {name} in a navy pilot's uniform with gold wings badge and cap, sitting in an airplane cockpit filled with dials and instruments. Through the wide windshield, fluffy clouds and a golden sunset stretch endlessly. Exciting aviation mood, storybook style, no text."
         },
         {
             "page_number": 7,
@@ -70,7 +65,7 @@ traveling everywhere with care!""",
 {he_she} might help animals everywhere.
 A vet who heals with loving touch,
 making sure they don't hurt much!""",
-            "image_prompt_template": "Watercolor illustration of a {age} year old {gender} child named {name} wearing a veterinarian coat, gently examining a cute puppy or kitten in a veterinary clinic, surrounded by animal toys and medical tools, caring and gentle expression, children's book art style, soft warm colors"
+            "image_prompt_template": "Detailed watercolor children's book illustration: a gentle {age}-year-old {gender} child named {name} in a light blue vet coat, carefully examining a fluffy golden puppy with a tiny stethoscope. A kitten, bunny, and parrot watch nearby on the clinic counter. Bright, clean veterinary office with paw-print posters. Soft warm colors, caring mood, storybook style, no text."
         },
         {
             "page_number": 8,
@@ -79,7 +74,7 @@ making sure they don't hurt much!""",
 creating art that fills with awe.
 With brushes, colors, and a creative mind,
 making beauty of every kind!""",
-            "image_prompt_template": "Watercolor illustration of a {age} year old {gender} child named {name} wearing a paint-splattered apron, standing at an easel with paintbrushes and palette, surrounded by colorful artwork and paint supplies, focused and creative expression, children's book art style, vibrant artistic studio"
+            "image_prompt_template": "Detailed watercolor children's book illustration: a creative {age}-year-old {gender} child named {name} in a paint-splattered smock, standing at a tall wooden easel, painting a vibrant rainbow landscape. Color palettes, jars of brushes, and splashes of paint fill a sunlit art studio. Canvases lean against walls. Vivid joyful colors, creative atmosphere, storybook style, no text."
         },
         {
             "page_number": 9,
@@ -88,7 +83,7 @@ making beauty of every kind!""",
 finding answers and learning more.
 With a lab coat and test tubes in hand,
 making breakthroughs across the land!""",
-            "image_prompt_template": "Watercolor illustration of a {age} year old {gender} child named {name} wearing a white lab coat and safety goggles, standing in a science laboratory with beakers, test tubes, microscope, and colorful chemical reactions, excited and curious expression, children's book art style, bright educational science setting"
+            "image_prompt_template": "Detailed watercolor children's book illustration: an excited {age}-year-old {gender} child named {name} wearing a white lab coat and big safety goggles, holding a bubbling test tube that glows green. A microscope, beakers with colorful liquids, and a model of the solar system fill the science lab. Bright discovery mood, storybook style, no text."
         },
         {
             "page_number": 10,
@@ -97,7 +92,7 @@ making breakthroughs across the land!""",
 {he_she} might play music all around.
 With an instrument and a melody true,
 bringing joy to me and you!""",
-            "image_prompt_template": "Watercolor illustration of a {age} year old {gender} child named {name} playing a musical instrument (guitar, piano, or violin), standing on a stage with musical notes floating around, spotlight shining, joyful and passionate expression, children's book art style, warm concert atmosphere"
+            "image_prompt_template": "Detailed watercolor children's book illustration: a passionate {age}-year-old {gender} child named {name} playing a shiny acoustic guitar on a small wooden stage, colorful musical notes floating and dancing in the air around {name}. A soft warm spotlight shines down, audience silhouettes clap. Joyful concert atmosphere, storybook style, no text."
         },
         {
             "page_number": 11,
@@ -106,7 +101,7 @@ bringing joy to me and you!""",
 becoming an athlete one day.
 With sports and games and championship pride,
 inspiring others far and wide!""",
-            "image_prompt_template": "Watercolor illustration of a {age} year old {gender} child named {name} in athletic sportswear, playing a sport (soccer, basketball, or running), in a stadium or field setting, determined and energetic expression, children's book art style, dynamic action pose with bright sports equipment"
+            "image_prompt_template": "Detailed watercolor children's book illustration: an energetic {age}-year-old {gender} child named {name} in bright athletic sportswear, mid-stride on a running track with arms pumping. A stadium with cheering crowd, colorful banners, and a finish line ribbon ahead. Dynamic action pose, motion lines, triumphant mood, storybook style, no text."
         },
         {
             "page_number": 12,
@@ -115,7 +110,7 @@ inspiring others far and wide!""",
 creating structures that will shine.
 With blueprints, tools, and clever plans,
 building bridges across the lands!""",
-            "image_prompt_template": "Watercolor illustration of a {age} year old {gender} child named {name} wearing a hard hat and safety vest, holding blueprints, standing near building blocks or construction models, thoughtful and innovative expression, children's book art style, construction site with cranes and buildings in background"
+            "image_prompt_template": "Detailed watercolor children's book illustration: a thoughtful {age}-year-old {gender} child named {name} wearing a bright yellow hard hat and orange safety vest, studying a large blueprint on a table. Behind {name}, a model bridge and tower made of colorful blocks rise up. Construction cranes and buildings in the background under a blue sky. Innovative mood, storybook style, no text."
         },
         {
             "page_number": 13,
@@ -124,7 +119,7 @@ building bridges across the lands!""",
 {he_she} might clean teeth all the while.
 A dentist who makes everything right,
 keeping every tooth healthy and bright!""",
-            "image_prompt_template": "Watercolor illustration of a {age} year old {gender} child named {name} wearing dentist scrubs and mask around neck, holding dental tools, standing in a bright dental office with dental chair and tooth models, friendly and reassuring expression, children's book art style, clean medical environment"
+            "image_prompt_template": "Detailed watercolor children's book illustration: a friendly {age}-year-old {gender} child named {name} in light blue dentist scrubs, holding a giant toothbrush next to a big smiling tooth character. A bright dental office with a colorful chart of teeth on the wall. Clean, cheerful medical environment, reassuring friendly mood, storybook style, no text."
         },
         {
             "page_number": 14,
@@ -133,7 +128,7 @@ keeping every tooth healthy and bright!""",
 fields of crops from end to end.
 A farmer with a barn and land,
 growing food with gentle hands!""",
-            "image_prompt_template": "Watercolor illustration of a {age} year old {gender} child named {name} wearing overalls and straw hat, standing in a farm field with crops, barn and animals in background, holding farming tools or vegetables, content and hardworking expression, children's book art style, sunny rural farm scene"
+            "image_prompt_template": "Detailed watercolor children's book illustration: a happy {age}-year-old {gender} child named {name} wearing denim overalls and a wide straw hat, standing in a lush vegetable garden holding a basket overflowing with tomatoes and carrots. A red barn, grazing cows, and rolling green hills under a warm golden sunrise. Peaceful rural mood, storybook style, no text."
         },
         {
             "page_number": 15,
@@ -142,7 +137,7 @@ growing food with gentle hands!""",
 building structures without fail.
 With tools and teamwork every day,
 making buildings that are here to stay!""",
-            "image_prompt_template": "Watercolor illustration of a {age} year old {gender} child named {name} wearing a hard hat, safety vest, and work boots, holding a hammer or tools, standing at a construction site with building materials and equipment, strong and capable expression, children's book art style, active construction scene"
+            "image_prompt_template": "Detailed watercolor children's book illustration: a strong {age}-year-old {gender} child named {name} wearing a hard hat, safety vest, and sturdy boots, holding a hammer near wooden beams of a house frame. Other friendly construction workers wave in the background. Bright sunny construction site, teamwork mood, storybook style, no text."
         },
         {
             "page_number": 16,
@@ -151,7 +146,7 @@ making buildings that are here to stay!""",
 {he_she} might organize library nooks.
 Helping people find stories to read,
 sharing knowledge for every need!""",
-            "image_prompt_template": "Watercolor illustration of a {age} year old {gender} child named {name} wearing professional attire, standing in a cozy library surrounded by colorful bookshelves, holding books, warm and welcoming expression, children's book art style, inviting library atmosphere with reading chairs"
+            "image_prompt_template": "Detailed watercolor children's book illustration: a warm {age}-year-old {gender} child named {name} sitting in a cozy library corner surrounded by tall bookshelves packed with colorful books, reading aloud from a large open storybook to a circle of attentive young listeners. Soft golden lamp light, comfortable reading chairs, inviting atmosphere, storybook style, no text."
         },
         {
             "page_number": 17,
@@ -160,7 +155,7 @@ sharing knowledge for every need!""",
 taking pictures day and night.
 With a camera and artistic eye,
 preserving moments as they fly by!""",
-            "image_prompt_template": "Watercolor illustration of a {age} year old {gender} child named {name} holding a professional camera with strap around neck, taking photos in a scenic location, focused and artistic expression, children's book art style, outdoor scene with beautiful lighting"
+            "image_prompt_template": "Detailed watercolor children's book illustration: an artistic {age}-year-old {gender} child named {name} holding a vintage camera up to one eye, capturing a beautiful butterfly landing on a sunflower in a meadow. Framed photos float around showing mountains, animals, and sunsets. Warm golden hour lighting, creative mood, storybook style, no text."
         },
         {
             "page_number": 18,
@@ -169,7 +164,7 @@ preserving moments as they fly by!""",
 elephants, lions, and apes who wait.
 A zookeeper with animals to feed,
 giving them everything they need!""",
-            "image_prompt_template": "Watercolor illustration of a {age} year old {gender} child named {name} wearing zoo keeper uniform with khaki clothes, feeding or caring for friendly zoo animals (elephant, giraffe, or monkey), standing in a zoo setting with enclosures, caring and gentle expression, children's book art style, colorful animal habitat"
+            "image_prompt_template": "Detailed watercolor children's book illustration: a caring {age}-year-old {gender} child named {name} in khaki zoo keeper uniform and wide-brimmed hat, gently feeding a tall giraffe that bends down to eat from {name}'s hand. A baby elephant and colorful parrots are nearby. Lush green zoo habitat with trees and pond. Gentle caring mood, storybook style, no text."
         },
         {
             "page_number": 19,
@@ -178,7 +173,7 @@ giving them everything they need!""",
 {he_she} might dance both day and night.
 On stages big with movements true,
 inspiring audiences through and through!""",
-            "image_prompt_template": "Watercolor illustration of a {age} year old {gender} child named {name} wearing a dance costume (ballet tutu or contemporary dance outfit), performing a graceful dance pose on a stage with curtains and lights, elegant and expressive, children's book art style, theatrical performance setting"
+            "image_prompt_template": "Detailed watercolor children's book illustration: a graceful {age}-year-old {gender} child named {name} in a sparkling dance outfit, performing an elegant leap across a grand stage with deep red velvet curtains and warm stage lights. Sparkles trail behind {name}'s movement. Audience silhouettes below. Elegant theatrical mood, storybook style, no text."
         },
         {
             "page_number": 20,
@@ -187,7 +182,7 @@ inspiring audiences through and through!""",
 through sunshine, wind, and even hail.
 Bringing letters, cards, and packages too,
 connecting people just like glue!""",
-            "image_prompt_template": "Watercolor illustration of a {age} year old {gender} child named {name} wearing a mail carrier uniform with postal hat and bag full of letters, delivering mail on a friendly neighborhood street with mailboxes, cheerful and reliable expression, children's book art style, sunny suburban scene"
+            "image_prompt_template": "Detailed watercolor children's book illustration: a cheerful {age}-year-old {gender} child named {name} in a blue postal uniform with a cap, carrying a leather mail bag full of colorful letters and packages, walking along a friendly neighborhood street with painted mailboxes, white picket fences, and blooming flower gardens. Bright sunny day, community mood, storybook style, no text."
         },
         {
             "page_number": 21,
@@ -196,7 +191,7 @@ connecting people just like glue!""",
 learning about life swimming free.
 With dolphins, whales, and fish so bright,
 protecting oceans day and night!""",
-            "image_prompt_template": "Watercolor illustration of a {age} year old {gender} child named {name} wearing diving gear or wetsuit, observing ocean life underwater or on a research boat, surrounded by colorful fish, coral, and sea creatures, curious and adventurous expression, children's book art style, vibrant underwater scene"
+            "image_prompt_template": "Detailed watercolor children's book illustration: an adventurous {age}-year-old {gender} child named {name} in a blue wetsuit and snorkel mask, swimming underwater surrounded by a friendly dolphin, a sea turtle, colorful coral reefs, and schools of tropical fish. Sunlight rays pierce through the crystal blue water. Magical ocean mood, storybook style, no text."
         },
         {
             "page_number": 22,
@@ -205,7 +200,7 @@ protecting oceans day and night!""",
 {he_she} might guard forests with expertise.
 A ranger keeping nature safe and sound,
 helping wildlife all around!""",
-            "image_prompt_template": "Watercolor illustration of a {age} year old {gender} child named {name} wearing park ranger uniform with hat and badge, standing in a beautiful forest with trees and wildlife, holding binoculars or field guide, protective and caring expression, children's book art style, lush natural outdoor setting"
+            "image_prompt_template": "Detailed watercolor children's book illustration: a proud {age}-year-old {gender} child named {name} in a park ranger uniform with a wide flat hat and bronze badge, standing on a forest trail with towering pine trees. A deer peeks from behind a tree, an owl sits on a branch, and wildflowers bloom along the path. Peaceful nature mood, storybook style, no text."
         },
         {
             "page_number": 23,
@@ -214,7 +209,7 @@ helping wildlife all around!""",
 bread and cookies, pies and cake.
 With flour, sugar, and ovens warm,
 creating treats in every form!""",
-            "image_prompt_template": "Watercolor illustration of a {age} year old {gender} child named {name} wearing a baker's apron and hat, standing in a cozy bakery with display cases of fresh bread, pastries, and cakes, holding a tray of baked goods, happy and proud expression, children's book art style, warm bakery with delicious treats"
+            "image_prompt_template": "Detailed watercolor children's book illustration: a delighted {age}-year-old {gender} child named {name} in a white baker's apron and puffy hat, holding a tray of freshly baked golden cookies in a cozy bakery. Glass display cases show layered cakes, braided bread, and pastries. Flour dust floats in warm oven light. Cozy delicious mood, storybook style, no text."
         },
         {
             "page_number": 24,
@@ -223,16 +218,13 @@ creating treats in every form!""",
 we'll support {him_her} completely.
 The future's bright, the world's so wide,
 we'll be here, right by {his_her} side!""",
-            "image_prompt_template": "Watercolor illustration of a {age} year old {gender} child named {name} standing confidently on a path that leads to a bright, hopeful horizon with multiple career symbols floating around (stethoscope, paintbrush, stars, books, etc.), optimistic and inspired expression, children's book art style, dreamy sunrise background with endless possibilities"
+            "image_prompt_template": "Detailed watercolor children's book illustration: a confident {age}-year-old {gender} child named {name} standing on a hilltop at golden sunrise, looking toward a bright horizon. Floating around {name} are soft glowing symbols of different careers: a stethoscope, paintbrush, rocket, book, musical note, chef hat, and magnifying glass. Dreamy hopeful atmosphere, endless possibilities mood, storybook style, no text."
         }
     ]
 }
 
 
 def personalize_template_text(text_template: str, child_name: str, gender: str) -> str:
-    """
-    Replace placeholders in template text with personalized content
-    """
     pronouns = get_pronouns(gender)
 
     return text_template.format(
@@ -248,9 +240,6 @@ def personalize_template_text(text_template: str, child_name: str, gender: str) 
 
 
 def personalize_template_image_prompt(prompt_template: str, child_name: str, gender: str, age: int) -> str:
-    """
-    Replace placeholders in image prompt template with personalized content
-    """
     gender_desc = get_gender_description(gender)
 
     return prompt_template.format(
@@ -261,9 +250,6 @@ def personalize_template_image_prompt(prompt_template: str, child_name: str, gen
 
 
 def get_pronouns(gender: str) -> dict:
-    """
-    Get pronoun set based on gender selection
-    """
     gender_lower = gender.lower()
 
     if gender_lower == 'boy' or gender_lower == 'male':
@@ -296,9 +282,6 @@ def get_pronouns(gender: str) -> dict:
 
 
 def get_gender_description(gender: str) -> str:
-    """
-    Get gender description for image prompts
-    """
     gender_lower = gender.lower()
 
     if gender_lower == 'boy' or gender_lower == 'male':
