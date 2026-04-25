@@ -20,6 +20,7 @@ import logging
 import requests
 import json
 import time
+import hashlib
 from reportlab.lib.units import inch
 from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
@@ -49,6 +50,67 @@ def compress_image_for_storage(data_url: str, max_size: int = 768, quality: int 
     except Exception as e:
         logger.warning(f"Image compression failed: {e}")
         return data_url
+
+
+# ---------------------------------------------------------------------------
+# Shared image pool helpers (generic template images, no reference photos)
+# ---------------------------------------------------------------------------
+
+def _age_to_group(age: int) -> str:
+    """Map an age to a canonical age-group string used as pool key."""
+    if age <= 4:
+        return "2-4"
+    elif age <= 6:
+        return "4-6"
+    elif age <= 8:
+        return "6-8"
+    else:
+        return "8-12"
+
+
+def _pool_hash(template_id: str, page_number: int, age_group: str, gender: str) -> str:
+    key = f"{template_id}:{page_number}:{age_group}:{gender.lower()}"
+    return hashlib.md5(key.encode()).hexdigest()
+
+
+def get_shared_pool_image(template_id: str, page_number: int, age_group: str, gender: str) -> Optional[str]:
+    """Return image_url from shared_image_pool on hit, or None on miss."""
+    try:
+        ph = _pool_hash(template_id, page_number, age_group, gender)
+        supabase = _get_authed_supabase_tbg()
+        result = (
+            supabase.table("shared_image_pool")
+            .select("image_url")
+            .eq("prompt_hash", ph)
+            .limit(1)
+            .execute()
+        )
+        if result.data:
+            logger.info(f"Shared pool HIT: template={template_id} page={page_number} age={age_group} gender={gender}")
+            return result.data[0]["image_url"]
+    except Exception as e:
+        logger.warning(f"Shared pool lookup failed: {e}")
+    return None
+
+
+def save_to_shared_pool(template_id: str, page_number: int, age_group: str, gender: str, image_url: str) -> None:
+    """Persist a generated image to the shared pool (silent no-op on duplicate or error)."""
+    try:
+        ph = _pool_hash(template_id, page_number, age_group, gender)
+        compressed = compress_image_for_storage(image_url)
+        supabase = _get_authed_supabase_tbg()
+        supabase.table("shared_image_pool").insert({
+            "prompt_hash": ph,
+            "template_id": template_id,
+            "page_number": page_number,
+            "age_group": age_group,
+            "gender": gender.lower(),
+            "image_url": compressed,
+        }).execute()
+        logger.info(f"Saved to shared pool: hash={ph}")
+    except Exception as e:
+        # Unique constraint violation on concurrent insert is expected and harmless
+        logger.debug(f"Shared pool save skipped (likely duplicate): {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -1183,6 +1245,8 @@ def generate_template_book(api_key: str, book_data: Dict):
         progress_bar = st.progress(0)
         status_text = st.empty()
         total_pages = len(pages)
+        age_group = _age_to_group(age)
+        use_shared_pool = not bool(reference_image_base64)  # only share generic images
 
         for idx, page in enumerate(pages):
             status_text.text(f"Generating page {idx + 1} of {total_pages}: {page['profession_title']}")
@@ -1192,7 +1256,18 @@ def generate_template_book(api_key: str, book_data: Dict):
                 page['image_prompt_template'], child_name, gender, age
             )
 
-            image_url = generate_page_image(api_key, personalized_image_prompt, reference_image_base64, openrouter_key=openrouter_key)
+            # Check shared pool first (skip if reference photo — image is person-specific)
+            image_url = None
+            if use_shared_pool:
+                image_url = get_shared_pool_image(template_id, page['page_number'], age_group, gender)
+                if image_url:
+                    status_text.text(f"♻️ Reusing cached image for page {idx + 1} of {total_pages}: {page['profession_title']}")
+
+            if not image_url:
+                image_url = generate_page_image(api_key, personalized_image_prompt, reference_image_base64, openrouter_key=openrouter_key)
+                # Contribute to shared pool if generic
+                if image_url and use_shared_pool:
+                    save_to_shared_pool(template_id, page['page_number'], age_group, gender, image_url)
 
             generated_book['pages'].append({
                 'page_number': page['page_number'],

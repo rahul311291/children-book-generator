@@ -102,6 +102,8 @@ if 'api_key' not in st.session_state:
     st.session_state.api_key = ""
 if 'openrouter_api_key' not in st.session_state:
     st.session_state.openrouter_api_key = ""
+if 'current_book_history_id' not in st.session_state:
+    st.session_state.current_book_history_id = None
 if 'generated_story' not in st.session_state:
     st.session_state.generated_story = None
 if 'generated_images' not in st.session_state:
@@ -128,6 +130,41 @@ if 'stories_dir' not in st.session_state:
     st.session_state.stories_dir.mkdir(exist_ok=True)
 if 'current_child_name' not in st.session_state:
     st.session_state.current_child_name = ""  # Track current child name for auto-save
+
+def compress_pil_images_for_storage(images: list, max_size: int = 768, quality: int = 75) -> list:
+    """Compress a list of PIL Images to base64 JPEG data URLs for Supabase storage."""
+    result = []
+    for img in images:
+        if img is None:
+            result.append(None)
+            continue
+        try:
+            buf = io.BytesIO()
+            img_copy = img.convert("RGB")
+            img_copy.thumbnail((max_size, max_size), Image.LANCZOS)
+            img_copy.save(buf, format="JPEG", quality=quality, optimize=True)
+            b64 = base64.b64encode(buf.getvalue()).decode()
+            result.append(f"data:image/jpeg;base64,{b64}")
+        except Exception as e:
+            logger.warning(f"Image compression failed: {e}")
+            result.append(None)
+    return result
+
+
+def decode_stored_images(images_data: list) -> list:
+    """Decode a list of base64 data URLs back to PIL Images."""
+    result = []
+    for url in (images_data or []):
+        if url and isinstance(url, str) and url.startswith("data:image"):
+            try:
+                raw = base64.b64decode(url.split(",", 1)[-1])
+                result.append(Image.open(io.BytesIO(raw)).convert("RGB"))
+            except Exception:
+                result.append(None)
+        else:
+            result.append(None)
+    return result
+
 
 def create_visual_anchor(child_name: str, age: int, gender: str, physical_desc: str, character_style: str = "") -> str:
     """Create a visual anchor description for consistent character appearance."""
@@ -201,17 +238,32 @@ def save_story(story_data: Dict, child_name: str, metadata: Dict = None):
         if user_id:
             try:
                 supabase = get_authed_supabase()
-                # Strip images from story_data before storing to keep payload small
                 story_for_db = json.loads(json.dumps(story_data))
-                supabase.table("book_history").insert({
-                    "user_id": user_id,
-                    "child_name": child_name,
-                    "title": story_data.get("title", f"{child_name}'s Story"),
-                    "book_type": "custom",
-                    "story_data": story_for_db,
-                    "metadata": {**(metadata or {}), "timestamp": timestamp, "journey_state": journey_state},
-                }).execute()
-                logger.info(f"Story saved to Supabase for user {user_id}")
+                images_for_db = compress_pil_images_for_storage(
+                    st.session_state.get("generated_images", [])
+                ) if st.session_state.get("generated_images") else []
+
+                existing_id = st.session_state.get("current_book_history_id")
+                if existing_id:
+                    supabase.table("book_history").update({
+                        "story_data": story_for_db,
+                        "images": images_for_db,
+                        "metadata": {**(metadata or {}), "timestamp": timestamp, "journey_state": journey_state},
+                    }).eq("id", existing_id).eq("user_id", user_id).execute()
+                    logger.info(f"Story updated in Supabase row {existing_id}")
+                else:
+                    resp = supabase.table("book_history").insert({
+                        "user_id": user_id,
+                        "child_name": child_name,
+                        "title": story_data.get("title", f"{child_name}'s Story"),
+                        "book_type": "custom",
+                        "story_data": story_for_db,
+                        "images": images_for_db,
+                        "metadata": {**(metadata or {}), "timestamp": timestamp, "journey_state": journey_state},
+                    }).execute()
+                    if resp.data:
+                        st.session_state.current_book_history_id = resp.data[0]["id"]
+                        logger.info(f"Story inserted to Supabase, id={resp.data[0]['id']}")
             except Exception as db_err:
                 logger.warning(f"Supabase save failed, falling back to local file: {db_err}")
 
@@ -413,6 +465,7 @@ def get_story_history():
 def reset_story_state():
     """Reset all story-related session state - COMPLETE RESET."""
     st.session_state.generated_story = None
+    st.session_state.current_book_history_id = None
     st.session_state.generated_images = []
     st.session_state.image_generation_errors = {}
     st.session_state.pdf_path = None
@@ -1497,7 +1550,9 @@ def main():
                                             "timestamp": meta.get("timestamp", ""),
                                             "journey_state": meta.get("journey_state", {}),
                                             "metadata": meta,
+                                            "images": row.data.get("images", []),
                                         }
+                                        st.session_state.current_book_history_id = story_info["supabase_id"]
                                 except Exception as load_err:
                                     st.error(f"Failed to load from cloud: {load_err}")
                             elif story_info.get("filepath"):
@@ -1542,17 +1597,24 @@ def main():
                                             st.session_state.edited_image_prompts = journey_state.get("edited_image_prompts", {})
                                             current_step = journey_state.get("current_step", "step1")
                                             
-                                            # Images aren't saved for custom stories; template books already had images restored above
+                                            # Restore saved images for custom stories if available
                                             if not story_data.get("template_id"):
-                                                st.session_state.generated_images = []
+                                                saved_imgs = loaded_data.get("images", [])
+                                                if saved_imgs:
+                                                    st.session_state.generated_images = decode_stored_images(saved_imgs)
+                                                else:
+                                                    st.session_state.generated_images = []
                                             st.session_state.pdf_path = None
                                             st.session_state.pdf_generation_key = None
-                                            
+
                                             # Show message based on where they were
+                                            has_images = bool(st.session_state.generated_images)
                                             if current_step == "step3":
-                                                st.success(f"✅ Loaded story: {display_name}. You were at **Step 3 (PDF ready)**. Images need to be regenerated to view/download PDF, but your approval states are preserved.")
+                                                img_note = "" if has_images else " Images need to be regenerated."
+                                                st.success(f"✅ Loaded story: {display_name}. You were at **Step 3 (PDF ready)**.{img_note}")
                                             elif current_step == "step2":
-                                                st.success(f"✅ Loaded story: {display_name}. You were at **Step 2 (Image Review)**. Images need to be regenerated, but your approval states are preserved.")
+                                                img_note = "" if has_images else " Images need to be regenerated."
+                                                st.success(f"✅ Loaded story: {display_name}. You were at **Step 2 (Image Review)**.{img_note}")
                                             else:
                                                 st.success(f"✅ Loaded story: {display_name}. You were at **Step 1 (Story Review)**.")
                                             
@@ -1565,7 +1627,11 @@ def main():
                                             st.session_state.edited_image_prompts = {}
                                             st.session_state.image_approvals = {}
                                             if not story_data.get("template_id"):
-                                                st.session_state.generated_images = []
+                                                saved_imgs = loaded_data.get("images", [])
+                                                if saved_imgs:
+                                                    st.session_state.generated_images = decode_stored_images(saved_imgs)
+                                                else:
+                                                    st.session_state.generated_images = []
                                             st.session_state.pdf_path = None
                                             st.session_state.pdf_generation_key = None
                                             st.success(f"✅ Loaded story: {display_name} ({len(story_data.get('pages', []))} pages). Please review the story below.")
@@ -1835,6 +1901,7 @@ def main():
             
             st.session_state.generated_story = story_data
             # CRITICAL: Clear images when new story is generated to prevent mismatch
+            st.session_state.current_book_history_id = None  # fresh INSERT on next save
             st.session_state.generated_images = []
             st.session_state.image_approvals = {}
             st.session_state.all_images_approved = False
