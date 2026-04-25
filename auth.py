@@ -1,8 +1,11 @@
 import streamlit as st
 import os
+import hashlib
+import secrets
+import uuid
 import logging
 from pathlib import Path
-from supabase import create_client, Client
+from datetime import datetime
 from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
@@ -14,21 +17,33 @@ else:
     load_dotenv()
 
 
-def _get_supabase() -> Client:
-    url = os.getenv("VITE_SUPABASE_URL") or os.getenv("SUPABASE_URL")
-    key = (os.getenv("VITE_SUPABASE_ANON_KEY")
-           or os.getenv("VITE_SUPABASE_SUPABASE_ANON_KEY")
-           or os.getenv("SUPABASE_ANON_KEY"))
-    if not url or not key:
-        raise Exception("Supabase credentials not configured")
-    return create_client(url, key)
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
 
+def _users():
+    from mongo_client import users_col
+    return users_col()
+
+
+def _hash_password(password: str) -> tuple:
+    salt = secrets.token_hex(16)
+    dk = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 200_000)
+    return dk.hex(), salt
+
+
+def _verify_password(password: str, stored_hash: str, salt: str) -> bool:
+    dk = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 200_000)
+    return dk.hex() == stored_hash
+
+
+# ---------------------------------------------------------------------------
+# Session state
+# ---------------------------------------------------------------------------
 
 def init_auth_state():
     if "auth_user" not in st.session_state:
         st.session_state.auth_user = None
-    if "auth_session" not in st.session_state:
-        st.session_state.auth_session = None
     if "auth_error" not in st.session_state:
         st.session_state.auth_error = None
     if "auth_success" not in st.session_state:
@@ -43,112 +58,77 @@ def is_authenticated() -> bool:
 
 def get_current_user_id() -> str:
     user = st.session_state.get("auth_user")
-    if user:
-        return user.get("id", "")
-    return ""
+    return user.get("id", "") if user else ""
 
+
+# ---------------------------------------------------------------------------
+# Auth operations
+# ---------------------------------------------------------------------------
 
 def sign_up(email: str, password: str) -> bool:
     try:
-        supabase = _get_supabase()
-        result = supabase.auth.sign_up({"email": email, "password": password})
-        if result.user:
-            st.session_state.auth_user = {
-                "id": result.user.id,
-                "email": result.user.email,
-            }
-            st.session_state.auth_session = {
-                "access_token": result.session.access_token if result.session else None,
-            }
-            _ensure_user_profile(result.user.id, email)
-            st.session_state.auth_error = None
-            st.session_state.auth_success = "Account created successfully!"
-            return True
-        st.session_state.auth_error = "Sign up failed. Please try again."
-        return False
-    except Exception as e:
-        error_msg = str(e)
-        if "already registered" in error_msg.lower() or "already been registered" in error_msg.lower():
+        email = email.strip().lower()
+        if _users().find_one({"email": email}):
             st.session_state.auth_error = "This email is already registered. Please log in instead."
-        else:
-            st.session_state.auth_error = f"Sign up failed: {error_msg}"
+            return False
+        pw_hash, salt = _hash_password(password)
+        user_id = str(uuid.uuid4())
+        _users().insert_one({
+            "_id": user_id,
+            "email": email,
+            "password_hash": pw_hash,
+            "salt": salt,
+            "gemini_api_key": "",
+            "openrouter_api_key": "",
+            "created_at": datetime.utcnow(),
+        })
+        st.session_state.auth_user = {"id": user_id, "email": email}
+        st.session_state.auth_error = None
+        st.session_state.auth_success = "Account created successfully!"
+        return True
+    except Exception as e:
+        st.session_state.auth_error = f"Sign up failed: {e}"
         logger.error(f"Sign up error: {e}")
         return False
 
 
 def sign_in(email: str, password: str) -> bool:
     try:
-        supabase = _get_supabase()
-        result = supabase.auth.sign_in_with_password({"email": email, "password": password})
-        if result.user:
-            st.session_state.auth_user = {
-                "id": result.user.id,
-                "email": result.user.email,
-            }
-            st.session_state.auth_session = {
-                "access_token": result.session.access_token if result.session else None,
-            }
-            _ensure_user_profile(result.user.id, result.user.email)
-            api_key = load_user_api_key(result.user.id)
-            if api_key:
-                st.session_state.api_key = api_key
-            openrouter_key = load_user_openrouter_key(result.user.id)
-            if openrouter_key:
-                st.session_state.openrouter_api_key = openrouter_key
-            st.session_state.auth_error = None
-            st.session_state.auth_success = None
-            return True
-        st.session_state.auth_error = "Login failed. Please check your credentials."
-        return False
-    except Exception as e:
-        error_msg = str(e)
-        if "invalid" in error_msg.lower() or "credentials" in error_msg.lower():
+        email = email.strip().lower()
+        user = _users().find_one({"email": email})
+        if not user or not _verify_password(password, user["password_hash"], user["salt"]):
             st.session_state.auth_error = "Invalid email or password."
-        else:
-            st.session_state.auth_error = f"Login failed: {error_msg}"
+            return False
+        user_id = str(user["_id"])
+        st.session_state.auth_user = {"id": user_id, "email": email}
+        st.session_state.auth_error = None
+        st.session_state.auth_success = None
+        if user.get("gemini_api_key"):
+            st.session_state.api_key = user["gemini_api_key"]
+        if user.get("openrouter_api_key"):
+            st.session_state.openrouter_api_key = user["openrouter_api_key"]
+        return True
+    except Exception as e:
+        st.session_state.auth_error = f"Login failed: {e}"
         logger.error(f"Sign in error: {e}")
         return False
 
 
 def sign_out():
-    try:
-        supabase = _get_supabase()
-        supabase.auth.sign_out()
-    except Exception as e:
-        logger.error(f"Sign out error: {e}")
     st.session_state.auth_user = None
-    st.session_state.auth_session = None
     st.session_state.auth_error = None
     st.session_state.auth_success = None
     st.session_state.api_key = ""
     st.session_state.openrouter_api_key = ""
 
 
-def _ensure_user_profile(user_id: str, email: str):
-    try:
-        supabase = _get_supabase()
-        access_token = st.session_state.get("auth_session", {}).get("access_token")
-        if access_token:
-            supabase.postgrest.auth(access_token)
-        existing = supabase.table("user_profiles").select("id").eq("id", user_id).maybe_single().execute()
-        if not existing.data:
-            supabase.table("user_profiles").insert({
-                "id": user_id,
-                "email": email,
-            }).execute()
-    except Exception as e:
-        logger.error(f"Error ensuring user profile: {e}")
-
+# ---------------------------------------------------------------------------
+# API key persistence
+# ---------------------------------------------------------------------------
 
 def save_user_api_key(user_id: str, api_key: str) -> bool:
     try:
-        supabase = _get_supabase()
-        access_token = st.session_state.get("auth_session", {}).get("access_token")
-        if access_token:
-            supabase.postgrest.auth(access_token)
-        supabase.table("user_profiles").update({
-            "gemini_api_key": api_key,
-        }).eq("id", user_id).execute()
+        _users().update_one({"_id": user_id}, {"$set": {"gemini_api_key": api_key}})
         return True
     except Exception as e:
         logger.error(f"Error saving API key: {e}")
@@ -157,27 +137,16 @@ def save_user_api_key(user_id: str, api_key: str) -> bool:
 
 def load_user_api_key(user_id: str) -> str:
     try:
-        supabase = _get_supabase()
-        access_token = st.session_state.get("auth_session", {}).get("access_token")
-        if access_token:
-            supabase.postgrest.auth(access_token)
-        result = supabase.table("user_profiles").select("gemini_api_key").eq("id", user_id).maybe_single().execute()
-        if result.data and result.data.get("gemini_api_key"):
-            return result.data["gemini_api_key"]
+        user = _users().find_one({"_id": user_id}, {"gemini_api_key": 1})
+        return (user or {}).get("gemini_api_key", "")
     except Exception as e:
         logger.error(f"Error loading API key: {e}")
-    return ""
+        return ""
 
 
 def save_user_openrouter_key(user_id: str, api_key: str) -> bool:
     try:
-        supabase = _get_supabase()
-        access_token = st.session_state.get("auth_session", {}).get("access_token")
-        if access_token:
-            supabase.postgrest.auth(access_token)
-        supabase.table("user_profiles").update({
-            "openrouter_api_key": api_key,
-        }).eq("id", user_id).execute()
+        _users().update_one({"_id": user_id}, {"$set": {"openrouter_api_key": api_key}})
         return True
     except Exception as e:
         logger.error(f"Error saving OpenRouter API key: {e}")
@@ -186,26 +155,16 @@ def save_user_openrouter_key(user_id: str, api_key: str) -> bool:
 
 def load_user_openrouter_key(user_id: str) -> str:
     try:
-        supabase = _get_supabase()
-        access_token = st.session_state.get("auth_session", {}).get("access_token")
-        if access_token:
-            supabase.postgrest.auth(access_token)
-        result = supabase.table("user_profiles").select("openrouter_api_key").eq("id", user_id).maybe_single().execute()
-        if result.data and result.data.get("openrouter_api_key"):
-            return result.data["openrouter_api_key"]
+        user = _users().find_one({"_id": user_id}, {"openrouter_api_key": 1})
+        return (user or {}).get("openrouter_api_key", "")
     except Exception as e:
         logger.error(f"Error loading OpenRouter API key: {e}")
-    return ""
+        return ""
 
 
-def get_authed_supabase() -> Client:
-    """Return a Supabase client authenticated with the current user's access token."""
-    supabase = _get_supabase()
-    access_token = st.session_state.get("auth_session", {}).get("access_token")
-    if access_token:
-        supabase.postgrest.auth(access_token)
-    return supabase
-
+# ---------------------------------------------------------------------------
+# Auth page UI
+# ---------------------------------------------------------------------------
 
 def render_auth_page():
     col_left, col_center, col_right = st.columns([1, 2, 1])

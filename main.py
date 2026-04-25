@@ -25,7 +25,6 @@ from auth import (
     load_user_api_key,
     save_user_openrouter_key,
     load_user_openrouter_key,
-    get_authed_supabase,
     render_auth_page,
 )
 
@@ -35,14 +34,10 @@ try:
         render_template_book_form,
         generate_template_book,
         display_template_book_preview,
-        seed_default_templates_if_missing,
-        init_supabase
     )
     TEMPLATE_BOOKS_AVAILABLE = True
 except ImportError:
     TEMPLATE_BOOKS_AVAILABLE = False
-    seed_default_templates_if_missing = None
-    init_supabase = None
 
 # Setup logging
 log_dir = Path("logs")
@@ -233,11 +228,13 @@ def save_story(story_data: Dict, child_name: str, metadata: Dict = None):
             "journey_state": journey_state,
         }
 
-        # --- Supabase persistence ---
+        # --- MongoDB persistence ---
         user_id = get_current_user_id()
         if user_id:
             try:
-                supabase = get_authed_supabase()
+                from mongo_client import book_history_col
+                import uuid as _uuid
+                col = book_history_col()
                 story_for_db = json.loads(json.dumps(story_data))
                 images_for_db = compress_pil_images_for_storage(
                     st.session_state.get("generated_images", [])
@@ -245,14 +242,19 @@ def save_story(story_data: Dict, child_name: str, metadata: Dict = None):
 
                 existing_id = st.session_state.get("current_book_history_id")
                 if existing_id:
-                    supabase.table("book_history").update({
-                        "story_data": story_for_db,
-                        "images": images_for_db,
-                        "metadata": {**(metadata or {}), "timestamp": timestamp, "journey_state": journey_state},
-                    }).eq("id", existing_id).eq("user_id", user_id).execute()
-                    logger.info(f"Story updated in Supabase row {existing_id}")
+                    col.update_one(
+                        {"_id": existing_id, "user_id": user_id},
+                        {"$set": {
+                            "story_data": story_for_db,
+                            "images": images_for_db,
+                            "metadata": {**(metadata or {}), "timestamp": timestamp, "journey_state": journey_state},
+                        }}
+                    )
+                    logger.info(f"Story updated in MongoDB doc {existing_id}")
                 else:
-                    resp = supabase.table("book_history").insert({
+                    doc_id = str(_uuid.uuid4())
+                    col.insert_one({
+                        "_id": doc_id,
                         "user_id": user_id,
                         "child_name": child_name,
                         "title": story_data.get("title", f"{child_name}'s Story"),
@@ -260,12 +262,12 @@ def save_story(story_data: Dict, child_name: str, metadata: Dict = None):
                         "story_data": story_for_db,
                         "images": images_for_db,
                         "metadata": {**(metadata or {}), "timestamp": timestamp, "journey_state": journey_state},
-                    }).execute()
-                    if resp.data:
-                        st.session_state.current_book_history_id = resp.data[0]["id"]
-                        logger.info(f"Story inserted to Supabase, id={resp.data[0]['id']}")
+                        "created_at": datetime.utcnow(),
+                    })
+                    st.session_state.current_book_history_id = doc_id
+                    logger.info(f"Story inserted to MongoDB, id={doc_id}")
             except Exception as db_err:
-                logger.warning(f"Supabase save failed, falling back to local file: {db_err}")
+                logger.warning(f"MongoDB save failed, falling back to local file: {db_err}")
 
         # --- Local file fallback ---
         filename = f"{child_name}_{timestamp}.json"
@@ -303,12 +305,15 @@ def save_template_book_to_history(book_data: Dict):
             "template_name": template_name,
         }
 
-        # --- Supabase persistence ---
+        # --- MongoDB persistence ---
         user_id = get_current_user_id()
         if user_id:
             try:
-                supabase = get_authed_supabase()
-                supabase.table("book_history").insert({
+                from mongo_client import book_history_col
+                import uuid as _uuid
+                col = book_history_col()
+                col.insert_one({
+                    "_id": str(_uuid.uuid4()),
                     "user_id": user_id,
                     "child_name": child_name,
                     "title": f"{template_name} - {child_name}",
@@ -323,10 +328,11 @@ def save_template_book_to_history(book_data: Dict):
                         "gender": book_data.get("gender"),
                         "age": book_data.get("age"),
                     },
-                }).execute()
-                logger.info(f"Template book saved to Supabase for user {user_id}")
+                    "created_at": datetime.utcnow(),
+                })
+                logger.info(f"Template book saved to MongoDB for user {user_id}")
             except Exception as db_err:
-                logger.warning(f"Supabase save failed, falling back to local file: {db_err}")
+                logger.warning(f"MongoDB save failed, falling back to local file: {db_err}")
 
         # --- Local file fallback ---
         filename = f"{child_name}_{timestamp}.json"
@@ -401,30 +407,28 @@ def load_story(filepath) -> Dict:
         return None
 
 def get_story_history():
-    """Get list of all saved stories, preferring Supabase over local files."""
+    """Get list of all saved stories, preferring MongoDB over local files."""
     user_id = get_current_user_id()
 
-    # --- Try Supabase first ---
+    # --- Try MongoDB first ---
     if user_id:
         try:
-            supabase = get_authed_supabase()
-            result = supabase.table("book_history").select(
-                "id, child_name, title, book_type, template_id, template_name, created_at, metadata"
-            ).eq("user_id", user_id).order("created_at", desc=True).limit(100).execute()
-            if result.data:
+            from mongo_client import book_history_col
+            from pymongo import DESCENDING
+            col = book_history_col()
+            rows = list(col.find(
+                {"user_id": user_id},
+                {"_id": 1, "child_name": 1, "title": 1, "book_type": 1,
+                 "template_id": 1, "template_name": 1, "created_at": 1, "metadata": 1}
+            ).sort("created_at", DESCENDING).limit(100))
+            if rows:
                 stories = []
-                for row in result.data:
-                    ts_raw = row.get("created_at", "")
-                    # Format timestamp for display
-                    try:
-                        from datetime import timezone
-                        dt = datetime.fromisoformat(ts_raw.replace("Z", "+00:00"))
-                        ts_display = dt.strftime("%Y%m%d_%H%M%S")
-                    except Exception:
-                        ts_display = ts_raw
+                for row in rows:
+                    created = row.get("created_at")
+                    ts_display = created.strftime("%Y%m%d_%H%M%S") if created else ""
                     stories.append({
-                        "supabase_id": row["id"],
-                        "filepath": None,  # no local file for Supabase records
+                        "db_id": str(row["_id"]),
+                        "filepath": None,
                         "child_name": row.get("child_name", "Unknown"),
                         "timestamp": ts_display,
                         "title": row.get("title", "Untitled"),
@@ -432,10 +436,10 @@ def get_story_history():
                         "template_id": row.get("template_id"),
                         "template_name": row.get("template_name"),
                     })
-                logger.info(f"Loaded {len(stories)} stories from Supabase")
+                logger.info(f"Loaded {len(stories)} stories from MongoDB")
                 return stories
         except Exception as db_err:
-            logger.warning(f"Could not load history from Supabase: {db_err}")
+            logger.warning(f"Could not load history from MongoDB: {db_err}")
 
     # --- Fallback to local files ---
     try:
@@ -446,7 +450,7 @@ def get_story_history():
                     data = load_story(filepath)
                     if data:
                         stories.append({
-                            "supabase_id": None,
+                            "db_id": None,
                             "filepath": filepath,
                             "child_name": data.get("child_name", "Unknown"),
                             "timestamp": data.get("timestamp", ""),
@@ -1500,10 +1504,10 @@ def main():
         
         history = get_story_history()
 
-        # Developer: verify where data is saved and how to check Supabase
-        with st.expander("🔧 Developer: verify saves & Supabase"):
+        # Developer: verify where data is saved
+        with st.expander("🔧 Developer: verify saves & storage"):
             stories_dir = st.session_state.stories_dir
-            st.markdown("**Primary storage:** Supabase `book_history` table (persists across sessions).")
+            st.markdown("**Primary storage:** MongoDB Atlas `book_history` collection (persists across sessions).")
             st.markdown("**Fallback storage:** Local JSON files (lost on server restart).")
             st.code(str(stories_dir), language="text")
             if stories_dir.exists():
@@ -1516,7 +1520,7 @@ def main():
             else:
                 st.caption("No local files yet.")
             st.markdown("---")
-            st.markdown("**Supabase tables:** `book_history` (all generated books), `templates`, `template_pages`, `generated_book_cache`.")
+            st.markdown("**MongoDB collections:** `users`, `book_history`, `book_cache`, `image_pool`.")
         
         if history:
             st.info(f"Found {len(history)} saved stories. These are your backups - you can load any story to view, edit, and regenerate images or PDF.")
@@ -1531,28 +1535,29 @@ def main():
                     with col1:
                         st.write(f"**{display_name}**")
                         st.caption(f"Saved: {timestamp_display}")
-                        source = "Cloud" if story_info.get("supabase_id") else "Local"
+                        source = "Cloud" if story_info.get("db_id") else "Local"
                         book_type_label = "Template" if story_info.get("book_type") == "template" else "Custom"
                         st.caption(f"{book_type_label} · {source}")
                     with col2:
                         if st.button("📖 Load Story", key=f"load_history_{idx}", use_container_width=True):
-                            # Load from Supabase if we have an ID, else from local file
+                            # Load from MongoDB if we have a db_id, else from local file
                             loaded_data = None
-                            if story_info.get("supabase_id"):
+                            if story_info.get("db_id"):
                                 try:
-                                    supabase = get_authed_supabase()
-                                    row = supabase.table("book_history").select("*").eq("id", story_info["supabase_id"]).maybe_single().execute()
-                                    if row.data:
-                                        meta = row.data.get("metadata", {})
+                                    from mongo_client import book_history_col
+                                    col = book_history_col()
+                                    row = col.find_one({"_id": story_info["db_id"], "user_id": get_current_user_id()})
+                                    if row:
+                                        meta = row.get("metadata", {})
                                         loaded_data = {
-                                            "story": row.data.get("story_data", {}),
-                                            "child_name": row.data.get("child_name", ""),
+                                            "story": row.get("story_data", {}),
+                                            "child_name": row.get("child_name", ""),
                                             "timestamp": meta.get("timestamp", ""),
                                             "journey_state": meta.get("journey_state", {}),
                                             "metadata": meta,
-                                            "images": row.data.get("images", []),
+                                            "images": row.get("images", []),
                                         }
-                                        st.session_state.current_book_history_id = story_info["supabase_id"]
+                                        st.session_state.current_book_history_id = story_info["db_id"]
                                 except Exception as load_err:
                                     st.error(f"Failed to load from cloud: {load_err}")
                             elif story_info.get("filepath"):

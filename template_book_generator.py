@@ -7,11 +7,10 @@ import streamlit as st
 import streamlit.components.v1
 import os
 import base64
+import uuid
 from pathlib import Path
 from typing import List, Dict, Optional
 from datetime import datetime
-import uuid
-from supabase import create_client, Client
 from dotenv import load_dotenv
 from template_data import personalize_template_text, personalize_template_image_prompt, WHEN_I_GROW_UP_TEMPLATE
 from PIL import Image
@@ -74,20 +73,14 @@ def _pool_hash(template_id: str, page_number: int, age_group: str, gender: str) 
 
 
 def get_shared_pool_image(template_id: str, page_number: int, age_group: str, gender: str) -> Optional[str]:
-    """Return image_url from shared_image_pool on hit, or None on miss."""
+    """Return image_url from shared image pool on hit, or None on miss."""
     try:
+        from mongo_client import image_pool_col
         ph = _pool_hash(template_id, page_number, age_group, gender)
-        supabase = _get_authed_supabase_tbg()
-        result = (
-            supabase.table("shared_image_pool")
-            .select("image_url")
-            .eq("prompt_hash", ph)
-            .limit(1)
-            .execute()
-        )
-        if result.data:
+        doc = image_pool_col().find_one({"prompt_hash": ph}, {"image_url": 1})
+        if doc:
             logger.info(f"Shared pool HIT: template={template_id} page={page_number} age={age_group} gender={gender}")
-            return result.data[0]["image_url"]
+            return doc["image_url"]
     except Exception as e:
         logger.warning(f"Shared pool lookup failed: {e}")
     return None
@@ -96,94 +89,62 @@ def get_shared_pool_image(template_id: str, page_number: int, age_group: str, ge
 def save_to_shared_pool(template_id: str, page_number: int, age_group: str, gender: str, image_url: str) -> None:
     """Persist a generated image to the shared pool (silent no-op on duplicate or error)."""
     try:
+        from mongo_client import image_pool_col
         ph = _pool_hash(template_id, page_number, age_group, gender)
         compressed = compress_image_for_storage(image_url)
-        supabase = _get_authed_supabase_tbg()
-        supabase.table("shared_image_pool").insert({
+        image_pool_col().insert_one({
+            "_id": ph,
             "prompt_hash": ph,
             "template_id": template_id,
             "page_number": page_number,
             "age_group": age_group,
             "gender": gender.lower(),
             "image_url": compressed,
-        }).execute()
+            "created_at": datetime.utcnow(),
+        })
         logger.info(f"Saved to shared pool: hash={ph}")
     except Exception as e:
-        # Unique constraint violation on concurrent insert is expected and harmless
         logger.debug(f"Shared pool save skipped (likely duplicate): {e}")
 
 
 # ---------------------------------------------------------------------------
-# Supabase cache helpers
+# MongoDB book cache helpers
 # ---------------------------------------------------------------------------
 
-def _get_authed_supabase_tbg() -> Client:
-    """Return Supabase client authenticated with the current session token."""
-    supabase_url = (os.getenv("VITE_SUPABASE_URL") or os.getenv("SUPABASE_URL"))
-    supabase_key = (os.getenv("VITE_SUPABASE_ANON_KEY")
-                    or os.getenv("VITE_SUPABASE_SUPABASE_ANON_KEY")
-                    or os.getenv("SUPABASE_ANON_KEY"))
-    if not supabase_url or not supabase_key:
-        try:
-            supabase_url = st.secrets.get("VITE_SUPABASE_URL") or st.secrets.get("SUPABASE_URL")
-            supabase_key = st.secrets.get("VITE_SUPABASE_ANON_KEY") or st.secrets.get("SUPABASE_ANON_KEY")
-        except Exception:
-            pass
-    if not supabase_url or not supabase_key:
-        raise Exception("Supabase credentials not found")
-    client = create_client(supabase_url, supabase_key)
-    access_token = st.session_state.get("auth_session", {}).get("access_token")
-    if access_token:
-        client.postgrest.auth(access_token)
-    return client
-
-
 def get_cached_template_book(user_id: str, template_id: str, child_name: str, gender: str, age: int) -> Optional[Dict]:
-    """Fetch a previously generated book from the Supabase cache, or None if not found."""
+    """Fetch a previously generated book from the MongoDB cache, or None if not found."""
     try:
-        supabase = _get_authed_supabase_tbg()
-        result = (
-            supabase.table("generated_book_cache")
-            .select("book_data, id")
-            .eq("user_id", user_id)
-            .eq("template_id", template_id)
-            .eq("child_name", child_name)
-            .eq("gender", gender)
-            .eq("age", age)
-            .order("created_at", desc=True)
-            .limit(1)
-            .execute()
+        from mongo_client import book_cache_col
+        doc = book_cache_col().find_one(
+            {"user_id": user_id, "template_id": template_id,
+             "child_name": child_name, "gender": gender, "age": age},
+            {"book_data": 1}
         )
-        if result.data:
+        if doc:
             logger.info(f"Cache hit for template {template_id}, child {child_name}")
-            return result.data[0]["book_data"]
+            return doc["book_data"]
     except Exception as e:
         logger.warning(f"Could not query book cache: {e}")
     return None
 
 
 def save_template_book_to_cache(user_id: str, template_id: str, child_name: str, gender: str, age: int, book_data: Dict) -> None:
-    """Store a generated template book (with compressed images) in the Supabase cache."""
+    """Store a generated template book (with compressed images) in the MongoDB cache."""
     try:
-        # Compress images before storing to stay within Supabase limits
+        from mongo_client import book_cache_col
         book_to_store = json.loads(json.dumps(book_data))
         for page in book_to_store.get("pages", []):
             if page.get("image_url"):
                 page["image_url"] = compress_image_for_storage(page["image_url"])
-        # Remove the reference image (too large, not needed in cache)
         book_to_store.pop("reference_image_base64", None)
 
-        supabase = _get_authed_supabase_tbg()
-        # Upsert: delete old cache row first, then insert fresh one
-        supabase.table("generated_book_cache").delete().eq("user_id", user_id).eq("template_id", template_id).eq("child_name", child_name).eq("gender", gender).eq("age", age).execute()
-        supabase.table("generated_book_cache").insert({
-            "user_id": user_id,
-            "template_id": template_id,
-            "child_name": child_name,
-            "gender": gender,
-            "age": age,
-            "book_data": book_to_store,
-        }).execute()
+        book_cache_col().update_one(
+            {"user_id": user_id, "template_id": template_id,
+             "child_name": child_name, "gender": gender, "age": age},
+            {"$set": {"book_data": book_to_store, "updated_at": datetime.utcnow()},
+             "$setOnInsert": {"created_at": datetime.utcnow()}},
+            upsert=True,
+        )
         logger.info(f"Template book cached for user {user_id}, template {template_id}, child {child_name}")
     except Exception as e:
         logger.warning(f"Could not save book to cache: {e}")
@@ -827,180 +788,28 @@ DEFAULT_TEMPLATES: List[Dict] = [
 ]
 
 
-def init_supabase() -> Client:
-    """Initialize Supabase client."""
-    supabase_url = os.getenv("VITE_SUPABASE_URL")
-    supabase_key = os.getenv("VITE_SUPABASE_ANON_KEY") or os.getenv("VITE_SUPABASE_SUPABASE_ANON_KEY")
-
-    if not supabase_url:
-        supabase_url = os.getenv("SUPABASE_URL")
-    if not supabase_key:
-        supabase_key = os.getenv("SUPABASE_ANON_KEY")
-
-    if not supabase_url or not supabase_key:
-        try:
-            supabase_url = st.secrets.get("VITE_SUPABASE_URL") or st.secrets.get("SUPABASE_URL")
-            supabase_key = st.secrets.get("VITE_SUPABASE_ANON_KEY") or st.secrets.get("SUPABASE_ANON_KEY")
-        except Exception:
-            pass
-
-    if not supabase_url or not supabase_key:
-        error_msg = f"Supabase credentials not found. URL: {'found' if supabase_url else 'missing'}, Key: {'found' if supabase_key else 'missing'}"
-        logger.error(error_msg)
-        raise Exception(error_msg)
-
-    return create_client(supabase_url, supabase_key)
-
-
-def seed_default_templates_if_missing(supabase: Client, show_errors_in_ui: bool = False) -> None:
-    """Ensure our built-in templates exist in Supabase without overwriting user content."""
-    try:
-        logger.info(f"Seeding {len(DEFAULT_TEMPLATES)} default templates into Supabase...")
-        seeded_count = 0
-        errors = []
-        
-        for idx, tmpl in enumerate(DEFAULT_TEMPLATES):
-            name = tmpl["name"]
-            try:
-                logger.info(f"Processing template {idx+1}/{len(DEFAULT_TEMPLATES)}: '{name}'")
-                
-                # Find or create template row by name
-                existing = supabase.table("templates").select("id").eq("name", name).execute()
-                if existing.data:
-                    template_id = existing.data[0]["id"]
-                    logger.info(f"Template '{name}' already exists (ID: {template_id})")
-                else:
-                    logger.info(f"Creating new template '{name}'...")
-                    try:
-                        # Generate UUID for id if Supabase table requires it (some tables don't auto-generate)
-                        insert_data = {
-                            "id": str(uuid.uuid4()),  # Generate UUID for the id column
-                            "name": name,
-                            "description": tmpl.get("description", ""),
-                            "total_pages": tmpl.get("total_pages", len(tmpl.get("pages", []))),
-                            "cover_image": tmpl.get("cover_image", ""),
-                        }
-                        # If template already has an id, use it instead
-                        if "id" in tmpl and tmpl["id"]:
-                            insert_data["id"] = tmpl["id"]
-                        
-                        insert_resp = supabase.table("templates").insert(insert_data).execute()
-                        if not insert_resp.data:
-                            error_msg = f"Failed to insert template '{name}' - no data returned from Supabase"
-                            logger.error(error_msg)
-                            errors.append(error_msg)
-                            if show_errors_in_ui:
-                                st.error(error_msg)
-                            continue
-                        template_id = insert_resp.data[0]["id"]
-                        logger.info(f"✅ Created new template '{name}' (ID: {template_id})")
-                        if show_errors_in_ui:
-                            st.success(f"✅ Created template: {name}")
-                        seeded_count += 1
-                    except Exception as insert_error:
-                        error_msg = f"Failed to insert template '{name}': {str(insert_error)}"
-                        logger.error(error_msg)
-                        errors.append(error_msg)
-                        if show_errors_in_ui:
-                            st.error(error_msg)
-                        import traceback
-                        logger.error(traceback.format_exc())
-                        continue
-
-                # Only insert pages if none exist yet for this template_id
-                pages_existing = supabase.table("template_pages").select("id").eq("template_id", template_id).limit(1).execute()
-                if pages_existing.data:
-                    logger.info(f"Template '{name}' already has pages, skipping page insertion")
-                    continue
-
-                # Prepare pages payload
-                pages_payload = []
-                for page in tmpl.get("pages", []):
-                    page_data = {
-                        "id": str(uuid.uuid4()),  # Generate UUID for each page id
-                        "template_id": template_id,
-                        "page_number": page["page_number"],
-                        "profession_title": page["profession_title"],
-                        "text_template": page["text_template"],
-                        "image_prompt_template": page["image_prompt_template"],
-                    }
-                    # If page already has an id, use it instead
-                    if "id" in page and page["id"]:
-                        page_data["id"] = page["id"]
-                    pages_payload.append(page_data)
-                
-                if pages_payload:
-                    logger.info(f"Inserting {len(pages_payload)} pages for template '{name}'...")
-                    try:
-                        page_insert = supabase.table("template_pages").insert(pages_payload).execute()
-                        if page_insert.data:
-                            logger.info(f"✅ Inserted {len(pages_payload)} pages for template '{name}'")
-                            if show_errors_in_ui:
-                                st.success(f"✅ Inserted {len(pages_payload)} pages for {name}")
-                        else:
-                            error_msg = f"Failed to insert pages for template '{name}' - no data returned"
-                            logger.error(error_msg)
-                            errors.append(error_msg)
-                            if show_errors_in_ui:
-                                st.error(error_msg)
-                    except Exception as page_error:
-                        error_msg = f"Failed to insert pages for template '{name}': {str(page_error)}"
-                        logger.error(error_msg)
-                        errors.append(error_msg)
-                        if show_errors_in_ui:
-                            st.error(error_msg)
-                        import traceback
-                        logger.error(traceback.format_exc())
-                else:
-                    logger.warning(f"No pages to insert for template '{name}'")
-                    
-            except Exception as e:
-                error_msg = f"Error seeding template '{name}': {str(e)}"
-                logger.error(error_msg)
-                import traceback
-                logger.error(traceback.format_exc())
-                errors.append(error_msg)
-        
-        logger.info(f"Template seeding complete. Created {seeded_count} new templates out of {len(DEFAULT_TEMPLATES)}.")
-        if errors:
-            logger.error(f"Encountered {len(errors)} errors during seeding:")
-            for err in errors:
-                logger.error(f"  - {err}")
-                
-    except Exception as e:
-        error_msg = f"Critical error in seed_default_templates_if_missing: {str(e)}"
-        logger.error(error_msg)
-        import traceback
-        logger.error(traceback.format_exc())
-        raise  # Re-raise to surface the error
-
-
 def get_available_templates() -> List[Dict]:
-    """Fetch all available templates from database (seeded via SQL migration)."""
-    try:
-        supabase = init_supabase()
-        response = supabase.table("templates").select("*").execute()
-        templates = response.data or []
-        logger.info(f"Retrieved {len(templates)} templates from Supabase")
-        return templates
-    except Exception as e:
-        logger.error(f"Error fetching templates: {e}")
-        import traceback
-        logger.error(traceback.format_exc())
-        st.error(f"Failed to load templates: {e}")
-        return []
+    """Return the built-in template list (no database call needed)."""
+    logger.info(f"Returning {len(DEFAULT_TEMPLATES)} built-in templates")
+    return [
+        {
+            "id": t["id"],
+            "name": t["name"],
+            "description": t.get("description", ""),
+            "cover_image": t.get("cover_image", ""),
+            "total_pages": t.get("total_pages", len(t.get("pages", []))),
+        }
+        for t in DEFAULT_TEMPLATES
+    ]
 
 
 def get_template_pages(template_id: str) -> List[Dict]:
-    """Fetch all pages for a specific template."""
-    try:
-        supabase = init_supabase()
-        response = supabase.table("template_pages").select("*").eq("template_id", template_id).order("page_number").execute()
-        return response.data
-    except Exception as e:
-        logger.error(f"Error fetching template pages: {e}")
-        st.error(f"Failed to load template pages: {e}")
-        return []
+    """Return pages for a given template ID from the in-memory DEFAULT_TEMPLATES list."""
+    for tmpl in DEFAULT_TEMPLATES:
+        if tmpl["id"] == template_id:
+            return sorted(tmpl.get("pages", []), key=lambda p: p["page_number"])
+    logger.error(f"Template ID {template_id} not found in DEFAULT_TEMPLATES")
+    return []
 
 
 def render_template_book_form():
@@ -1016,36 +825,15 @@ def render_template_book_form():
 
     templates = get_available_templates()
 
-    # Debug section to help troubleshoot
     with st.expander("🔧 Debug: Template Status", expanded=False):
         st.write(f"**Templates found:** {len(templates)}")
-        if templates:
-            for t in templates:
-                st.write(f"- {t.get('name', 'Unknown')} (ID: {t.get('id', 'N/A')}, Pages: {t.get('total_pages', 'N/A')})")
-        else:
-            st.error("No templates found! Check Supabase connection and seeding logs.")
+        for t in templates:
+            st.write(f"- {t.get('name', 'Unknown')} (ID: {t.get('id', 'N/A')}, Pages: {t.get('total_pages', 'N/A')})")
         st.caption("Expected: 5 templates (When I Grow Up, Snow White, Cricket, Cinderella, Sports Day)")
-        
-        # Manual seed button
-        st.markdown("---")
-        if st.button("🔄 Force Reseed Templates", help="Manually trigger template seeding into Supabase", type="primary"):
-            try:
-                supabase = init_supabase()
-                with st.spinner("Seeding templates into Supabase..."):
-                    seed_default_templates_if_missing(supabase, show_errors_in_ui=True)
-                st.success("✅ Seeding complete! Check the messages above for details.")
-                st.info("💡 Refresh the page or check Supabase Dashboard to see the templates.")
-                st.rerun()
-            except Exception as e:
-                st.error(f"❌ Seeding failed: {str(e)}")
-                import traceback
-                with st.expander("Full Error Details"):
-                    st.code(traceback.format_exc())
-                st.warning("💡 Common issues: Check Supabase RLS policies, API keys, and table permissions.")
+        st.caption("Templates are built-in — no database seeding required.")
 
     if not templates:
         st.warning("No templates available. Please contact support.")
-        st.info("💡 Check the Debug section above for details. You may need to manually seed templates in Supabase.")
         return
 
     st.markdown("### Choose a template")
