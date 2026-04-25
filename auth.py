@@ -92,6 +92,9 @@ def sign_in(email: str, password: str) -> bool:
             api_key = load_user_api_key(result.user.id)
             if api_key:
                 st.session_state.api_key = api_key
+            openrouter_key = load_user_openrouter_key(result.user.id)
+            if openrouter_key:
+                st.session_state.openrouter_api_key = openrouter_key
             st.session_state.auth_error = None
             st.session_state.auth_success = None
             return True
@@ -118,6 +121,7 @@ def sign_out():
     st.session_state.auth_error = None
     st.session_state.auth_success = None
     st.session_state.api_key = ""
+    st.session_state.openrouter_api_key = ""
 
 
 def _ensure_user_profile(user_id: str, email: str):
@@ -163,6 +167,44 @@ def load_user_api_key(user_id: str) -> str:
     except Exception as e:
         logger.error(f"Error loading API key: {e}")
     return ""
+
+
+def save_user_openrouter_key(user_id: str, api_key: str) -> bool:
+    try:
+        supabase = _get_supabase()
+        access_token = st.session_state.get("auth_session", {}).get("access_token")
+        if access_token:
+            supabase.postgrest.auth(access_token)
+        supabase.table("user_profiles").update({
+            "openrouter_api_key": api_key,
+        }).eq("id", user_id).execute()
+        return True
+    except Exception as e:
+        logger.error(f"Error saving OpenRouter API key: {e}")
+        return False
+
+
+def load_user_openrouter_key(user_id: str) -> str:
+    try:
+        supabase = _get_supabase()
+        access_token = st.session_state.get("auth_session", {}).get("access_token")
+        if access_token:
+            supabase.postgrest.auth(access_token)
+        result = supabase.table("user_profiles").select("openrouter_api_key").eq("id", user_id).maybe_single().execute()
+        if result.data and result.data.get("openrouter_api_key"):
+            return result.data["openrouter_api_key"]
+    except Exception as e:
+        logger.error(f"Error loading OpenRouter API key: {e}")
+    return ""
+
+
+def get_authed_supabase() -> Client:
+    """Return a Supabase client authenticated with the current user's access token."""
+    supabase = _get_supabase()
+    access_token = st.session_state.get("auth_session", {}).get("access_token")
+    if access_token:
+        supabase.postgrest.auth(access_token)
+    return supabase
 
 
 def render_auth_page():

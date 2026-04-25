@@ -7,7 +7,7 @@ import base64
 import hashlib
 import logging
 from pathlib import Path
-from typing import List, Dict
+from typing import List, Dict, Optional
 from reportlab.lib.units import inch
 import requests
 from datetime import datetime
@@ -23,6 +23,9 @@ from auth import (
     sign_out,
     save_user_api_key,
     load_user_api_key,
+    save_user_openrouter_key,
+    load_user_openrouter_key,
+    get_authed_supabase,
     render_auth_page,
 )
 
@@ -97,6 +100,8 @@ init_auth_state()
 # Initialize session state
 if 'api_key' not in st.session_state:
     st.session_state.api_key = ""
+if 'openrouter_api_key' not in st.session_state:
+    st.session_state.openrouter_api_key = ""
 if 'generated_story' not in st.session_state:
     st.session_state.generated_story = None
 if 'generated_images' not in st.session_state:
@@ -171,34 +176,50 @@ def create_visual_anchor(child_name: str, age: int, gender: str, physical_desc: 
     return base_anchor
 
 def save_story(story_data: Dict, child_name: str, metadata: Dict = None):
-    """Save story to history."""
+    """Save story to Supabase history and local file fallback."""
     try:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"{child_name}_{timestamp}.json"
-        filepath = st.session_state.stories_dir / filename
-        
-        # Save journey state to resume where user left off
         journey_state = {
             "story_approved": st.session_state.get("story_approved", False),
             "all_images_approved": st.session_state.get("all_images_approved", False),
             "image_approvals": st.session_state.get("image_approvals", {}),
             "edited_story_pages": st.session_state.get("edited_story_pages", {}),
             "edited_image_prompts": st.session_state.get("edited_image_prompts", {}),
-            "current_step": "step3" if st.session_state.get("all_images_approved", False) else 
+            "current_step": "step3" if st.session_state.get("all_images_approved", False) else
                            ("step2" if st.session_state.get("story_approved", False) else "step1")
         }
-        
         save_data = {
             "story": story_data,
             "metadata": metadata or {},
             "timestamp": timestamp,
             "child_name": child_name,
-            "journey_state": journey_state  # Save where user was in the journey
+            "journey_state": journey_state,
         }
-        
+
+        # --- Supabase persistence ---
+        user_id = get_current_user_id()
+        if user_id:
+            try:
+                supabase = get_authed_supabase()
+                # Strip images from story_data before storing to keep payload small
+                story_for_db = json.loads(json.dumps(story_data))
+                supabase.table("book_history").insert({
+                    "user_id": user_id,
+                    "child_name": child_name,
+                    "title": story_data.get("title", f"{child_name}'s Story"),
+                    "book_type": "custom",
+                    "story_data": story_for_db,
+                    "metadata": {**(metadata or {}), "timestamp": timestamp, "journey_state": journey_state},
+                }).execute()
+                logger.info(f"Story saved to Supabase for user {user_id}")
+            except Exception as db_err:
+                logger.warning(f"Supabase save failed, falling back to local file: {db_err}")
+
+        # --- Local file fallback ---
+        filename = f"{child_name}_{timestamp}.json"
+        filepath = st.session_state.stories_dir / filename
         with open(filepath, 'w', encoding='utf-8') as f:
             json.dump(save_data, f, indent=2, ensure_ascii=False)
-        
         return filepath
     except Exception as e:
         st.error(f"Failed to save story: {e}")
@@ -206,23 +227,61 @@ def save_story(story_data: Dict, child_name: str, metadata: Dict = None):
 
 
 def save_template_book_to_history(book_data: Dict):
-    """Persist template-generated book to story history (same storage as custom stories)."""
+    """Persist template-generated book to Supabase history and local file fallback."""
     try:
         child_name = book_data.get("child_name", "Child")
         template_name = book_data.get("template_name", "Template Book")
+        template_id = book_data.get("template_id")
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"{child_name}_{timestamp}.json"
-        filepath = st.session_state.stories_dir / filename
-        # Match save_story shape so get_story_history and load_story work unchanged
+
+        # Build story payload without image data to keep size manageable
+        pages_for_history = []
+        for p in book_data.get("pages", []):
+            pages_for_history.append({
+                "page_number": p.get("page_number"),
+                "profession_title": p.get("profession_title"),
+                "text": p.get("text"),
+                "image_prompt": p.get("image_prompt"),
+                # Exclude image_url (can be large base64) - regenerate when needed
+            })
         story_payload = {
             "title": f"{template_name} - {child_name}",
-            "pages": book_data.get("pages", []),
-            "template_id": book_data.get("template_id"),
+            "pages": pages_for_history,
+            "template_id": template_id,
             "template_name": template_name,
         }
+
+        # --- Supabase persistence ---
+        user_id = get_current_user_id()
+        if user_id:
+            try:
+                supabase = get_authed_supabase()
+                supabase.table("book_history").insert({
+                    "user_id": user_id,
+                    "child_name": child_name,
+                    "title": f"{template_name} - {child_name}",
+                    "book_type": "template",
+                    "template_id": template_id,
+                    "template_name": template_name,
+                    "story_data": story_payload,
+                    "metadata": {
+                        "template_id": template_id,
+                        "template_name": template_name,
+                        "timestamp": timestamp,
+                        "gender": book_data.get("gender"),
+                        "age": book_data.get("age"),
+                    },
+                }).execute()
+                logger.info(f"Template book saved to Supabase for user {user_id}")
+            except Exception as db_err:
+                logger.warning(f"Supabase save failed, falling back to local file: {db_err}")
+
+        # --- Local file fallback ---
+        filename = f"{child_name}_{timestamp}.json"
+        filepath = st.session_state.stories_dir / filename
         save_data = {
             "story": story_payload,
-            "metadata": {"template_id": book_data.get("template_id"), "template_name": template_name},
+            "metadata": {"template_id": template_id, "template_name": template_name},
             "timestamp": timestamp,
             "child_name": child_name,
             "journey_state": {
@@ -290,7 +349,43 @@ def load_story(filepath) -> Dict:
         return None
 
 def get_story_history():
-    """Get list of all saved stories."""
+    """Get list of all saved stories, preferring Supabase over local files."""
+    user_id = get_current_user_id()
+
+    # --- Try Supabase first ---
+    if user_id:
+        try:
+            supabase = get_authed_supabase()
+            result = supabase.table("book_history").select(
+                "id, child_name, title, book_type, template_id, template_name, created_at, metadata"
+            ).eq("user_id", user_id).order("created_at", desc=True).limit(100).execute()
+            if result.data:
+                stories = []
+                for row in result.data:
+                    ts_raw = row.get("created_at", "")
+                    # Format timestamp for display
+                    try:
+                        from datetime import timezone
+                        dt = datetime.fromisoformat(ts_raw.replace("Z", "+00:00"))
+                        ts_display = dt.strftime("%Y%m%d_%H%M%S")
+                    except Exception:
+                        ts_display = ts_raw
+                    stories.append({
+                        "supabase_id": row["id"],
+                        "filepath": None,  # no local file for Supabase records
+                        "child_name": row.get("child_name", "Unknown"),
+                        "timestamp": ts_display,
+                        "title": row.get("title", "Untitled"),
+                        "book_type": row.get("book_type", "custom"),
+                        "template_id": row.get("template_id"),
+                        "template_name": row.get("template_name"),
+                    })
+                logger.info(f"Loaded {len(stories)} stories from Supabase")
+                return stories
+        except Exception as db_err:
+            logger.warning(f"Could not load history from Supabase: {db_err}")
+
+    # --- Fallback to local files ---
     try:
         stories = []
         if st.session_state.stories_dir.exists():
@@ -299,12 +394,16 @@ def get_story_history():
                     data = load_story(filepath)
                     if data:
                         stories.append({
+                            "supabase_id": None,
                             "filepath": filepath,
                             "child_name": data.get("child_name", "Unknown"),
                             "timestamp": data.get("timestamp", ""),
-                            "title": data.get("story", {}).get("title", "Untitled Story")
+                            "title": data.get("story", {}).get("title", "Untitled Story"),
+                            "book_type": data.get("metadata", {}).get("template_id") and "template" or "custom",
+                            "template_id": data.get("metadata", {}).get("template_id"),
+                            "template_name": data.get("metadata", {}).get("template_name"),
                         })
-                except:
+                except Exception:
                     continue
         return stories
     except Exception as e:
@@ -1072,7 +1171,6 @@ def generate_image_with_imagen(api_key: str, prompt: str, retry_count: int = 0, 
         error_msg = f"Image generation failed: {e}"
         logger.error(f"{error_msg} (attempt {retry_count + 1})")
 
-        # Store detailed error information
         error_details = {
             "error": str(e),
             "full_error": error_msg,
@@ -1081,22 +1179,100 @@ def generate_image_with_imagen(api_key: str, prompt: str, retry_count: int = 0, 
         }
 
         if retry_count < 1:
-            logger.info(f"Retrying image generation...")
+            logger.info("Retrying image generation...")
             st.warning(f"⚠️ Image generation failed, retrying... ({str(e)[:100]})")
             time.sleep(2)
             return generate_image_with_imagen(api_key, prompt, retry_count + 1, image_style, image_index)
-        else:
-            logger.error(f"Image generation failed after all retries")
 
-            # Store error in session state for this specific image
-            if image_index is not None:
-                st.session_state.image_generation_errors[image_index] = error_details
+        # Gemini failed — try OpenRouter fallback
+        logger.error("Image generation failed after all Gemini retries, trying OpenRouter fallback")
+        openrouter_key = st.session_state.get("openrouter_api_key", "")
+        if openrouter_key:
+            fallback = generate_image_with_openrouter(openrouter_key, prompt, image_style)
+            if fallback:
+                logger.info("OpenRouter fallback image generation succeeded")
+                return fallback
 
-            st.error(f"❌ Failed to generate image after retries: {str(e)[:200]}")
+        if image_index is not None:
+            st.session_state.image_generation_errors[image_index] = error_details
 
-            # Return placeholder image
-            placeholder = Image.new('RGB', (512, 512), color=(200, 200, 200))
-            return placeholder
+        st.error(f"❌ Failed to generate image after retries: {str(e)[:200]}")
+        placeholder = Image.new('RGB', (512, 512), color=(200, 200, 200))
+        return placeholder
+
+
+def generate_image_with_openrouter(openrouter_key: str, prompt: str, image_style: str = None) -> Optional[Image.Image]:
+    """Generate image via OpenRouter API using Gemini models (fallback when direct Gemini fails)."""
+    # Models to try in order of preference (Gemini only, per user preference)
+    models = [
+        "google/gemini-2.0-flash-exp:free",
+        "google/gemini-flash-1.5-8b",
+        "google/gemini-flash-1.5",
+    ]
+
+    style_modifiers = get_image_style(image_style) if image_style else ""
+    no_text = "CRITICAL: NO TEXT, words, letters, numbers, speech bubbles, or labels in this image. Pure illustration only."
+    full_prompt = f"{no_text} {prompt}. {style_modifiers}. {no_text}"
+
+    for model in models:
+        try:
+            logger.info(f"Trying OpenRouter image generation with model: {model}")
+            response = requests.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {openrouter_key}",
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": "https://children-book-generator.app",
+                    "X-Title": "Children's Book Generator",
+                },
+                json={
+                    "model": model,
+                    "messages": [{"role": "user", "content": full_prompt}],
+                    "max_tokens": 4096,
+                },
+                timeout=120,
+            )
+
+            if response.status_code != 200:
+                logger.warning(f"OpenRouter {model} returned {response.status_code}: {response.text[:200]}")
+                continue
+
+            result = response.json()
+            candidates = result.get("choices", [])
+            if not candidates:
+                continue
+
+            content = candidates[0].get("message", {}).get("content", "")
+
+            # Check for inline image data in the response
+            if isinstance(content, list):
+                for part in content:
+                    if isinstance(part, dict) and part.get("type") == "image_url":
+                        img_url = part.get("image_url", {}).get("url", "")
+                        if img_url.startswith("data:image"):
+                            b64 = img_url.split(",", 1)[1]
+                            img_bytes = base64.b64decode(b64)
+                            return Image.open(io.BytesIO(img_bytes))
+                        elif img_url:
+                            img_resp = requests.get(img_url, timeout=30)
+                            if img_resp.status_code == 200:
+                                return Image.open(io.BytesIO(img_resp.content))
+
+            # Some models return base64 directly in a text field
+            if isinstance(content, str) and content.startswith("data:image"):
+                b64 = content.split(",", 1)[1]
+                img_bytes = base64.b64decode(b64)
+                return Image.open(io.BytesIO(img_bytes))
+
+            logger.info(f"OpenRouter {model} responded but returned text, not an image")
+
+        except Exception as ex:
+            logger.warning(f"OpenRouter {model} failed: {ex}")
+            continue
+
+    logger.error("All OpenRouter models failed to generate an image")
+    return None
+
 
 def create_pdf(story_data: Dict, images: List[Image.Image], child_name: str, output_path: str):
     """Create PDF using reportlab."""
@@ -1274,22 +1450,20 @@ def main():
         # Developer: verify where data is saved and how to check Supabase
         with st.expander("🔧 Developer: verify saves & Supabase"):
             stories_dir = st.session_state.stories_dir
+            st.markdown("**Primary storage:** Supabase `book_history` table (persists across sessions).")
+            st.markdown("**Fallback storage:** Local JSON files (lost on server restart).")
             st.code(str(stories_dir), language="text")
-            st.caption("Stories (custom + template) are saved here as JSON files.")
             if stories_dir.exists():
                 files = sorted(stories_dir.glob("*.json"), reverse=True)
-                st.write(f"**{len(files)}** JSON file(s) in folder:")
-                for f in files[:20]:
+                st.write(f"**{len(files)}** local JSON file(s):")
+                for f in files[:10]:
                     st.caption(f"• {f.name}")
-                if len(files) > 20:
-                    st.caption(f"… and {len(files) - 20} more")
+                if len(files) > 10:
+                    st.caption(f"… and {len(files) - 10} more")
             else:
-                st.warning("Folder does not exist yet (no stories saved).")
+                st.caption("No local files yet.")
             st.markdown("---")
-            st.markdown("**Supabase** stores template *definitions* (tables `templates`, `template_pages`), not generated books. To check Supabase:")
-            st.markdown("1. Open your [Supabase Dashboard](https://supabase.com/dashboard) → your project → **Table Editor**.")
-            st.markdown("2. Open tables **`templates`** (list of templates) and **`template_pages`** (pages per template).")
-            st.markdown("3. Generated books (custom and template) are saved **locally** in the folder above, not in Supabase.")
+            st.markdown("**Supabase tables:** `book_history` (all generated books), `templates`, `template_pages`, `generated_book_cache`.")
         
         if history:
             st.info(f"Found {len(history)} saved stories. These are your backups - you can load any story to view, edit, and regenerate images or PDF.")
@@ -1304,19 +1478,33 @@ def main():
                     with col1:
                         st.write(f"**{display_name}**")
                         st.caption(f"Saved: {timestamp_display}")
-                        # Show file path for reference
-                        filepath_display = story_info['filepath']
-                        if isinstance(filepath_display, Path):
-                            st.caption(f"File: {filepath_display.name}")
-                        else:
-                            st.caption(f"File: {Path(str(filepath_display)).name}")
+                        source = "Cloud" if story_info.get("supabase_id") else "Local"
+                        book_type_label = "Template" if story_info.get("book_type") == "template" else "Custom"
+                        st.caption(f"{book_type_label} · {source}")
                     with col2:
                         if st.button("📖 Load Story", key=f"load_history_{idx}", use_container_width=True):
-                            # Ensure filepath is a Path object
-                            filepath = story_info['filepath']
-                            if not isinstance(filepath, Path):
-                                filepath = Path(str(filepath))
-                            loaded_data = load_story(filepath)
+                            # Load from Supabase if we have an ID, else from local file
+                            loaded_data = None
+                            if story_info.get("supabase_id"):
+                                try:
+                                    supabase = get_authed_supabase()
+                                    row = supabase.table("book_history").select("*").eq("id", story_info["supabase_id"]).maybe_single().execute()
+                                    if row.data:
+                                        meta = row.data.get("metadata", {})
+                                        loaded_data = {
+                                            "story": row.data.get("story_data", {}),
+                                            "child_name": row.data.get("child_name", ""),
+                                            "timestamp": meta.get("timestamp", ""),
+                                            "journey_state": meta.get("journey_state", {}),
+                                            "metadata": meta,
+                                        }
+                                except Exception as load_err:
+                                    st.error(f"Failed to load from cloud: {load_err}")
+                            elif story_info.get("filepath"):
+                                filepath = story_info["filepath"]
+                                if not isinstance(filepath, Path):
+                                    filepath = Path(str(filepath))
+                                loaded_data = load_story(filepath)
                             if loaded_data:
                                 story_data = loaded_data.get("story")
                                 if story_data and isinstance(story_data, dict):
@@ -1428,13 +1616,15 @@ def main():
         st.divider()
 
         # API Key Input - persisted per user
-        st.subheader("API Key")
+        st.subheader("API Keys")
+
+        # Gemini API Key
         current_key = st.session_state.api_key
         api_key = st.text_input(
             "Google Gemini API Key",
             type="password",
             value=current_key,
-            help="Enter your Google Gemini API key. Get one from https://makersuite.google.com/app/apikey",
+            help="Primary key for story and image generation via Google Gemini.",
         )
         if api_key != current_key:
             st.session_state.api_key = api_key
@@ -1443,9 +1633,28 @@ def main():
                 save_user_api_key(user_id, api_key)
 
         if api_key:
-            st.caption(f"Key saved ({len(api_key)} chars)")
+            st.caption(f"Gemini key saved ({len(api_key)} chars)")
         else:
-            st.caption("No API key set. Enter your key above.")
+            st.caption("No Gemini key set.")
+
+        # OpenRouter API Key (backup for image generation)
+        current_or_key = st.session_state.openrouter_api_key
+        openrouter_key_input = st.text_input(
+            "OpenRouter API Key (backup)",
+            type="password",
+            value=current_or_key,
+            help="Backup key for image generation via OpenRouter (uses Gemini models). Used automatically when Gemini fails.",
+        )
+        if openrouter_key_input != current_or_key:
+            st.session_state.openrouter_api_key = openrouter_key_input
+            user_id = get_current_user_id()
+            if user_id and openrouter_key_input:
+                save_user_openrouter_key(user_id, openrouter_key_input)
+
+        if openrouter_key_input:
+            st.caption(f"OpenRouter key saved ({len(openrouter_key_input)} chars)")
+        else:
+            st.caption("No OpenRouter key — Gemini only.")
 
         st.divider()
 

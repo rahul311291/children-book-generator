@@ -19,6 +19,7 @@ import io
 import logging
 import requests
 import json
+import time
 from reportlab.lib.units import inch
 from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
@@ -27,6 +28,103 @@ from reportlab.platypus import Paragraph
 from reportlab.lib.enums import TA_CENTER
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Image helpers
+# ---------------------------------------------------------------------------
+
+def compress_image_for_storage(data_url: str, max_size: int = 768, quality: int = 75) -> str:
+    """Resize and JPEG-compress a base64 data URL for compact Supabase storage."""
+    if not data_url or not data_url.startswith("data:image"):
+        return data_url
+    try:
+        b64 = data_url.split(",", 1)[1]
+        img = Image.open(io.BytesIO(base64.b64decode(b64))).convert("RGB")
+        img.thumbnail((max_size, max_size), Image.LANCZOS)
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=quality, optimize=True)
+        compressed = base64.b64encode(buf.getvalue()).decode()
+        return f"data:image/jpeg;base64,{compressed}"
+    except Exception as e:
+        logger.warning(f"Image compression failed: {e}")
+        return data_url
+
+
+# ---------------------------------------------------------------------------
+# Supabase cache helpers
+# ---------------------------------------------------------------------------
+
+def _get_authed_supabase_tbg() -> Client:
+    """Return Supabase client authenticated with the current session token."""
+    supabase_url = (os.getenv("VITE_SUPABASE_URL") or os.getenv("SUPABASE_URL"))
+    supabase_key = (os.getenv("VITE_SUPABASE_ANON_KEY")
+                    or os.getenv("VITE_SUPABASE_SUPABASE_ANON_KEY")
+                    or os.getenv("SUPABASE_ANON_KEY"))
+    if not supabase_url or not supabase_key:
+        try:
+            supabase_url = st.secrets.get("VITE_SUPABASE_URL") or st.secrets.get("SUPABASE_URL")
+            supabase_key = st.secrets.get("VITE_SUPABASE_ANON_KEY") or st.secrets.get("SUPABASE_ANON_KEY")
+        except Exception:
+            pass
+    if not supabase_url or not supabase_key:
+        raise Exception("Supabase credentials not found")
+    client = create_client(supabase_url, supabase_key)
+    access_token = st.session_state.get("auth_session", {}).get("access_token")
+    if access_token:
+        client.postgrest.auth(access_token)
+    return client
+
+
+def get_cached_template_book(user_id: str, template_id: str, child_name: str, gender: str, age: int) -> Optional[Dict]:
+    """Fetch a previously generated book from the Supabase cache, or None if not found."""
+    try:
+        supabase = _get_authed_supabase_tbg()
+        result = (
+            supabase.table("generated_book_cache")
+            .select("book_data, id")
+            .eq("user_id", user_id)
+            .eq("template_id", template_id)
+            .eq("child_name", child_name)
+            .eq("gender", gender)
+            .eq("age", age)
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        if result.data:
+            logger.info(f"Cache hit for template {template_id}, child {child_name}")
+            return result.data[0]["book_data"]
+    except Exception as e:
+        logger.warning(f"Could not query book cache: {e}")
+    return None
+
+
+def save_template_book_to_cache(user_id: str, template_id: str, child_name: str, gender: str, age: int, book_data: Dict) -> None:
+    """Store a generated template book (with compressed images) in the Supabase cache."""
+    try:
+        # Compress images before storing to stay within Supabase limits
+        book_to_store = json.loads(json.dumps(book_data))
+        for page in book_to_store.get("pages", []):
+            if page.get("image_url"):
+                page["image_url"] = compress_image_for_storage(page["image_url"])
+        # Remove the reference image (too large, not needed in cache)
+        book_to_store.pop("reference_image_base64", None)
+
+        supabase = _get_authed_supabase_tbg()
+        # Upsert: delete old cache row first, then insert fresh one
+        supabase.table("generated_book_cache").delete().eq("user_id", user_id).eq("template_id", template_id).eq("child_name", child_name).eq("gender", gender).eq("age", age).execute()
+        supabase.table("generated_book_cache").insert({
+            "user_id": user_id,
+            "template_id": template_id,
+            "child_name": child_name,
+            "gender": gender,
+            "age": age,
+            "book_data": book_to_store,
+        }).execute()
+        logger.info(f"Template book cached for user {user_id}, template {template_id}, child {child_name}")
+    except Exception as e:
+        logger.warning(f"Could not save book to cache: {e}")
 
 env_path = Path(__file__).parent / ".env"
 if env_path.exists():
@@ -1041,7 +1139,7 @@ def render_template_book_form():
 
 
 def generate_template_book(api_key: str, book_data: Dict):
-    """Generate a complete template book with AI-generated images."""
+    """Generate a complete template book with AI-generated images, using cache when available."""
     try:
         template_id = book_data['template_id']
         child_name = book_data['child_name']
@@ -1049,8 +1147,19 @@ def generate_template_book(api_key: str, book_data: Dict):
         age = book_data['age']
         photos = book_data.get('photos', [])
 
-        pages = get_template_pages(template_id)
+        # --- Check Supabase cache first ---
+        user_id = st.session_state.get("auth_user", {}).get("id", "")
+        if user_id:
+            cached = get_cached_template_book(user_id, template_id, child_name, gender, age)
+            if cached:
+                st.success("✅ Loaded your previously generated book from cache — no regeneration needed!")
+                # Re-attach reference image if photos were uploaded this session
+                if photos:
+                    cached["reference_image_base64"] = convert_uploaded_file_to_base64(photos[0])
+                st.session_state.template_generated_book = cached
+                return
 
+        pages = get_template_pages(template_id)
         if not pages:
             st.error("No pages found for this template")
             return
@@ -1059,42 +1168,31 @@ def generate_template_book(api_key: str, book_data: Dict):
         if photos:
             reference_image_base64 = convert_uploaded_file_to_base64(photos[0])
 
+        openrouter_key = st.session_state.get("openrouter_api_key", "")
+
         generated_book = {
             'template_id': template_id,
             'template_name': book_data['template_name'],
             'child_name': child_name,
             'gender': gender,
             'age': age,
-            'reference_image_base64': reference_image_base64,  # for regenerate image in preview
+            'reference_image_base64': reference_image_base64,
             'pages': []
         }
 
         progress_bar = st.progress(0)
         status_text = st.empty()
-
         total_pages = len(pages)
 
         for idx, page in enumerate(pages):
             status_text.text(f"Generating page {idx + 1} of {total_pages}: {page['profession_title']}")
 
-            personalized_text = personalize_template_text(
-                page['text_template'],
-                child_name,
-                gender
-            )
-
+            personalized_text = personalize_template_text(page['text_template'], child_name, gender)
             personalized_image_prompt = personalize_template_image_prompt(
-                page['image_prompt_template'],
-                child_name,
-                gender,
-                age
+                page['image_prompt_template'], child_name, gender, age
             )
 
-            image_url = generate_page_image(
-                api_key,
-                personalized_image_prompt,
-                reference_image_base64
-            )
+            image_url = generate_page_image(api_key, personalized_image_prompt, reference_image_base64, openrouter_key=openrouter_key)
 
             generated_book['pages'].append({
                 'page_number': page['page_number'],
@@ -1107,8 +1205,11 @@ def generate_template_book(api_key: str, book_data: Dict):
             progress_bar.progress((idx + 1) / total_pages)
 
         status_text.text("✅ Book generation complete!")
-
         st.session_state.template_generated_book = generated_book
+
+        # --- Persist to Supabase cache ---
+        if user_id:
+            save_template_book_to_cache(user_id, template_id, child_name, gender, age, generated_book)
 
     except Exception as e:
         logger.error(f"Error generating template book: {e}")
@@ -1309,97 +1410,121 @@ def convert_uploaded_file_to_base64(uploaded_file) -> str:
         return None
 
 
-def generate_page_image(api_key: str, prompt: str, reference_image_base64: Optional[str] = None) -> Optional[str]:
-    """Generate a single image using Gemini API with optional reference image."""
+def generate_page_image(api_key: str, prompt: str, reference_image_base64: Optional[str] = None, openrouter_key: str = "") -> Optional[str]:
+    """Generate a single image using Gemini API with optional reference image.
+
+    Falls back to OpenRouter (Gemini models) when the primary call fails.
+    """
+    no_text_instruction = "CRITICAL: NO TEXT in this image. No words, letters, numbers, speech bubbles, captions, signs, or labels. Pure illustration only."
+    if "cartoon animated" in prompt.lower() or "cel-shaded" in prompt.lower():
+        style_modifiers = "Children's book art, high quality, bold clean outlines, smooth cel shading"
+    else:
+        style_modifiers = "Watercolor illustration style, soft edges, gentle colors, children's book art, high quality"
+    enhanced_prompt = f"{no_text_instruction}. {prompt}. {style_modifiers}. {no_text_instruction}"
+
+    result_url = _call_gemini_image_api(api_key, enhanced_prompt, reference_image_base64)
+    if result_url:
+        return result_url
+
+    # --- OpenRouter fallback (Gemini models, no ChatGPT/DALL-E) ---
+    if openrouter_key:
+        logger.info("Gemini image API failed, trying OpenRouter fallback")
+        result_url = _call_openrouter_image(openrouter_key, enhanced_prompt)
+        if result_url:
+            return result_url
+
+    logger.warning("All image generation attempts failed for this page")
+    return None
+
+
+def _call_gemini_image_api(api_key: str, enhanced_prompt: str, reference_image_base64: Optional[str] = None) -> Optional[str]:
+    """Call the Gemini image generation REST API. Returns data URL or None."""
     try:
-        # Use the correct Gemini image generation endpoint
         url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent"
+        headers = {"Content-Type": "application/json"}
 
-        headers = {
-            "Content-Type": "application/json"
-        }
-
-        no_text_instruction = "CRITICAL: NO TEXT in this image. No words, letters, numbers, speech bubbles, captions, signs, or labels. Pure illustration only."
-        if "cartoon animated" in prompt.lower() or "cel-shaded" in prompt.lower():
-            style_modifiers = "Children's book art, high quality, bold clean outlines, smooth cel shading"
-        else:
-            style_modifiers = "Watercolor illustration style, soft edges, gentle colors, children's book art, high quality"
-
-        enhanced_prompt = f"{no_text_instruction}. {prompt}. {style_modifiers}. {no_text_instruction}"
-
-        # Build the payload - with or without reference image
         if reference_image_base64:
-            # Include reference image for face matching
             payload = {
                 "contents": [{
                     "parts": [
-                        {
-                            "inlineData": {
-                                "mimeType": "image/jpeg",
-                                "data": reference_image_base64
-                            }
-                        },
-                        {
-                            "text": f"{enhanced_prompt}. Make the child look exactly like the person in the reference photo - same facial features, skin tone, and hair."
-                        }
+                        {"inlineData": {"mimeType": "image/jpeg", "data": reference_image_base64}},
+                        {"text": f"{enhanced_prompt}. Make the child look exactly like the person in the reference photo."},
                     ]
                 }],
-                "generationConfig": {
-                    "temperature": 0.4,
-                    "topK": 32,
-                    "topP": 1,
-                    "imageConfig": {
-                        "aspectRatio": "1:1",
-                        "imageSize": "2K"
-                    }
-                }
+                "generationConfig": {"temperature": 0.4, "topK": 32, "topP": 1,
+                                     "imageConfig": {"aspectRatio": "1:1", "imageSize": "2K"}},
             }
         else:
-            # No reference image
             payload = {
-                "contents": [{
-                    "parts": [{
-                        "text": enhanced_prompt
-                    }]
-                }],
-                "generationConfig": {
-                    "temperature": 0.4,
-                    "topK": 32,
-                    "topP": 1,
-                    "imageConfig": {
-                        "aspectRatio": "1:1",
-                        "imageSize": "2K"
-                    }
-                }
+                "contents": [{"parts": [{"text": enhanced_prompt}]}],
+                "generationConfig": {"temperature": 0.4, "topK": 32, "topP": 1,
+                                     "imageConfig": {"aspectRatio": "1:1", "imageSize": "2K"}},
             }
 
-        params = {"key": api_key}
-
-        response = requests.post(
-            url,
-            headers=headers,
-            json=payload,
-            params=params,
-            timeout=120
-        )
-
+        response = requests.post(url, headers=headers, json=payload, params={"key": api_key}, timeout=120)
         if response.status_code == 200:
             result = response.json()
-            
-            # Extract image from Gemini response format
-            if "candidates" in result and len(result["candidates"]) > 0:
-                parts = result["candidates"][0].get("content", {}).get("parts", [])
-                for part in parts:
+            candidates = result.get("candidates", [])
+            if candidates:
+                for part in candidates[0].get("content", {}).get("parts", []):
                     if "inlineData" in part:
-                        image_data = part["inlineData"]["data"]
-                        return f"data:image/png;base64,{image_data}"
-
-        logger.warning(f"Image generation failed with status {response.status_code}: {response.text[:500] if response.text else 'No error message'}")
-        return None
-
+                        return f"data:image/png;base64,{part['inlineData']['data']}"
+        logger.warning(f"Gemini image API status {response.status_code}: {response.text[:300]}")
     except Exception as e:
-        logger.error(f"Error generating image: {e}")
-        return None
+        logger.warning(f"Gemini image API exception: {e}")
+    return None
+
+
+def _call_openrouter_image(openrouter_key: str, prompt: str) -> Optional[str]:
+    """Try to generate an image via OpenRouter using Gemini models (no DALL-E/ChatGPT)."""
+    models = [
+        "google/gemini-2.0-flash-exp:free",
+        "google/gemini-flash-1.5-8b",
+        "google/gemini-flash-1.5",
+    ]
+    for model in models:
+        try:
+            response = requests.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {openrouter_key}",
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": "https://children-book-generator.app",
+                    "X-Title": "Children's Book Generator",
+                },
+                json={
+                    "model": model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": 4096,
+                },
+                timeout=120,
+            )
+            if response.status_code != 200:
+                logger.warning(f"OpenRouter {model} returned {response.status_code}")
+                continue
+            result = response.json()
+            choices = result.get("choices", [])
+            if not choices:
+                continue
+            content = choices[0].get("message", {}).get("content", "")
+            # Look for inline image data in list or string content
+            if isinstance(content, list):
+                for part in content:
+                    if isinstance(part, dict) and part.get("type") == "image_url":
+                        img_url = part.get("image_url", {}).get("url", "")
+                        if img_url.startswith("data:image"):
+                            return img_url
+                        if img_url:
+                            img_resp = requests.get(img_url, timeout=30)
+                            if img_resp.status_code == 200:
+                                b64 = base64.b64encode(img_resp.content).decode()
+                                return f"data:image/jpeg;base64,{b64}"
+            if isinstance(content, str) and content.startswith("data:image"):
+                return content
+            logger.info(f"OpenRouter {model} returned text only — no image in response")
+        except Exception as ex:
+            logger.warning(f"OpenRouter {model} exception: {ex}")
+    return None
 
 
 def display_template_book_preview(book_data: Dict, api_key: Optional[str] = None):
@@ -1412,9 +1537,21 @@ def display_template_book_preview(book_data: Dict, api_key: Optional[str] = None
         if 0 <= idx < len(pages):
             page = pages[idx]
             ref_b64 = book_data.get("reference_image_base64")
-            new_url = generate_page_image(api_key, page.get("image_prompt", ""), ref_b64)
+            openrouter_key = st.session_state.get("openrouter_api_key", "")
+            new_url = generate_page_image(api_key, page.get("image_prompt", ""), ref_b64, openrouter_key=openrouter_key)
             if new_url:
                 book_data["pages"][idx]["image_url"] = new_url
+                # Update cache so regenerated image is preserved
+                user_id = st.session_state.get("auth_user", {}).get("id", "")
+                if user_id:
+                    save_template_book_to_cache(
+                        user_id,
+                        book_data.get("template_id", ""),
+                        book_data.get("child_name", ""),
+                        book_data.get("gender", ""),
+                        book_data.get("age", 0),
+                        book_data,
+                    )
             else:
                 st.error(f"Failed to regenerate image for page {idx + 1}. Please try again.")
 
