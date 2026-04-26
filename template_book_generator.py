@@ -1392,19 +1392,40 @@ def _call_openrouter_image(openrouter_key: str, prompt: str) -> Optional[str]:
 
 def display_template_book_preview(book_data: Dict, api_key: Optional[str] = None):
     """Display the generated template book for preview with edit, regenerate, and download."""
-    # Handle single-page image regeneration (must run before rendering so updated image shows)
+
+    # --- Handle page deletion ---
+    if st.session_state.get("delete_template_page_idx") is not None:
+        idx = st.session_state.delete_template_page_idx
+        st.session_state.delete_template_page_idx = None
+        pages = book_data.get("pages", [])
+        if 0 <= idx < len(pages):
+            del book_data["pages"][idx]
+            # Clear all per-page session keys so they reinitialise correctly
+            for key in list(st.session_state.keys()):
+                if (key.startswith("template_page_text_") or
+                        key.startswith("template_page_prompt_") or
+                        key.startswith("template_text_area_") or
+                        key.startswith("template_prompt_area_")):
+                    del st.session_state[key]
+            st.rerun()
+
+    # --- Handle single-page image regeneration ---
     if api_key and st.session_state.get("regenerate_template_page_idx") is not None:
         idx = st.session_state.regenerate_template_page_idx
         st.session_state.regenerate_template_page_idx = None
         pages = book_data.get("pages", [])
         if 0 <= idx < len(pages):
             page = pages[idx]
+            # Use the edited prompt from session state (allows bypassing guardrails)
+            prompt_key = f"template_page_prompt_{idx}"
+            edited_prompt = st.session_state.get(prompt_key, page.get("image_prompt", ""))
             ref_b64 = book_data.get("reference_image_base64")
             openrouter_key = st.session_state.get("openrouter_api_key", "")
-            new_url = generate_page_image(api_key, page.get("image_prompt", ""), ref_b64, openrouter_key=openrouter_key)
+            with st.spinner(f"Regenerating image for page {idx + 1}..."):
+                new_url = generate_page_image(api_key, edited_prompt, ref_b64, openrouter_key=openrouter_key)
             if new_url:
                 book_data["pages"][idx]["image_url"] = new_url
-                # Update cache so regenerated image is preserved
+                book_data["pages"][idx]["image_prompt"] = edited_prompt
                 user_id = st.session_state.get("auth_user", {}).get("id", "")
                 if user_id:
                     save_template_book_to_cache(
@@ -1416,57 +1437,77 @@ def display_template_book_preview(book_data: Dict, api_key: Optional[str] = None
                         book_data,
                     )
             else:
-                st.error(f"Failed to regenerate image for page {idx + 1}. Please try again.")
+                st.error(f"Image generation failed for page {idx + 1}. Edit the image prompt below to try a different description, then click Regenerate again.")
 
     st.success(f"✨ Your personalized book for **{book_data['child_name']}** is ready!")
-
     st.markdown("---")
-    st.markdown("### 📖 Book Preview (edit text or regenerate any image)")
+    st.markdown("### 📖 Book Preview")
 
     for idx, page in enumerate(book_data["pages"]):
         with st.container():
-            st.markdown(f"#### Page {page['page_number']}: {page['profession_title']}")
+            # Page header + delete button on the same row
+            hcol1, hcol2 = st.columns([5, 1])
+            with hcol1:
+                st.markdown(f"#### Page {page['page_number']}: {page['profession_title']}")
+            with hcol2:
+                if st.button("🗑️ Delete", key=f"del_tpl_page_{idx}", use_container_width=True, help="Remove this page from the book"):
+                    st.session_state.delete_template_page_idx = idx
+                    st.rerun()
 
             col1, col2 = st.columns([1, 1])
 
             with col1:
+                # Image display
                 if page.get("image_url"):
                     try:
                         if page["image_url"].startswith("data:image"):
-                            image_data = page["image_url"].split(",", 1)[1]
-                            image_bytes = base64.b64decode(image_data)
+                            image_bytes = base64.b64decode(page["image_url"].split(",", 1)[1])
                             st.image(image_bytes, use_container_width=True)
                         else:
                             st.image(page["image_url"], use_container_width=True)
                     except Exception as e:
                         st.error(f"Failed to display image: {e}")
                 else:
-                    st.info("Image generation in progress or failed")
-                # Regenerate image for this page
-                if api_key and st.button("🔄 Regenerate this image", key=f"regen_tpl_img_{idx}", use_container_width=True):
+                    st.info("No image generated for this page")
+
+                if api_key and st.button("🔄 Regenerate image", key=f"regen_tpl_img_{idx}", use_container_width=True):
                     st.session_state.regenerate_template_page_idx = idx
                     st.rerun()
 
             with col2:
-                st.markdown("**Story text (editable):**")
-                # Editable text: sync widget value back to book_data so PDF/JSON use latest
-                key_edit = f"template_page_text_{idx}"
-                if key_edit not in st.session_state:
-                    st.session_state[key_edit] = page.get("text", "")
+                # Editable story text
+                st.markdown("**Story text:**")
+                key_text = f"template_page_text_{idx}"
+                if key_text not in st.session_state:
+                    st.session_state[key_text] = page.get("text", "")
                 current_text = st.text_area(
-                    "Edit page text",
-                    value=st.session_state[key_edit],
-                    height=120,
+                    "Story text",
+                    value=st.session_state[key_text],
+                    height=100,
                     key=f"template_text_area_{idx}",
                     label_visibility="collapsed",
                 )
-                st.session_state[key_edit] = current_text
+                st.session_state[key_text] = current_text
                 book_data["pages"][idx]["text"] = current_text
+
+                # Editable image prompt
+                st.markdown("**Image prompt** *(edit to bypass guardrails, then regenerate):*")
+                key_prompt = f"template_page_prompt_{idx}"
+                if key_prompt not in st.session_state:
+                    st.session_state[key_prompt] = page.get("image_prompt", "")
+                current_prompt = st.text_area(
+                    "Image prompt",
+                    value=st.session_state[key_prompt],
+                    height=120,
+                    key=f"template_prompt_area_{idx}",
+                    label_visibility="collapsed",
+                )
+                st.session_state[key_prompt] = current_prompt
+                book_data["pages"][idx]["image_prompt"] = current_prompt
 
             st.markdown("---")
 
-    # Prominent download section at the end
-    st.markdown("---")
+    # Download section
     st.markdown("### 📥 Download your book")
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     try:
@@ -1504,6 +1545,10 @@ def display_template_book_preview(book_data: Dict, api_key: Optional[str] = None
     with col_another:
         if st.button("🔄 Create Another Book", use_container_width=True):
             for key in list(st.session_state.keys()):
-                if key in ("template_generated_book", "template_book_data", "generate_template_book") or key.startswith("template_page_text_") or key == "regenerate_template_page_idx":
+                if (key in ("template_generated_book", "template_book_data", "generate_template_book") or
+                        key.startswith("template_page_text_") or
+                        key.startswith("template_page_prompt_") or
+                        key == "regenerate_template_page_idx" or
+                        key == "delete_template_page_idx"):
                     del st.session_state[key]
             st.rerun()
