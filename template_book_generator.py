@@ -919,6 +919,37 @@ def render_template_book_form():
             height=0
         )
 
+    # --- Previously generated books for this template ---
+    user_id_tbf = st.session_state.get("auth_user", {}).get("id", "")
+    if user_id_tbf:
+        try:
+            from mongo_client import book_cache_col
+            prev_entries = list(book_cache_col().find(
+                {"user_id": user_id_tbf, "template_id": selected_template_id},
+                {"child_name": 1, "gender": 1, "age": 1, "updated_at": 1},
+            ).sort("updated_at", -1).limit(5))
+            if prev_entries:
+                st.markdown("---")
+                st.markdown("### 📚 Your Previously Generated Books")
+                for entry in prev_entries:
+                    ec1, ec2 = st.columns([4, 1])
+                    with ec1:
+                        st.write(f"**{entry.get('child_name', '?')}** · {entry.get('gender', '')} · Age {entry.get('age', '')}")
+                    with ec2:
+                        if st.button("Load", key=f"load_cached_tbf_{entry['_id']}", use_container_width=True, type="primary"):
+                            cached = get_cached_template_book(
+                                user_id_tbf, selected_template_id,
+                                entry["child_name"], entry.get("gender", "Neutral"),
+                                int(entry.get("age", 5) or 5),
+                            )
+                            if cached:
+                                st.session_state.template_generated_book = cached
+                                st.rerun()
+                            else:
+                                st.warning("Cached book not found. Please generate it again.")
+        except Exception:
+            pass
+
     # --- Full book preview ---
     st.markdown("---")
     template_pages = get_template_pages(selected_template_id)

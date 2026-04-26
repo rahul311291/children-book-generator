@@ -34,6 +34,7 @@ try:
         render_template_book_form,
         generate_template_book,
         display_template_book_preview,
+        get_cached_template_book,
     )
     TEMPLATE_BOOKS_AVAILABLE = True
 except ImportError:
@@ -1572,23 +1573,40 @@ def main():
                                     if "pages" in story_data and len(story_data.get("pages", [])) > 0:
                                         st.session_state.generated_story = story_data
                                         st.session_state.current_child_name = loaded_data.get("child_name", story_info.get('child_name', 'Story'))
-                                        # Template books: restore images from saved image_url so PDF works without regenerating
-                                        if story_data.get("template_id"):
-                                            img_list = []
-                                            for p in story_data.get("pages", []):
-                                                url = p.get("image_url")
-                                                if url and url.startswith("data:image"):
-                                                    try:
-                                                        b64 = url.split(",", 1)[-1]
-                                                        raw = base64.b64decode(b64)
-                                                        img_list.append(Image.open(io.BytesIO(raw)).convert("RGB"))
-                                                    except Exception:
-                                                        img_list.append(Image.new("RGB", (512, 512), color=(220, 220, 220)))
-                                                else:
-                                                    img_list.append(Image.new("RGB", (512, 512), color=(220, 220, 220)))
-                                            st.session_state.generated_images = img_list
-                                            st.session_state.pdf_path = None
-                                            st.session_state.pdf_generation_key = None
+                                        # Template books: load from the book cache (which has image_url)
+                                        # History records deliberately omit image_url to save space.
+                                        if story_data.get("template_id") and TEMPLATE_BOOKS_AVAILABLE:
+                                            tmpl_id = story_data["template_id"]
+                                            child_name_h = loaded_data.get("child_name", "")
+                                            meta_h = loaded_data.get("metadata", {})
+                                            gender_h = meta_h.get("gender", "Neutral") or "Neutral"
+                                            age_h = int(meta_h.get("age", 5) or 5)
+                                            tmpl_name_h = story_data.get("template_name", "")
+                                            uid_h = get_current_user_id()
+                                            cached_book = None
+                                            if uid_h:
+                                                try:
+                                                    cached_book = get_cached_template_book(
+                                                        uid_h, tmpl_id, child_name_h, gender_h, age_h
+                                                    )
+                                                except Exception as ce:
+                                                    logger.warning(f"Cache lookup failed: {ce}")
+                                            if cached_book:
+                                                st.session_state.book_mode = "Template Book"
+                                                st.session_state.template_generated_book = cached_book
+                                                st.session_state.generated_story = None
+                                                st.session_state.show_history = False
+                                                st.success(f"✅ Loaded your personalized template book for **{child_name_h}**!")
+                                                st.rerun()
+                                            else:
+                                                # Cache miss — switch mode and pre-fill the form
+                                                st.session_state.book_mode = "Template Book"
+                                                st.session_state.selected_template_id = tmpl_id
+                                                st.session_state.selected_template_name = tmpl_name_h
+                                                st.session_state.generated_story = None
+                                                st.session_state.show_history = False
+                                                st.warning(f"Images for **{child_name_h}**'s book weren't found in cache. Fill in the details below and click Generate to rebuild it.")
+                                                st.rerun()
                                         # Restore journey state if available
                                         journey_state = loaded_data.get("journey_state", {})
                                         child_name_from_file = loaded_data.get("child_name", story_info.get('child_name', 'Story'))
