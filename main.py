@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import List, Dict, Optional
 from reportlab.lib.units import inch
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # Import age-specific prompts from the editable prompts file
 from story_prompts import get_full_prompt, get_image_style, IMAGE_STYLES
@@ -26,6 +26,7 @@ from auth import (
     save_user_openrouter_key,
     load_user_openrouter_key,
     render_auth_page,
+    restore_session_from_token,
 )
 
 # Import template book functionality
@@ -1482,6 +1483,44 @@ def create_pdf(story_data: Dict, images: List[Image.Image], child_name: str, out
     c.save()
 
 def main():
+    # ------------------------------------------------------------------ #
+    # Cookie-backed persistent sessions (7-day login)
+    # ------------------------------------------------------------------ #
+    _cm = None
+    _cookie_token = None
+    try:
+        import extra_streamlit_components as stx
+        _cm = stx.CookieManager(key="cbg_cm")
+        _cookie_token = _cm.get("cbg_st") or ""
+    except Exception:
+        pass
+
+    init_auth_state()
+
+    # Try to restore session from cookie if not already authenticated
+    if not is_authenticated() and _cookie_token:
+        if restore_session_from_token(_cookie_token):
+            st.rerun()
+
+    # Set cookie after new login/signup
+    if _cm and st.session_state.get("_pending_session_token"):
+        new_token = st.session_state.pop("_pending_session_token")
+        st.session_state._session_token = new_token
+        try:
+            _cm.set("cbg_st", new_token, expires_at=datetime.now() + timedelta(days=7))
+        except Exception:
+            pass
+
+    # Delete cookie after logout
+    if _cm and st.session_state.get("_token_to_delete"):
+        old_token = st.session_state.pop("_token_to_delete")
+        try:
+            _cm.delete("cbg_st")
+            from auth import _delete_session_token
+            _delete_session_token(old_token)
+        except Exception:
+            pass
+
     # Auth gate: show login/signup if not authenticated
     if not is_authenticated():
         render_auth_page()
@@ -1592,14 +1631,13 @@ def main():
                                                 except Exception as ce:
                                                     logger.warning(f"Cache lookup failed: {ce}")
                                             if cached_book:
-                                                st.session_state.book_mode = "Template Book"
                                                 st.session_state.template_generated_book = cached_book
                                                 st.session_state.generated_story = None
                                                 st.session_state.show_history = False
                                                 st.success(f"✅ Loaded your personalized template book for **{child_name_h}**!")
                                                 st.rerun()
                                             else:
-                                                # Cache miss — switch mode and pre-fill the form
+                                                # Cache miss — pre-fill the template form so user can regenerate
                                                 st.session_state.book_mode = "Template Book"
                                                 st.session_state.selected_template_id = tmpl_id
                                                 st.session_state.selected_template_name = tmpl_name_h
@@ -1759,19 +1797,18 @@ def main():
         current_mode = st.radio(
             "Choose creation mode:",
             options=book_mode_options,
+            key="book_mode",
             help="Custom Story: Create a unique personalized story | Template Book: Use pre-designed profession templates"
         )
 
-        # Detect mode change and clear template state if switching TO Template Book mode
-        if current_mode != previous_mode and current_mode == "Template Book":
-            # User switched to Template Book mode, clear template state to start fresh
+        # Detect mode change and clear template form state (but NOT the generated book)
+        if current_mode != previous_mode:
             for key in list(st.session_state.keys()):
-                if key in ("template_generated_book", "template_book_data", "generate_template_book",
+                if key in ("template_book_data", "generate_template_book",
                           "selected_template_id", "selected_template_name", "scroll_to_details",
                           "regenerate_template_page_idx") or key.startswith("template_page_text_") or key.startswith("template_text_area_"):
                     del st.session_state[key]
 
-        st.session_state.book_mode = current_mode
         st.session_state.previous_book_mode = current_mode
 
         st.divider()
@@ -1870,6 +1907,11 @@ def main():
     # Main content area
     # Get API key from session state (sidebar updates session state)
     api_key = st.session_state.api_key
+
+    # Template book loaded from history: display regardless of the mode radio selection
+    if st.session_state.get("template_generated_book") and TEMPLATE_BOOKS_AVAILABLE:
+        display_template_book_preview(st.session_state.template_generated_book, api_key=api_key)
+        return
 
     # Handle Template Book Mode
     if st.session_state.book_mode == "Template Book" and TEMPLATE_BOOKS_AVAILABLE:

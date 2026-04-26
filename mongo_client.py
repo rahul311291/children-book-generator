@@ -57,6 +57,10 @@ def image_pool_col() -> Collection:
     return get_db()["image_pool"]
 
 
+def sessions_col() -> Collection:
+    return get_db()["sessions"]
+
+
 def ensure_indexes() -> None:
     """Create indexes on first startup (idempotent)."""
     try:
@@ -67,5 +71,6 @@ def ensure_indexes() -> None:
             unique=True,
         )
         image_pool_col().create_index("prompt_hash", unique=True)
+        sessions_col().create_index("expires_at", expireAfterSeconds=0)
     except Exception:
         pass

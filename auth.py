@@ -5,7 +5,8 @@ import secrets
 import uuid
 import logging
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
+from typing import Optional
 from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
@@ -35,6 +36,64 @@ def _hash_password(password: str) -> tuple:
 def _verify_password(password: str, stored_hash: str, salt: str) -> bool:
     dk = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 200_000)
     return dk.hex() == stored_hash
+
+
+# ---------------------------------------------------------------------------
+# Persistent session tokens (7-day login)
+# ---------------------------------------------------------------------------
+
+def _sessions():
+    from mongo_client import sessions_col
+    return sessions_col()
+
+
+def _create_session_token(user_id: str) -> str:
+    """Generate a 64-char hex token, store it in MongoDB, return it."""
+    token = secrets.token_hex(32)
+    expires = datetime.utcnow() + timedelta(days=7)
+    try:
+        _sessions().insert_one({
+            "_id": token,
+            "user_id": user_id,
+            "expires_at": expires,
+            "created_at": datetime.utcnow(),
+        })
+    except Exception as e:
+        logger.error(f"Could not create session token: {e}")
+    return token
+
+
+def _delete_session_token(token: str) -> None:
+    if not token:
+        return
+    try:
+        _sessions().delete_one({"_id": token})
+    except Exception as e:
+        logger.error(f"Could not delete session token: {e}")
+
+
+def restore_session_from_token(token: str) -> bool:
+    """Validate a cookie token and restore auth_user if valid. Returns True on success."""
+    if not token:
+        return False
+    try:
+        session = _sessions().find_one(
+            {"_id": token, "expires_at": {"$gt": datetime.utcnow()}}
+        )
+        if not session:
+            return False
+        user = _users().find_one({"_id": session["user_id"]}, {"email": 1})
+        if not user:
+            return False
+        st.session_state.auth_user = {"id": session["user_id"], "email": user["email"]}
+        if user.get("gemini_api_key"):
+            st.session_state.api_key = user["gemini_api_key"]
+        if user.get("openrouter_api_key"):
+            st.session_state.openrouter_api_key = user["openrouter_api_key"]
+        return True
+    except Exception as e:
+        logger.error(f"Session restore failed: {e}")
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -85,6 +144,7 @@ def sign_up(email: str, password: str) -> bool:
         st.session_state.auth_user = {"id": user_id, "email": email}
         st.session_state.auth_error = None
         st.session_state.auth_success = "Account created successfully!"
+        st.session_state._pending_session_token = _create_session_token(user_id)
         return True
     except Exception as e:
         st.session_state.auth_error = f"Sign up failed: {e}"
@@ -107,6 +167,8 @@ def sign_in(email: str, password: str) -> bool:
             st.session_state.api_key = user["gemini_api_key"]
         if user.get("openrouter_api_key"):
             st.session_state.openrouter_api_key = user["openrouter_api_key"]
+        # Create persistent session token (cookie will be set by main.py)
+        st.session_state._pending_session_token = _create_session_token(user_id)
         return True
     except Exception as e:
         st.session_state.auth_error = f"Login failed: {e}"
@@ -115,11 +177,16 @@ def sign_in(email: str, password: str) -> bool:
 
 
 def sign_out():
+    # Mark current session token for deletion (main.py will clear the cookie)
+    current_token = st.session_state.get("_session_token", "")
+    if current_token:
+        st.session_state._token_to_delete = current_token
     st.session_state.auth_user = None
     st.session_state.auth_error = None
     st.session_state.auth_success = None
     st.session_state.api_key = ""
     st.session_state.openrouter_api_key = ""
+    st.session_state._session_token = ""
 
 
 # ---------------------------------------------------------------------------
