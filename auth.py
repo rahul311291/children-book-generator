@@ -179,6 +179,20 @@ def render_auth_page():
             unsafe_allow_html=True,
         )
 
+        # Show which backend and the exact error for debugging
+        import os
+        uri = os.getenv("MONGODB_URI", "")
+        if not uri:
+            try:
+                uri = st.secrets.get("MONGODB_URI", "")
+            except Exception:
+                pass
+        if uri:
+            host = uri.split("@")[-1].split("/")[0] if "@" in uri else "unknown"
+            st.caption(f"v2.0-mongodb · connected to: {host}")
+        else:
+            st.caption("v2.0-mongodb · MONGODB_URI not set")
+
         if st.session_state.auth_error:
             st.error(st.session_state.auth_error)
             st.session_state.auth_error = None
