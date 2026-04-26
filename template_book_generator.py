@@ -901,11 +901,6 @@ def render_template_book_form():
     selected_template_name = st.session_state.selected_template_name
     template_info = next((t for t in templates if t["id"] == selected_template_id), None)
 
-    if template_info:
-        st.markdown("---")
-        st.info(f"📚 **{template_info['name']}** – {template_info.get('description', '')}")
-        st.caption(f"This template includes {template_info.get('total_pages', 'multiple')} pages")
-
     # Auto-scroll to details section when template is selected
     if st.session_state.get("scroll_to_details"):
         st.session_state.scroll_to_details = False
@@ -924,8 +919,32 @@ def render_template_book_form():
             height=0
         )
 
+    # --- Full book preview ---
     st.markdown("---")
-    st.markdown("### Personalize your book")
+    template_pages = get_template_pages(selected_template_id)
+
+    if template_info and template_info.get("cover_image"):
+        col_cover, col_info = st.columns([1, 2])
+        with col_cover:
+            st.image(template_info["cover_image"], use_container_width=True)
+        with col_info:
+            st.markdown(f"### {template_info['name']}")
+            st.write(template_info.get("description", "").replace("{name}", "*your child*"))
+            st.write(f"📄 **{template_info.get('total_pages', len(template_pages))} pages**")
+    elif template_info:
+        st.markdown(f"### {template_info['name']}")
+
+    with st.expander(f"📃 Preview all {len(template_pages)} pages", expanded=False):
+        for i, page in enumerate(template_pages):
+            preview_text = personalize_template_text(page['text_template'], "your child", "Neutral")
+            st.markdown(f"**Page {page['page_number']}: {page['profession_title']}**")
+            st.write(preview_text)
+            if i < len(template_pages) - 1:
+                st.markdown("---")
+
+    # --- Customize form ---
+    st.markdown("---")
+    st.markdown("### ✏️ Customize for your child")
 
     col1, col2 = st.columns(2)
 
@@ -935,7 +954,6 @@ def render_template_book_form():
             placeholder="e.g., Emma, Jack, Alex",
             help="The child's name that will appear throughout the book"
         )
-
         gender = st.selectbox(
             "Gender *",
             options=["Boy", "Girl", "Neutral"],
@@ -952,25 +970,25 @@ def render_template_book_form():
         )
 
     st.markdown("### Upload Photos (Optional)")
-    st.caption("Upload 1-3 photos of the child to personalize select pages")
+    st.caption("Upload up to 3 photos of the child to personalize the images. You can select multiple at once.")
 
-    photo_cols = st.columns(3)
-
-    photos = []
-    for i, col in enumerate(photo_cols):
-        with col:
-            uploaded_file = st.file_uploader(
-                f"Photo {i + 1}",
-                type=['png', 'jpg', 'jpeg'],
-                key=f"template_photo_{i}"
-            )
-            if uploaded_file:
-                photos.append(uploaded_file)
-                st.image(uploaded_file, caption=f"Photo {i + 1}", use_container_width=True)
+    uploaded_files = st.file_uploader(
+        "Upload photos",
+        type=['png', 'jpg', 'jpeg'],
+        accept_multiple_files=True,
+        key="template_photos_multi",
+        help="Select up to 3 photos — hold Ctrl/Cmd to pick multiple files",
+    )
+    photos = list(uploaded_files or [])[:3]
+    if photos:
+        photo_cols = st.columns(min(len(photos), 3))
+        for i, (col, photo) in enumerate(zip(photo_cols, photos)):
+            with col:
+                st.image(photo, caption=f"Photo {i + 1}", use_container_width=True)
 
     st.markdown("---")
 
-    if st.button("✨ Generate Template Book", type="primary", use_container_width=True):
+    if st.button("✨ Generate My Personalized Book", type="primary", use_container_width=True):
         if not child_name:
             st.error("⚠️ Please enter the child's name")
             return
@@ -982,7 +1000,7 @@ def render_template_book_form():
                 'child_name': child_name,
                 'gender': gender,
                 'age': age,
-                'photos': photos
+                'photos': photos,
             }
             st.session_state.generate_template_book = True
             st.rerun()
