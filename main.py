@@ -25,6 +25,8 @@ from auth import (
     load_user_api_key,
     save_user_openrouter_key,
     load_user_openrouter_key,
+    save_user_vertex_config,
+    load_user_vertex_config,
     render_auth_page,
     restore_session_from_token,
 )
@@ -99,6 +101,12 @@ if 'api_key' not in st.session_state:
     st.session_state.api_key = ""
 if 'openrouter_api_key' not in st.session_state:
     st.session_state.openrouter_api_key = ""
+if 'vertex_project_id' not in st.session_state:
+    st.session_state.vertex_project_id = ""
+if 'vertex_location' not in st.session_state:
+    st.session_state.vertex_location = "us-central1"
+if 'vertex_sa_json' not in st.session_state:
+    st.session_state.vertex_sa_json = ""
 if 'current_book_history_id' not in st.session_state:
     st.session_state.current_book_history_id = None
 if 'generated_story' not in st.session_state:
@@ -580,58 +588,18 @@ def regenerate_story_from_page(api_key: str, existing_story: Dict, start_page: i
 
 CRITICAL: Output ONLY the JSON, no additional text before or after."""
 
-        # Use same model selection logic
-        available_models = list_available_models(api_key)
-        preferred_models = ['gemini-3-pro', 'gemini-3.0-pro', 'gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-2.0-flash-exp']
-        model_names = [m for m in preferred_models if m in available_models] if available_models else preferred_models
-        
-        if not model_names and available_models:
-            text_models = [m for m in available_models if 'image' not in m.lower() and 'vision' not in m.lower()]
-            model_names = text_models[:3] if text_models else ['gemini-1.5-pro']
-        
-        response_text = None
-        last_error = None
-        
-        for model_name in model_names:
-            try:
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
-                headers = {"Content-Type": "application/json"}
-                payload = {
-                    "contents": [{"parts": [{"text": prompt}]}],
-                    "generationConfig": {"temperature": 0.8, "topK": 40, "topP": 0.95}
-                }
-                params = {"key": api_key}
-                
-                response = requests.post(url, headers=headers, json=payload, params=params)
-                response.raise_for_status()
-                
-                result = response.json()
-                if "candidates" in result and len(result["candidates"]) > 0:
-                    parts = result["candidates"][0].get("content", {}).get("parts", [])
-                    response_text = ""
-                    for part in parts:
-                        if "text" in part:
-                            response_text += part["text"]
-                    response_text = response_text.strip()
-                    logger.info(f"Successfully got response from {model_name}, length: {len(response_text)}")
-                    break
-            except Exception as e:
-                logger.error(f"Error with model {model_name}: {e}")
-                last_error = e
-                continue
-        
+        from vertex_client import call_gemini_text
+        response_text = call_gemini_text(prompt, api_key=api_key, temperature=0.8)
         if response_text is None:
-            error_msg = f"Could not regenerate story with any model. Last error: {last_error}"
-            logger.error(error_msg)
-            st.error(f"❌ {error_msg}")
+            st.error("❌ Could not regenerate story. Check your API key or Vertex AI credentials.")
             return None
-        
+
         # Extract JSON
         if "```json" in response_text:
             response_text = response_text.split("```json")[1].split("```")[0].strip()
         elif "```" in response_text:
             response_text = response_text.split("```")[1].split("```")[0].strip()
-        
+
         try:
             story_data = json.loads(response_text)
             logger.info("Successfully parsed regenerated story JSON")
@@ -642,7 +610,7 @@ CRITICAL: Output ONLY the JSON, no additional text before or after."""
             with st.expander("View API Response", expanded=False):
                 st.code(response_text[:2000])
             return None
-        
+
         # Handle format mapping and ensure visual anchor
         visual_anchor = story_data.get("visual_anchor", existing_visual_anchor)
         for page in story_data.get("pages", []):
@@ -757,66 +725,19 @@ def refine_story_with_followup(api_key: str, existing_story: Dict, followup_prom
 **OUTPUT:**
 Return ONLY the modified JSON. Every page's "text" field should reflect the requested changes. Do NOT return the same JSON. Output ONLY valid JSON, no markdown, no explanations."""
 
-        # Use same model selection logic as generate_story_with_gemini
-        available_models = list_available_models(api_key)
-        preferred_models = ['gemini-3-pro', 'gemini-3.0-pro', 'gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-2.0-flash-exp']
-        model_names = [m for m in preferred_models if m in available_models] if available_models else preferred_models
-        
-        if not model_names and available_models:
-            text_models = [m for m in available_models if 'image' not in m.lower() and 'vision' not in m.lower()]
-            model_names = text_models[:3]
-        
-        if not model_names:
-            model_names = ['gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-2.0-flash-exp']
-        
-        logger.info(f"Trying models: {model_names}")
-        response_text = None
-        last_error = None
-        
-        for model_name in model_names:
-            try:
-                logger.info(f"Attempting refinement with model: {model_name}")
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
-                headers = {"Content-Type": "application/json"}
-                payload = {
-                    "contents": [{"parts": [{"text": prompt}]}],
-                    "generationConfig": {"temperature": 0.8, "topK": 40, "topP": 0.95}  # Slightly higher temp for more variation
-                }
-                params = {"key": api_key}
-                
-                response = requests.post(url, headers=headers, json=payload, params=params)
-                response.raise_for_status()
-                
-                result = response.json()
-                if "candidates" in result and len(result["candidates"]) > 0:
-                    parts = result["candidates"][0].get("content", {}).get("parts", [])
-                    response_text = ""
-                    for part in parts:
-                        if "text" in part:
-                            response_text += part["text"]
-                    response_text = response_text.strip()
-                    logger.info(f"Successfully got response from {model_name}, length: {len(response_text)}")
-                    break
-            except Exception as e:
-                logger.error(f"Error with model {model_name}: {e}")
-                last_error = e
-                continue
-        
+        from vertex_client import call_gemini_text
+        response_text = call_gemini_text(prompt, api_key=api_key, temperature=0.8)
         if response_text is None:
-            error_msg = f"Could not refine story with any model. Last error: {last_error}"
-            logger.error(error_msg)
-            st.error(f"❌ {error_msg}")
-            if last_error:
-                st.error(f"Details: {str(last_error)}")
+            st.error("❌ Could not refine story. Check your API key or Vertex AI credentials.")
             return None
-        
+
         # Extract JSON
         original_response = response_text
         if "```json" in response_text:
             response_text = response_text.split("```json")[1].split("```")[0].strip()
         elif "```" in response_text:
             response_text = response_text.split("```")[1].split("```")[0].strip()
-        
+
         try:
             story_data = json.loads(response_text)
             logger.info("Successfully parsed refined story JSON")
@@ -925,58 +846,18 @@ Return the COMPLETE story JSON with:
 
 Output ONLY valid JSON, no markdown, no explanations."""
         
-        # Use same model selection logic
-        available_models = list_available_models(api_key)
-        preferred_models = ['gemini-3-pro', 'gemini-3.0-pro', 'gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-2.0-flash-exp']
-        model_names = [m for m in preferred_models if m in available_models] if available_models else preferred_models
-        
-        if not model_names and available_models:
-            text_models = [m for m in available_models if 'image' not in m.lower() and 'vision' not in m.lower()]
-            model_names = text_models[:3] if text_models else ['gemini-1.5-pro']
-        
-        response_text = None
-        last_error = None
-        
-        for model_name in model_names:
-            try:
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
-                headers = {"Content-Type": "application/json"}
-                payload = {
-                    "contents": [{"parts": [{"text": prompt}]}],
-                    "generationConfig": {"temperature": 0.8, "topK": 40, "topP": 0.95}
-                }
-                params = {"key": api_key}
-                
-                response = requests.post(url, headers=headers, json=payload, params=params)
-                response.raise_for_status()
-                
-                result = response.json()
-                if "candidates" in result and len(result["candidates"]) > 0:
-                    parts = result["candidates"][0].get("content", {}).get("parts", [])
-                    response_text = ""
-                    for part in parts:
-                        if "text" in part:
-                            response_text += part["text"]
-                    response_text = response_text.strip()
-                    logger.info(f"Successfully got response from {model_name}")
-                    break
-            except Exception as e:
-                logger.error(f"Error with model {model_name}: {e}")
-                last_error = e
-                continue
-        
+        from vertex_client import call_gemini_text
+        response_text = call_gemini_text(prompt, api_key=api_key, temperature=0.8)
         if response_text is None:
-            error_msg = f"Could not regenerate story. Last error: {last_error}"
-            logger.error(error_msg)
-            st.error(f"❌ {error_msg}")
+            st.error("❌ Could not regenerate story. Check your API key or Vertex AI credentials.")
             return None
-        
+
         # Extract JSON
         if "```json" in response_text:
             response_text = response_text.split("```json")[1].split("```")[0].strip()
         elif "```" in response_text:
             response_text = response_text.split("```")[1].split("```")[0].strip()
-        
+
         try:
             story_data = json.loads(response_text)
         except json.JSONDecodeError as e:
@@ -1048,82 +929,18 @@ def generate_story_with_gemini(api_key: str, child_name: str, age: int, gender: 
         # END OF PROMPT SECTION
         # ============================================================================
 
-        # Try to list available models first, then use appropriate ones
-        available_models = list_available_models(api_key)
-        
-        # Priority order: try Gemini 3.x first, then 1.5 Pro, then Flash
-        preferred_models = ['gemini-3-pro', 'gemini-3.0-pro', 'gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-2.0-flash-exp']
-        
-        # Filter to only models that are actually available
-        model_names = [m for m in preferred_models if m in available_models] if available_models else preferred_models
-        
-        # If no preferred models found, try all available models that support generateContent
-        if not model_names and available_models:
-            # Filter models that likely support text generation (exclude image-only models)
-            text_models = [m for m in available_models if 'image' not in m.lower() and 'vision' not in m.lower()]
-            model_names = text_models[:3]  # Try first 3 text models
-        
-        # Fallback to common models if listing failed
-        if not model_names:
-            model_names = ['gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-2.0-flash-exp']
-        
-        response_text = None
-        last_error = None
-        
-        for model_name in model_names:
-            try:
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
-                headers = {
-                    "Content-Type": "application/json",
-                }
-                payload = {
-                    "contents": [{
-                        "parts": [{
-                            "text": prompt
-                        }]
-                    }],
-                    "generationConfig": {
-                        "temperature": 0.7,
-                        "topK": 40,
-                        "topP": 0.95
-                    }
-                }
-                params = {"key": api_key}
-                
-                response = requests.post(url, headers=headers, json=payload, params=params)
-                response.raise_for_status()
-                
-                result = response.json()
-                
-                # Extract text from response
-                if "candidates" in result and len(result["candidates"]) > 0:
-                    parts = result["candidates"][0].get("content", {}).get("parts", [])
-                    response_text = ""
-                    for part in parts:
-                        if "text" in part:
-                            response_text += part["text"]
-                    response_text = response_text.strip()
-                    break
-            except Exception as e:
-                last_error = e
-                continue
-        
+        from vertex_client import call_gemini_text
+        response_text = call_gemini_text(prompt, api_key=api_key, temperature=0.7)
         if response_text is None:
-            error_msg = f"Could not generate story with any model. Tried: {model_names}."
-            if available_models:
-                error_msg += f" Available models: {', '.join(available_models[:10])}"
-            if last_error:
-                error_msg += f" Last error: {last_error}"
-            logger.error(error_msg)
-            st.error(f"❌ {error_msg}")
+            st.error("❌ Could not generate story. Check your API key or Vertex AI credentials.")
             return None
-        
+
         # Try to extract JSON if wrapped in markdown code blocks
         if "```json" in response_text:
             response_text = response_text.split("```json")[1].split("```")[0].strip()
         elif "```" in response_text:
             response_text = response_text.split("```")[1].split("```")[0].strip()
-        
+
         story_data = json.loads(response_text)
         
         # Handle new format: map "visual_description" to "image_prompt" for compatibility
@@ -1157,75 +974,29 @@ def generate_story_with_gemini(api_key: str, child_name: str, age: int, gender: 
         return None
 
 def generate_image_with_imagen(api_key: str, prompt: str, retry_count: int = 0, image_style: str = None, image_index: int = None) -> Image.Image:
-    """Generate image using Gemini 3 Pro Image Preview (Nano Banana Pro) via REST API."""
+    """Generate image via Vertex AI (primary) or Google AI API (fallback)."""
     try:
-        # Clear any previous error for this image
         if image_index is not None and image_index in st.session_state.image_generation_errors:
             del st.session_state.image_generation_errors[image_index]
         logger.info(f"Generating image (attempt {retry_count + 1}), prompt: {prompt[:100]}...")
-        # ============================================================================
-        # IMAGE STYLE PROMPT - Based on user selection
-        # ============================================================================
-        # Get image style from session state if not passed directly
+
         if image_style is None:
             image_style = st.session_state.get("image_style", "Cartoon/Animated (3D Pixar Style)")
-        
-        logger.info(f"Image style selected: {image_style}")
-        
-        # Get style modifiers from story_prompts.py (all styles defined in one place)
+
         style_modifiers = get_image_style(image_style)
-        
-        logger.info(f"Style modifiers applied: {style_modifiers[:50]}...")
-        # ============================================================================
-        
-        # Enhanced prompt with style - STRONG guardrail to prevent text in images
-        # Add this instruction at the BEGINNING and END of prompt for maximum emphasis
-        no_text_instruction = "CRITICAL REQUIREMENT - ABSOLUTELY NO TEXT: This image must contain ZERO text, ZERO words, ZERO letters, ZERO numbers, ZERO speech bubbles, ZERO captions, ZERO signs, ZERO labels, ZERO writing of any kind. This is a pure illustration for a children's book - visual art only. Any visible text will make the image completely unusable. Generate ONLY visual elements - characters, objects, backgrounds - but NO text whatsoever."
+        no_text_instruction = "CRITICAL REQUIREMENT - ABSOLUTELY NO TEXT: This image must contain ZERO text, ZERO words, ZERO letters, ZERO numbers, ZERO speech bubbles, ZERO captions, ZERO signs, ZERO labels, ZERO writing of any kind. This is a pure illustration for a children's book - visual art only."
         style_prompt = f"{no_text_instruction}. {prompt}. {style_modifiers}. {no_text_instruction}"
-        
-        # Use REST API matching the user's working example
-        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent"
-        headers = {
-            "Content-Type": "application/json",
-        }
-        payload = {
-            "contents": [{
-                "parts": [{
-                    "text": style_prompt
-                }]
-            }],
-            "generationConfig": {
-                "temperature": 0.4,
-                "topK": 32,
-                "topP": 1,
-                "imageConfig": {
-                    "aspectRatio": "1:1",
-                    "imageSize": "2K"
-                }
-            }
-        }
-        params = {"key": api_key}
-        
-        response = requests.post(url, headers=headers, json=payload, params=params)
-        response.raise_for_status()
-        
-        result = response.json()
-        
-        # Extract image from response
-        if "candidates" in result and len(result["candidates"]) > 0:
-            parts = result["candidates"][0].get("content", {}).get("parts", [])
-            for part in parts:
-                if "inlineData" in part:
-                    image_data = part["inlineData"]["data"]
-                    image_bytes = base64.b64decode(image_data)
-                    image = Image.open(io.BytesIO(image_bytes))
-                    logger.info("Image generated successfully")
-                    return image
-        
-        error_msg = "No image generated in response"
-        logger.error(error_msg)
-        raise Exception(error_msg)
-            
+
+        from vertex_client import call_gemini_image
+        data_url = call_gemini_image(style_prompt, api_key=api_key)
+        if data_url:
+            image_bytes = base64.b64decode(data_url.split(",", 1)[1])
+            image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+            logger.info("Image generated successfully")
+            return image
+
+        raise Exception("No image returned from Vertex AI / Google AI API")
+
     except Exception as e:
         error_msg = f"Image generation failed: {e}"
         logger.error(f"{error_msg} (attempt {retry_count + 1})")
@@ -1234,7 +1005,7 @@ def generate_image_with_imagen(api_key: str, prompt: str, retry_count: int = 0, 
             "error": str(e),
             "full_error": error_msg,
             "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-            "attempt": retry_count + 1
+            "attempt": retry_count + 1,
         }
 
         if retry_count < 1:
@@ -1243,8 +1014,7 @@ def generate_image_with_imagen(api_key: str, prompt: str, retry_count: int = 0, 
             time.sleep(2)
             return generate_image_with_imagen(api_key, prompt, retry_count + 1, image_style, image_index)
 
-        # Gemini failed — try OpenRouter fallback
-        logger.error("Image generation failed after all Gemini retries, trying OpenRouter fallback")
+        # Try OpenRouter as final fallback
         openrouter_key = st.session_state.get("openrouter_api_key", "")
         if openrouter_key:
             fallback = generate_image_with_openrouter(openrouter_key, prompt, image_style)
@@ -1256,8 +1026,7 @@ def generate_image_with_imagen(api_key: str, prompt: str, retry_count: int = 0, 
             st.session_state.image_generation_errors[image_index] = error_details
 
         st.error(f"❌ Failed to generate image after retries: {str(e)[:200]}")
-        placeholder = Image.new('RGB', (512, 512), color=(200, 200, 200))
-        return placeholder
+        return Image.new('RGB', (512, 512), color=(200, 200, 200))
 
 
 def generate_image_with_openrouter(openrouter_key: str, prompt: str, image_style: str = None) -> Optional[Image.Image]:
@@ -1782,6 +1551,51 @@ def main():
             st.caption(f"OpenRouter key saved ({len(openrouter_key_input)} chars)")
         else:
             st.caption("No OpenRouter key — Gemini only.")
+
+        # Vertex AI (Google Cloud) credentials
+        with st.expander("Vertex AI (Google Cloud)", expanded=bool(st.session_state.vertex_project_id)):
+            user_id_v = get_current_user_id()
+
+            current_vproject = st.session_state.vertex_project_id
+            vproject_input = st.text_input(
+                "GCP Project ID",
+                value=current_vproject,
+                placeholder="my-gcp-project-id",
+                key="sidebar_vertex_project",
+                help="Your Google Cloud project ID (from GCP Console).",
+            )
+
+            current_vloc = st.session_state.vertex_location or "us-central1"
+            vloc_input = st.text_input(
+                "Location",
+                value=current_vloc,
+                placeholder="us-central1",
+                key="sidebar_vertex_location",
+                help="Vertex AI region, e.g. us-central1.",
+            )
+
+            current_vsa = st.session_state.vertex_sa_json
+            vsa_input = st.text_area(
+                "Service Account JSON",
+                value=current_vsa,
+                placeholder='{"type":"service_account","project_id":"..."}',
+                height=120,
+                key="sidebar_vertex_sa",
+                help="Paste the full contents of your GCP service account key JSON file.",
+            )
+
+            if vproject_input != current_vproject or vloc_input != current_vloc or vsa_input != current_vsa:
+                st.session_state.vertex_project_id = vproject_input
+                st.session_state.vertex_location = vloc_input or "us-central1"
+                st.session_state.vertex_sa_json = vsa_input
+                if user_id_v and (vproject_input or vsa_input):
+                    save_user_vertex_config(user_id_v, vproject_input, vloc_input or "us-central1", vsa_input)
+
+            from vertex_client import is_vertex_configured
+            if is_vertex_configured():
+                st.caption(f"Vertex AI ready · project: {st.session_state.vertex_project_id}")
+            else:
+                st.caption("Vertex AI not configured — Gemini API only.")
 
         st.divider()
 

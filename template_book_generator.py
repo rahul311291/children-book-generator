@@ -1128,17 +1128,55 @@ def generate_template_book(api_key: str, book_data: Dict):
         st.error(f"Failed to generate book: {e}")
 
 
+def _add_title_overlay(img: Image.Image, title: str) -> Image.Image:
+    """Render a semi-transparent title banner at the top of the image."""
+    from PIL import ImageDraw, ImageFont
+    img = img.convert("RGBA")
+    w, h = img.size
+    banner_h = max(48, int(h * 0.11))
+    overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
+    draw.rectangle([0, 0, w, banner_h], fill=(0, 0, 0, 175))
+    font_size = max(20, int(banner_h * 0.52))
+    font = None
+    for fp in [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+        "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
+        "/System/Library/Fonts/Helvetica.ttc",
+        "C:/Windows/Fonts/arialbd.ttf",
+    ]:
+        try:
+            font = ImageFont.truetype(fp, font_size)
+            break
+        except Exception:
+            continue
+    if font is None:
+        font = ImageFont.load_default()
+    title_upper = title.upper()
+    bbox = draw.textbbox((0, 0), title_upper, font=font)
+    tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+    tx = (w - tw) // 2
+    ty = (banner_h - th) // 2
+    draw.text((tx + 2, ty + 2), title_upper, font=font, fill=(0, 0, 0, 200))
+    draw.text((tx, ty), title_upper, font=font, fill=(255, 255, 255, 255))
+    return Image.alpha_composite(img, overlay).convert("RGB")
+
+
 def _template_page_image_to_pil(page: Dict) -> Optional[Image.Image]:
-    """Convert template page image_url (data URL or URL) to PIL Image, or None if missing/failed."""
+    """Convert template page image_url (data URL) to PIL Image, applying title overlay if present."""
     url = page.get("image_url")
     if not url:
         return None
     try:
         if url.startswith("data:image"):
-            # data:image/png;base64,...
             b64 = url.split(",", 1)[-1]
             raw = base64.b64decode(b64)
-            return Image.open(io.BytesIO(raw)).convert("RGB")
+            img = Image.open(io.BytesIO(raw)).convert("RGB")
+            title = page.get("profession_title", "")
+            if title:
+                img = _add_title_overlay(img, title)
+            return img
         return None
     except Exception as e:
         logger.warning(f"Could not decode template page image: {e}")
@@ -1350,38 +1388,10 @@ def generate_page_image(api_key: str, prompt: str, reference_image_base64: Optio
 
 
 def _call_gemini_image_api(api_key: str, enhanced_prompt: str, reference_image_base64: Optional[str] = None) -> Optional[str]:
-    """Call the Gemini image generation REST API. Returns data URL or None."""
+    """Call Vertex AI image generation (primary) with Google AI fallback. Returns data URL or None."""
     try:
-        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent"
-        headers = {"Content-Type": "application/json"}
-
-        if reference_image_base64:
-            payload = {
-                "contents": [{
-                    "parts": [
-                        {"inlineData": {"mimeType": "image/jpeg", "data": reference_image_base64}},
-                        {"text": f"{enhanced_prompt}. Make the child look exactly like the person in the reference photo."},
-                    ]
-                }],
-                "generationConfig": {"temperature": 0.4, "topK": 32, "topP": 1,
-                                     "imageConfig": {"aspectRatio": "1:1", "imageSize": "2K"}},
-            }
-        else:
-            payload = {
-                "contents": [{"parts": [{"text": enhanced_prompt}]}],
-                "generationConfig": {"temperature": 0.4, "topK": 32, "topP": 1,
-                                     "imageConfig": {"aspectRatio": "1:1", "imageSize": "2K"}},
-            }
-
-        response = requests.post(url, headers=headers, json=payload, params={"key": api_key}, timeout=120)
-        if response.status_code == 200:
-            result = response.json()
-            candidates = result.get("candidates", [])
-            if candidates:
-                for part in candidates[0].get("content", {}).get("parts", []):
-                    if "inlineData" in part:
-                        return f"data:image/png;base64,{part['inlineData']['data']}"
-        logger.warning(f"Gemini image API status {response.status_code}: {response.text[:300]}")
+        from vertex_client import call_gemini_image
+        return call_gemini_image(enhanced_prompt, api_key=api_key, reference_image_b64=reference_image_base64)
     except Exception as e:
         logger.warning(f"Gemini image API exception: {e}")
     return None
@@ -1510,8 +1520,14 @@ def display_template_book_preview(book_data: Dict, api_key: Optional[str] = None
                 if page.get("image_url"):
                     try:
                         if page["image_url"].startswith("data:image"):
-                            image_bytes = base64.b64decode(page["image_url"].split(",", 1)[1])
-                            st.image(image_bytes, use_container_width=True)
+                            pil_img = _template_page_image_to_pil(page)
+                            if pil_img is not None:
+                                buf = io.BytesIO()
+                                pil_img.save(buf, format="JPEG", quality=90)
+                                st.image(buf.getvalue(), use_container_width=True)
+                            else:
+                                image_bytes = base64.b64decode(page["image_url"].split(",", 1)[1])
+                                st.image(image_bytes, use_container_width=True)
                         else:
                             st.image(page["image_url"], use_container_width=True)
                     except Exception as e:

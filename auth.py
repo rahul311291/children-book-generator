@@ -82,7 +82,11 @@ def restore_session_from_token(token: str) -> bool:
         )
         if not session:
             return False
-        user = _users().find_one({"_id": session["user_id"]}, {"email": 1})
+        user = _users().find_one(
+            {"_id": session["user_id"]},
+            {"email": 1, "gemini_api_key": 1, "openrouter_api_key": 1,
+             "vertex_project_id": 1, "vertex_location": 1, "vertex_sa_json": 1},
+        )
         if not user:
             return False
         st.session_state.auth_user = {"id": session["user_id"], "email": user["email"]}
@@ -90,6 +94,12 @@ def restore_session_from_token(token: str) -> bool:
             st.session_state.api_key = user["gemini_api_key"]
         if user.get("openrouter_api_key"):
             st.session_state.openrouter_api_key = user["openrouter_api_key"]
+        if user.get("vertex_project_id"):
+            st.session_state.vertex_project_id = user["vertex_project_id"]
+        if user.get("vertex_location"):
+            st.session_state.vertex_location = user["vertex_location"]
+        if user.get("vertex_sa_json"):
+            st.session_state.vertex_sa_json = user["vertex_sa_json"]
         return True
     except Exception as e:
         logger.error(f"Session restore failed: {e}")
@@ -167,6 +177,12 @@ def sign_in(email: str, password: str) -> bool:
             st.session_state.api_key = user["gemini_api_key"]
         if user.get("openrouter_api_key"):
             st.session_state.openrouter_api_key = user["openrouter_api_key"]
+        if user.get("vertex_project_id"):
+            st.session_state.vertex_project_id = user["vertex_project_id"]
+        if user.get("vertex_location"):
+            st.session_state.vertex_location = user["vertex_location"]
+        if user.get("vertex_sa_json"):
+            st.session_state.vertex_sa_json = user["vertex_sa_json"]
         # Create persistent session token (cookie will be set by main.py)
         st.session_state._pending_session_token = _create_session_token(user_id)
         return True
@@ -227,6 +243,33 @@ def load_user_openrouter_key(user_id: str) -> str:
     except Exception as e:
         logger.error(f"Error loading OpenRouter API key: {e}")
         return ""
+
+
+def save_user_vertex_config(user_id: str, project_id: str, location: str, sa_json: str) -> bool:
+    try:
+        _users().update_one({"_id": user_id}, {"$set": {
+            "vertex_project_id": project_id,
+            "vertex_location": location or "us-central1",
+            "vertex_sa_json": sa_json,
+        }})
+        return True
+    except Exception as e:
+        logger.error(f"Error saving Vertex config: {e}")
+        return False
+
+
+def load_user_vertex_config(user_id: str) -> dict:
+    try:
+        user = _users().find_one({"_id": user_id}, {"vertex_project_id": 1, "vertex_location": 1, "vertex_sa_json": 1})
+        if user:
+            return {
+                "project_id": user.get("vertex_project_id", ""),
+                "location": user.get("vertex_location", "us-central1"),
+                "sa_json": user.get("vertex_sa_json", ""),
+            }
+    except Exception as e:
+        logger.error(f"Error loading Vertex config: {e}")
+    return {"project_id": "", "location": "us-central1", "sa_json": ""}
 
 
 # ---------------------------------------------------------------------------
