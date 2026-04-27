@@ -63,7 +63,7 @@ def is_vertex_configured() -> bool:
     return bool(c["project"] and c["sa_json"])
 
 
-def _token() -> Optional[str]:
+def _token(raise_on_error: bool = False) -> Optional[str]:
     sa = _cfg()["sa_json"]
     if not sa:
         return None
@@ -76,8 +76,16 @@ def _token() -> Optional[str]:
         )
         creds.refresh(R())
         return creds.token
+    except json.JSONDecodeError as e:
+        msg = f"Service Account JSON is not valid JSON: {e}"
+        logger.error(f"Vertex SA JSON parse error: {e}")
+        if raise_on_error:
+            raise ValueError(msg) from e
+        return None
     except Exception as e:
         logger.warning(f"Vertex auth failed: {e}")
+        if raise_on_error:
+            raise
         return None
 
 
