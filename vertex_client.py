@@ -127,6 +127,16 @@ def _vertex_url(model: str) -> str:
     )
 
 
+def _vertex_global_url(model: str) -> str:
+    """Global endpoint (required for gemini-2.5-flash-image and other global-only models)."""
+    c = _cfg()
+    p = c["project"]
+    return (
+        f"https://aiplatform.googleapis.com/v1/projects/{p}"
+        f"/locations/global/publishers/google/models/{model}:generateContent"
+    )
+
+
 def _vertex_predict_url(model: str) -> str:
     """Endpoint for Imagen models which use :predict instead of :generateContent."""
     c = _cfg()
@@ -264,32 +274,44 @@ def call_gemini_image(
             headers = {"Authorization": f"Bearer {tok}", "Content-Type": "application/json"}
 
             # Try Gemini image models (generateContent API with responseModalities)
+            # Global endpoint is tried first as gemini-2.5-flash-image requires it;
+            # regional endpoint is the fallback for older models.
+            payload = {
+                "contents": [{"parts": _build_parts(True)}],
+                "generationConfig": {
+                    "responseModalities": ["TEXT", "IMAGE"],
+                    "temperature": 0.4,
+                },
+            }
             for model in _GEMINI_IMAGE_MODELS:
-                try:
-                    r = requests.post(
-                        _vertex_url(model),
-                        headers=headers,
-                        json={
-                            "contents": [{"parts": _build_parts(True)}],
-                            "generationConfig": {
-                                "responseModalities": ["TEXT", "IMAGE"],
-                                "temperature": 0.4,
-                            },
-                        },
-                        timeout=180,
-                    )
-                    if r.status_code == 200:
-                        for p in r.json().get("candidates", [{}])[0].get("content", {}).get("parts", []):
-                            if "inlineData" in p:
-                                logger.info(f"Vertex Gemini image OK: {model}")
-                                return f"data:image/png;base64,{p['inlineData']['data']}"
-                        vertex_img_errors.append(f"{model}: 200 but no image in response")
-                    else:
-                        vertex_img_errors.append(f"{model}: HTTP {r.status_code} — {r.text[:200]}")
-                    logger.warning(f"Vertex Gemini image {model} → {r.status_code}: {r.text[:150]}")
-                except Exception as e:
-                    vertex_img_errors.append(f"{model}: {e}")
-                    logger.warning(f"Vertex Gemini image {model} error: {e}")
+                urls_to_try = [_vertex_global_url(model), _vertex_url(model)]
+                model_success = False
+                for url in urls_to_try:
+                    try:
+                        r = requests.post(url, headers=headers, json=payload, timeout=180)
+                        if r.status_code == 200:
+                            for part in r.json().get("candidates", [{}])[0].get("content", {}).get("parts", []):
+                                if "inlineData" in part:
+                                    logger.info(f"Vertex Gemini image OK: {model} ({url})")
+                                    return f"data:image/png;base64,{part['inlineData']['data']}"
+                            vertex_img_errors.append(f"{model}: 200 but no image in response")
+                            model_success = True
+                            break
+                        elif r.status_code == 404:
+                            logger.warning(f"Vertex Gemini image {model} 404 at {url}, trying next")
+                            continue
+                        else:
+                            vertex_img_errors.append(f"{model}: HTTP {r.status_code} — {r.text[:200]}")
+                            logger.warning(f"Vertex Gemini image {model} → {r.status_code}: {r.text[:150]}")
+                            model_success = True
+                            break
+                    except Exception as e:
+                        vertex_img_errors.append(f"{model}: {e}")
+                        logger.warning(f"Vertex Gemini image {model} error: {e}")
+                        model_success = True
+                        break
+                if not model_success:
+                    vertex_img_errors.append(f"{model}: 404 on all endpoints")
 
             # Try Imagen models (predict API — different payload and response format)
             for model in _IMAGEN_MODELS:
