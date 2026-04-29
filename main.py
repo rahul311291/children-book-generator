@@ -1181,13 +1181,16 @@ def create_pdf(story_data: Dict, images: List[Image.Image], child_name: str, out
         image_x_offset = (page_width - display_width) / 2
         # Position image in the 85% area, centered vertically
         image_y_offset = image_y_start + (image_available_height - display_height) / 2
-        
-        img_resized = img.resize((int(display_width), int(display_height)), Image.Resampling.LANCZOS)
+
+        # Embed the original full-resolution image; let ReportLab handle display scaling.
+        # Previously the image was resized to display_width×display_height (points = 72 DPI
+        # equivalent), which destroyed quality. Now we keep the original pixels and only
+        # tell ReportLab the target display size.
         img_io = io.BytesIO()
-        img_resized.save(img_io, format='PNG')
+        img.save(img_io, format='PNG')
         img_io.seek(0)
-        
-        c.drawImage(ImageReader(img_io), image_x_offset, image_y_offset, 
+
+        c.drawImage(ImageReader(img_io), image_x_offset, image_y_offset,
                    width=display_width, height=display_height, preserveAspectRatio=True)
         
         # ===== TEXT AREA (Bottom 10%) =====

@@ -39,9 +39,15 @@ _TEXT_MODELS = [
     "gemini-1.5-pro",                 # Gemini 1.5 Pro (stable)
     "gemini-1.5-flash",               # Gemini 1.5 Flash (stable)
 ]
-_IMAGE_MODELS = [
+_GEMINI_IMAGE_MODELS = [
+    "gemini-2.5-flash-preview-image-generation",  # Gemini 2.5 Flash image (generateContent API)
+    "gemini-2.5-flash-image",
     "gemini-2.0-flash-preview-image-generation",
     "gemini-2.0-flash-exp",
+]
+_IMAGEN_MODELS = [
+    "imagen-4.0-generate-001",   # Imagen 4 (predict API, different payload format)
+    "imagen-3.0-generate-001",
 ]
 
 
@@ -118,6 +124,16 @@ def _vertex_url(model: str) -> str:
     return (
         f"https://{l}-aiplatform.googleapis.com/v1/projects/{p}"
         f"/locations/{l}/publishers/google/models/{model}:generateContent"
+    )
+
+
+def _vertex_predict_url(model: str) -> str:
+    """Endpoint for Imagen models which use :predict instead of :generateContent."""
+    c = _cfg()
+    p, l = c["project"], c["location"]
+    return (
+        f"https://{l}-aiplatform.googleapis.com/v1/projects/{p}"
+        f"/locations/{l}/publishers/google/models/{model}:predict"
     )
 
 
@@ -246,7 +262,9 @@ def call_gemini_image(
             vertex_img_errors.append(f"Auth failed: {e}")
         if tok:
             headers = {"Authorization": f"Bearer {tok}", "Content-Type": "application/json"}
-            for model in _IMAGE_MODELS:
+
+            # Try Gemini image models (generateContent API with responseModalities)
+            for model in _GEMINI_IMAGE_MODELS:
                 try:
                     r = requests.post(
                         _vertex_url(model),
@@ -263,15 +281,47 @@ def call_gemini_image(
                     if r.status_code == 200:
                         for p in r.json().get("candidates", [{}])[0].get("content", {}).get("parts", []):
                             if "inlineData" in p:
-                                logger.info(f"Vertex image OK: {model}")
+                                logger.info(f"Vertex Gemini image OK: {model}")
                                 return f"data:image/png;base64,{p['inlineData']['data']}"
                         vertex_img_errors.append(f"{model}: 200 but no image in response")
                     else:
                         vertex_img_errors.append(f"{model}: HTTP {r.status_code} — {r.text[:200]}")
-                    logger.warning(f"Vertex image {model} → {r.status_code}: {r.text[:150]}")
+                    logger.warning(f"Vertex Gemini image {model} → {r.status_code}: {r.text[:150]}")
                 except Exception as e:
                     vertex_img_errors.append(f"{model}: {e}")
-                    logger.warning(f"Vertex image {model} error: {e}")
+                    logger.warning(f"Vertex Gemini image {model} error: {e}")
+
+            # Try Imagen models (predict API — different payload and response format)
+            for model in _IMAGEN_MODELS:
+                try:
+                    imagen_prompt = prompt
+                    if reference_image_b64:
+                        imagen_prompt = f"{prompt}. Make the child look like the person in the reference photo."
+                    r = requests.post(
+                        _vertex_predict_url(model),
+                        headers=headers,
+                        json={
+                            "instances": [{"prompt": imagen_prompt}],
+                            "parameters": {
+                                "sampleCount": 1,
+                                "aspectRatio": "1:1",
+                            },
+                        },
+                        timeout=180,
+                    )
+                    if r.status_code == 200:
+                        predictions = r.json().get("predictions", [])
+                        if predictions and predictions[0].get("bytesBase64Encoded"):
+                            logger.info(f"Vertex Imagen OK: {model}")
+                            return f"data:image/png;base64,{predictions[0]['bytesBase64Encoded']}"
+                        vertex_img_errors.append(f"{model}: 200 but no image in response")
+                    else:
+                        vertex_img_errors.append(f"{model}: HTTP {r.status_code} — {r.text[:200]}")
+                    logger.warning(f"Vertex Imagen {model} → {r.status_code}: {r.text[:150]}")
+                except Exception as e:
+                    vertex_img_errors.append(f"{model}: {e}")
+                    logger.warning(f"Vertex Imagen {model} error: {e}")
+
         if vertex_img_errors:
             try:
                 import streamlit as st
@@ -280,7 +330,7 @@ def call_gemini_image(
                     st.error(
                         "**Vertex AI image: all models returned 404.** Go to "
                         "**GCP Console → Vertex AI → Model Garden**, find "
-                        "Gemini 2.0 Flash Image Generation and click **Enable**."
+                        "Gemini 2.5 Flash Image Generation or Imagen 4 and click **Enable**."
                     )
                 else:
                     st.warning(f"Vertex AI image errors: {'; '.join(vertex_img_errors[:2])}")
