@@ -1246,9 +1246,8 @@ def create_template_pdf(book_data: Dict, output_path_or_buffer):
             image_x_offset = (page_width - display_width) / 2
             image_y_offset = (page_height - display_height) / 2
 
-            img_resized = img_pil.resize((int(display_width), int(display_height)), Image.Resampling.LANCZOS)
             img_io = io.BytesIO()
-            img_resized.save(img_io, format="PNG")
+            img_pil.save(img_io, format="PNG")
             img_io.seek(0)
             c.drawImage(ImageReader(img_io), image_x_offset, image_y_offset, width=display_width, height=display_height, preserveAspectRatio=True)
             c.showPage()
@@ -1323,9 +1322,8 @@ def create_template_pdf(book_data: Dict, output_path_or_buffer):
                     display_height = display_width / aspect_ratio
             image_x_offset = (page_width - display_width) / 2
             image_y_offset = image_y_start + (image_available_height - display_height) / 2
-            img_resized = img_pil.resize((int(display_width), int(display_height)), Image.Resampling.LANCZOS)
             img_io = io.BytesIO()
-            img_resized.save(img_io, format="PNG")
+            img_pil.save(img_io, format="PNG")
             img_io.seek(0)
             c.drawImage(ImageReader(img_io), image_x_offset, image_y_offset, width=display_width, height=display_height, preserveAspectRatio=True)
             text = page.get("text", "")
