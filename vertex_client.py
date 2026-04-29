@@ -122,7 +122,7 @@ def _vertex_url(model: str) -> str:
     c = _cfg()
     p, l = c["project"], c["location"]
     return (
-        f"https://{l}-aiplatform.googleapis.com/v1/projects/{p}"
+        f"https://{l}-aiplatform.googleapis.com/v1beta1/projects/{p}"
         f"/locations/{l}/publishers/google/models/{model}:generateContent"
     )
 
@@ -132,7 +132,7 @@ def _vertex_global_url(model: str) -> str:
     c = _cfg()
     p = c["project"]
     return (
-        f"https://aiplatform.googleapis.com/v1/projects/{p}"
+        f"https://aiplatform.googleapis.com/v1beta1/projects/{p}"
         f"/locations/global/publishers/google/models/{model}:generateContent"
     )
 
@@ -142,7 +142,7 @@ def _vertex_predict_url(model: str) -> str:
     c = _cfg()
     p, l = c["project"], c["location"]
     return (
-        f"https://{l}-aiplatform.googleapis.com/v1/projects/{p}"
+        f"https://{l}-aiplatform.googleapis.com/v1beta1/projects/{p}"
         f"/locations/{l}/publishers/google/models/{model}:predict"
     )
 
