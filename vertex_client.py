@@ -5,6 +5,10 @@ Configure Vertex AI by adding to Streamlit secrets or .env:
   VERTEX_PROJECT_ID   = "your-gcp-project-id"
   VERTEX_LOCATION     = "us-central1"           # optional, default us-central1
   GOOGLE_SERVICE_ACCOUNT_JSON = '{"type":"service_account",...}'  # full SA JSON
+
+Vertex AI model names differ from Google AI Studio names.
+If you get 404s, go to GCP Console → Vertex AI → Model Garden and enable
+the Gemini models for your project.
 """
 
 import os
@@ -23,16 +27,21 @@ else:
 
 logger = logging.getLogger(__name__)
 
-# Vertex AI model preference order
+# Vertex AI model names (without publishers/google/ prefix).
+# Vertex uses different IDs than Google AI Studio.
+# Models are tried in order; first success wins.
 _TEXT_MODELS = [
-    "gemini-1.5-pro-002",
-    "gemini-1.5-flash-002",
-    "gemini-2.0-flash-001",
-    "gemini-2.5-flash-preview-04-17",
+    "gemini-2.5-pro-preview-05-06",   # Gemini 2.5 Pro (latest preview)
+    "gemini-2.5-flash-preview-05-20", # Gemini 2.5 Flash
+    "gemini-2.5-flash-preview-04-17", # Gemini 2.5 Flash (older preview)
+    "gemini-2.0-flash",               # Gemini 2.0 Flash GA
+    "gemini-2.0-flash-001",           # Gemini 2.0 Flash (versioned)
+    "gemini-1.5-pro",                 # Gemini 1.5 Pro (stable)
+    "gemini-1.5-flash",               # Gemini 1.5 Flash (stable)
 ]
 _IMAGE_MODELS = [
-    "gemini-2.0-flash-exp",
     "gemini-2.0-flash-preview-image-generation",
+    "gemini-2.0-flash-exp",
 ]
 
 
@@ -164,9 +173,17 @@ def call_gemini_text(
                     vertex_errors.append(f"{model}: {e}")
                     logger.warning(f"Vertex text {model} error: {e}")
         if vertex_errors:
+            all_404 = all("404" in e for e in vertex_errors)
             try:
                 import streamlit as st
-                st.warning(f"Vertex AI text errors: {'; '.join(vertex_errors[:3])}")
+                if all_404:
+                    st.error(
+                        "**Vertex AI: all models returned 404.** Your project may not have access. "
+                        "Go to **GCP Console → Vertex AI → Model Garden**, find Gemini 2.5 Pro, "
+                        "and click **Enable** to grant your project access. Then try again."
+                    )
+                else:
+                    st.warning(f"Vertex AI errors: {'; '.join(vertex_errors[:2])}")
             except Exception:
                 pass
 
@@ -258,7 +275,15 @@ def call_gemini_image(
         if vertex_img_errors:
             try:
                 import streamlit as st
-                st.warning(f"Vertex AI image errors: {'; '.join(vertex_img_errors[:3])}")
+                all_404 = all("404" in e for e in vertex_img_errors)
+                if all_404:
+                    st.error(
+                        "**Vertex AI image: all models returned 404.** Go to "
+                        "**GCP Console → Vertex AI → Model Garden**, find "
+                        "Gemini 2.0 Flash Image Generation and click **Enable**."
+                    )
+                else:
+                    st.warning(f"Vertex AI image errors: {'; '.join(vertex_img_errors[:2])}")
             except Exception:
                 pass
 
@@ -267,7 +292,7 @@ def call_gemini_image(
         return None
     try:
         r = requests.post(
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent",
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent",
             headers={"Content-Type": "application/json"},
             json={
                 "contents": [{"parts": _build_parts(True)}],
