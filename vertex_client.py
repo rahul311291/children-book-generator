@@ -25,14 +25,14 @@ logger = logging.getLogger(__name__)
 
 # Vertex AI model preference order
 _TEXT_MODELS = [
-    "gemini-2.5-flash-preview-04-17",
-    "gemini-2.0-flash-001",
     "gemini-1.5-pro-002",
     "gemini-1.5-flash-002",
+    "gemini-2.0-flash-001",
+    "gemini-2.5-flash-preview-04-17",
 ]
 _IMAGE_MODELS = [
-    "gemini-2.0-flash-preview-image-generation",
     "gemini-2.0-flash-exp",
+    "gemini-2.0-flash-preview-image-generation",
 ]
 
 
