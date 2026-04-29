@@ -25,14 +25,14 @@ logger = logging.getLogger(__name__)
 
 # Vertex AI model preference order
 _TEXT_MODELS = [
-    "gemini-2.5-flash-preview-04-17",
-    "gemini-2.0-flash-001",
     "gemini-1.5-pro-002",
     "gemini-1.5-flash-002",
+    "gemini-2.0-flash-001",
+    "gemini-2.5-flash-preview-04-17",
 ]
 _IMAGE_MODELS = [
-    "gemini-2.0-flash-preview-image-generation",
     "gemini-2.0-flash-exp",
+    "gemini-2.0-flash-preview-image-generation",
 ]
 
 
@@ -41,20 +41,34 @@ _IMAGE_MODELS = [
 # ---------------------------------------------------------------------------
 
 def _cfg() -> dict:
-    # Session state (sidebar UI) takes highest priority
+    # Session state (sidebar UI) takes highest priority, then env vars, then st.secrets
+    project = ""
+    location = ""
+    sa_json = ""
+
     try:
         import streamlit as st
-        project = st.session_state.get("vertex_project_id", "") or os.getenv("VERTEX_PROJECT_ID", "")
-        location = st.session_state.get("vertex_location", "") or os.getenv("VERTEX_LOCATION", "us-central1")
-        sa_json = st.session_state.get("vertex_sa_json", "") or os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "")
-        if not (project and sa_json):
-            project = project or str(st.secrets.get("VERTEX_PROJECT_ID", "") or "")
-            location = str(st.secrets.get("VERTEX_LOCATION", "") or location)
-            sa_json = sa_json or str(st.secrets.get("GOOGLE_SERVICE_ACCOUNT_JSON", "") or "")
+        project = st.session_state.get("vertex_project_id", "") or ""
+        location = st.session_state.get("vertex_location", "") or ""
+        sa_json = st.session_state.get("vertex_sa_json", "") or ""
     except Exception:
-        project = os.getenv("VERTEX_PROJECT_ID", "")
-        location = os.getenv("VERTEX_LOCATION", "us-central1")
-        sa_json = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "")
+        pass
+
+    # Fill gaps from env vars
+    project = project or os.getenv("VERTEX_PROJECT_ID", "")
+    location = location or os.getenv("VERTEX_LOCATION", "")
+    sa_json = sa_json or os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "")
+
+    # Fill remaining gaps from st.secrets (wrapped separately so secrets errors don't wipe session state)
+    if not project or not sa_json:
+        try:
+            import streamlit as st
+            project = project or str(st.secrets.get("VERTEX_PROJECT_ID", "") or "")
+            location = location or str(st.secrets.get("VERTEX_LOCATION", "") or "")
+            sa_json = sa_json or str(st.secrets.get("GOOGLE_SERVICE_ACCOUNT_JSON", "") or "")
+        except Exception:
+            pass
+
     return {"project": project, "location": location or "us-central1", "sa_json": sa_json}
 
 
@@ -63,7 +77,7 @@ def is_vertex_configured() -> bool:
     return bool(c["project"] and c["sa_json"])
 
 
-def _token() -> Optional[str]:
+def _token(raise_on_error: bool = False) -> Optional[str]:
     sa = _cfg()["sa_json"]
     if not sa:
         return None
@@ -76,8 +90,16 @@ def _token() -> Optional[str]:
         )
         creds.refresh(R())
         return creds.token
+    except json.JSONDecodeError as e:
+        msg = f"Service Account JSON is not valid JSON: {e}"
+        logger.error(f"Vertex SA JSON parse error: {e}")
+        if raise_on_error:
+            raise ValueError(msg) from e
+        return None
     except Exception as e:
         logger.warning(f"Vertex auth failed: {e}")
+        if raise_on_error:
+            raise
         return None
 
 
@@ -108,8 +130,13 @@ def call_gemini_text(
         return text or None
 
     # --- Vertex AI ---
+    vertex_errors = []
     if is_vertex_configured():
-        tok = _token()
+        try:
+            tok = _token(raise_on_error=True)
+        except Exception as e:
+            tok = None
+            vertex_errors.append(f"Auth failed: {e}")
         if tok:
             headers = {"Authorization": f"Bearer {tok}", "Content-Type": "application/json"}
             payload = {
@@ -129,9 +156,19 @@ def call_gemini_text(
                         if text:
                             logger.info(f"Vertex text OK: {model}")
                             return text
+                        vertex_errors.append(f"{model}: 200 but no text in response")
+                    else:
+                        vertex_errors.append(f"{model}: HTTP {r.status_code} — {r.text[:200]}")
                     logger.warning(f"Vertex text {model} → {r.status_code}: {r.text[:150]}")
                 except Exception as e:
+                    vertex_errors.append(f"{model}: {e}")
                     logger.warning(f"Vertex text {model} error: {e}")
+        if vertex_errors:
+            try:
+                import streamlit as st
+                st.warning(f"Vertex AI text errors: {'; '.join(vertex_errors[:3])}")
+            except Exception:
+                pass
 
     # --- Google AI fallback ---
     if not api_key:
@@ -183,8 +220,13 @@ def call_gemini_image(
         return [{"text": prompt}]
 
     # --- Vertex AI ---
+    vertex_img_errors = []
     if is_vertex_configured():
-        tok = _token()
+        try:
+            tok = _token(raise_on_error=True)
+        except Exception as e:
+            tok = None
+            vertex_img_errors.append(f"Auth failed: {e}")
         if tok:
             headers = {"Authorization": f"Bearer {tok}", "Content-Type": "application/json"}
             for model in _IMAGE_MODELS:
@@ -195,7 +237,7 @@ def call_gemini_image(
                         json={
                             "contents": [{"parts": _build_parts(True)}],
                             "generationConfig": {
-                                "responseModalities": ["IMAGE"],
+                                "responseModalities": ["TEXT", "IMAGE"],
                                 "temperature": 0.4,
                             },
                         },
@@ -206,9 +248,19 @@ def call_gemini_image(
                             if "inlineData" in p:
                                 logger.info(f"Vertex image OK: {model}")
                                 return f"data:image/png;base64,{p['inlineData']['data']}"
+                        vertex_img_errors.append(f"{model}: 200 but no image in response")
+                    else:
+                        vertex_img_errors.append(f"{model}: HTTP {r.status_code} — {r.text[:200]}")
                     logger.warning(f"Vertex image {model} → {r.status_code}: {r.text[:150]}")
                 except Exception as e:
+                    vertex_img_errors.append(f"{model}: {e}")
                     logger.warning(f"Vertex image {model} error: {e}")
+        if vertex_img_errors:
+            try:
+                import streamlit as st
+                st.warning(f"Vertex AI image errors: {'; '.join(vertex_img_errors[:3])}")
+            except Exception:
+                pass
 
     # --- Google AI fallback ---
     if not api_key:

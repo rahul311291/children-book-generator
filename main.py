@@ -1591,9 +1591,26 @@ def main():
                 if user_id_v and (vproject_input or vsa_input):
                     save_user_vertex_config(user_id_v, vproject_input, vloc_input or "us-central1", vsa_input)
 
-            from vertex_client import is_vertex_configured
+            from vertex_client import is_vertex_configured, _token, _cfg
             if is_vertex_configured():
                 st.caption(f"Vertex AI ready · project: {st.session_state.vertex_project_id}")
+                if st.button("Test Vertex AI connection", key="test_vertex_btn", use_container_width=True):
+                    with st.spinner("Testing Vertex AI..."):
+                        try:
+                            tok = _token(raise_on_error=True)
+                            if tok:
+                                st.success(f"Auth OK — token acquired ({len(tok)} chars)")
+                                from vertex_client import call_gemini_text
+                                result = call_gemini_text("Say 'Vertex OK' and nothing else.", api_key="")
+                                if result:
+                                    st.success(f"Text generation OK: {result[:80]}")
+                                else:
+                                    cfg = _cfg()
+                                    st.error(f"Auth succeeded but text call returned nothing. Project: {cfg['project']}, Location: {cfg['location']}")
+                            else:
+                                st.error("Could not obtain auth token. Check your Service Account JSON.")
+                        except Exception as ex:
+                            st.error(f"Vertex error: {ex}")
             else:
                 st.caption("Vertex AI not configured — Gemini API only.")
 
@@ -1729,8 +1746,9 @@ def main():
 
     # Handle Template Book Mode
     if st.session_state.book_mode == "Template Book" and TEMPLATE_BOOKS_AVAILABLE:
-        if not api_key:
-            st.info("👈 Please enter your Google Gemini API key in the sidebar to get started.")
+        from vertex_client import is_vertex_configured
+        if not api_key and not is_vertex_configured():
+            st.info("👈 Please enter a Google Gemini API key or configure Vertex AI in the sidebar to get started.")
             return
 
         if st.session_state.get("generate_template_book", False):
@@ -1753,8 +1771,9 @@ def main():
         return
 
     # Allow viewing loaded stories even without API key (needed for generating new images)
-    if not api_key and not st.session_state.generated_story:
-        st.info("👈 Please enter your Google Gemini API key in the sidebar to get started.")
+    from vertex_client import is_vertex_configured
+    if not api_key and not is_vertex_configured() and not st.session_state.generated_story:
+        st.info("👈 Please enter a Google Gemini API key or configure Vertex AI in the sidebar to get started.")
         return
     
     if generate_button:
@@ -2134,17 +2153,11 @@ def main():
             st.progress(progress_value)
             st.caption(f"Approved: {approved_count}/{total_pages} images")
 
-            # Check if API key is available for image generation
-            if not api_key:
+            # Check if API key or Vertex AI is available for image generation
+            from vertex_client import is_vertex_configured
+            if not api_key and not is_vertex_configured():
                 st.error("⚠️ **API Key Required for Image Generation**")
-                st.info("👈 Please enter your Google Gemini API key in the sidebar to generate images.")
-                st.markdown("Get your free API key from: https://makersuite.google.com/app/apikey")
-
-                # Debug information
-                with st.expander("🔍 Debug Information"):
-                    st.write(f"**API Key in session state:** {bool(st.session_state.api_key)}")
-                    st.write(f"**API Key length:** {len(st.session_state.api_key) if st.session_state.api_key else 0}")
-                    st.write(f"**Environment variable set:** {bool(os.getenv('GEMINI_API_KEY'))}")
+                st.info("👈 Please enter a Google Gemini API key or configure Vertex AI in the sidebar to generate images.")
                 return
 
             # Check if any specific image needs regeneration
