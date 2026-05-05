@@ -172,7 +172,7 @@ def call_gemini_text(
         if tok:
             headers = {"Authorization": f"Bearer {tok}", "Content-Type": "application/json"}
             payload = {
-                "contents": [{"parts": [{"text": prompt}]}],
+                "contents": [{"role": "user", "parts": [{"text": prompt}]}],
                 "generationConfig": {
                     "temperature": temperature,
                     "topK": 40,
@@ -274,7 +274,7 @@ def call_gemini_image(
             # Global endpoint is tried first as gemini-2.5-flash-image requires it;
             # regional endpoint is the fallback for older models.
             payload = {
-                "contents": [{"parts": _build_parts(True)}],
+                "contents": [{"role": "user", "parts": _build_parts(True)}],
                 "generationConfig": {
                     "responseModalities": ["TEXT", "IMAGE"],
                     "temperature": 0.4,
