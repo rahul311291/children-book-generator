@@ -31,22 +31,19 @@ logger = logging.getLogger(__name__)
 # Vertex uses different IDs than Google AI Studio.
 # Models are tried in order; first success wins.
 _TEXT_MODELS = [
-    "gemini-2.5-pro-preview-05-06",   # Gemini 2.5 Pro (latest preview)
-    "gemini-2.5-flash-preview-05-20", # Gemini 2.5 Flash
-    "gemini-2.5-flash-preview-04-17", # Gemini 2.5 Flash (older preview)
-    "gemini-2.0-flash",               # Gemini 2.0 Flash GA
-    "gemini-2.0-flash-001",           # Gemini 2.0 Flash (versioned)
-    "gemini-1.5-pro",                 # Gemini 1.5 Pro (stable)
-    "gemini-1.5-flash",               # Gemini 1.5 Flash (stable)
+    "gemini-2.5-pro",    # Gemini 2.5 Pro GA (stable)
+    "gemini-2.5-flash",  # Gemini 2.5 Flash GA (stable)
+    "gemini-2.0-flash",  # Gemini 2.0 Flash GA
+    "gemini-1.5-pro",    # Gemini 1.5 Pro (stable)
+    "gemini-1.5-flash",  # Gemini 1.5 Flash (stable)
 ]
 _GEMINI_IMAGE_MODELS = [
-    "gemini-2.5-flash-preview-image-generation",  # Gemini 2.5 Flash image (generateContent API)
-    "gemini-2.5-flash-image",
+    "gemini-2.5-flash-image",               # Gemini 2.5 Flash image GA
     "gemini-2.0-flash-preview-image-generation",
     "gemini-2.0-flash-exp",
 ]
 _IMAGEN_MODELS = [
-    "imagen-4.0-generate-001",   # Imagen 4 (predict API, different payload format)
+    "imagen-4.0-generate-001",
     "imagen-3.0-generate-001",
 ]
 
@@ -122,7 +119,7 @@ def _vertex_url(model: str) -> str:
     c = _cfg()
     p, l = c["project"], c["location"]
     return (
-        f"https://{l}-aiplatform.googleapis.com/v1beta1/projects/{p}"
+        f"https://{l}-aiplatform.googleapis.com/v1/projects/{p}"
         f"/locations/{l}/publishers/google/models/{model}:generateContent"
     )
 
@@ -132,7 +129,7 @@ def _vertex_global_url(model: str) -> str:
     c = _cfg()
     p = c["project"]
     return (
-        f"https://aiplatform.googleapis.com/v1beta1/projects/{p}"
+        f"https://aiplatform.googleapis.com/v1/projects/{p}"
         f"/locations/global/publishers/google/models/{model}:generateContent"
     )
 
@@ -142,7 +139,7 @@ def _vertex_predict_url(model: str) -> str:
     c = _cfg()
     p, l = c["project"], c["location"]
     return (
-        f"https://{l}-aiplatform.googleapis.com/v1beta1/projects/{p}"
+        f"https://{l}-aiplatform.googleapis.com/v1/projects/{p}"
         f"/locations/{l}/publishers/google/models/{model}:predict"
     )
 
