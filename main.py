@@ -7,10 +7,10 @@ import base64
 import hashlib
 import logging
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import List, Dict
 from reportlab.lib.units import inch
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime
 
 # Import age-specific prompts from the editable prompts file
 from story_prompts import get_full_prompt, get_image_style, IMAGE_STYLES
@@ -23,12 +23,7 @@ from auth import (
     sign_out,
     save_user_api_key,
     load_user_api_key,
-    save_user_openrouter_key,
-    load_user_openrouter_key,
-    save_user_vertex_config,
-    load_user_vertex_config,
     render_auth_page,
-    restore_session_from_token,
 )
 
 # Import template book functionality
@@ -37,11 +32,14 @@ try:
         render_template_book_form,
         generate_template_book,
         display_template_book_preview,
-        get_cached_template_book,
+        seed_default_templates_if_missing,
+        init_supabase
     )
     TEMPLATE_BOOKS_AVAILABLE = True
 except ImportError:
     TEMPLATE_BOOKS_AVAILABLE = False
+    seed_default_templates_if_missing = None
+    init_supabase = None
 
 # Setup logging
 log_dir = Path("logs")
@@ -99,16 +97,6 @@ init_auth_state()
 # Initialize session state
 if 'api_key' not in st.session_state:
     st.session_state.api_key = ""
-if 'openrouter_api_key' not in st.session_state:
-    st.session_state.openrouter_api_key = ""
-if 'vertex_project_id' not in st.session_state:
-    st.session_state.vertex_project_id = ""
-if 'vertex_location' not in st.session_state:
-    st.session_state.vertex_location = "us-central1"
-if 'vertex_sa_json' not in st.session_state:
-    st.session_state.vertex_sa_json = ""
-if 'current_book_history_id' not in st.session_state:
-    st.session_state.current_book_history_id = None
 if 'generated_story' not in st.session_state:
     st.session_state.generated_story = None
 if 'generated_images' not in st.session_state:
@@ -135,41 +123,6 @@ if 'stories_dir' not in st.session_state:
     st.session_state.stories_dir.mkdir(exist_ok=True)
 if 'current_child_name' not in st.session_state:
     st.session_state.current_child_name = ""  # Track current child name for auto-save
-
-def compress_pil_images_for_storage(images: list, max_size: int = 768, quality: int = 75) -> list:
-    """Compress a list of PIL Images to base64 JPEG data URLs for Supabase storage."""
-    result = []
-    for img in images:
-        if img is None:
-            result.append(None)
-            continue
-        try:
-            buf = io.BytesIO()
-            img_copy = img.convert("RGB")
-            img_copy.thumbnail((max_size, max_size), Image.LANCZOS)
-            img_copy.save(buf, format="JPEG", quality=quality, optimize=True)
-            b64 = base64.b64encode(buf.getvalue()).decode()
-            result.append(f"data:image/jpeg;base64,{b64}")
-        except Exception as e:
-            logger.warning(f"Image compression failed: {e}")
-            result.append(None)
-    return result
-
-
-def decode_stored_images(images_data: list) -> list:
-    """Decode a list of base64 data URLs back to PIL Images."""
-    result = []
-    for url in (images_data or []):
-        if url and isinstance(url, str) and url.startswith("data:image"):
-            try:
-                raw = base64.b64decode(url.split(",", 1)[-1])
-                result.append(Image.open(io.BytesIO(raw)).convert("RGB"))
-            except Exception:
-                result.append(None)
-        else:
-            result.append(None)
-    return result
-
 
 def create_visual_anchor(child_name: str, age: int, gender: str, physical_desc: str, character_style: str = "") -> str:
     """Create a visual anchor description for consistent character appearance."""
@@ -218,72 +171,34 @@ def create_visual_anchor(child_name: str, age: int, gender: str, physical_desc: 
     return base_anchor
 
 def save_story(story_data: Dict, child_name: str, metadata: Dict = None):
-    """Save story to Supabase history and local file fallback."""
+    """Save story to history."""
     try:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"{child_name}_{timestamp}.json"
+        filepath = st.session_state.stories_dir / filename
+        
+        # Save journey state to resume where user left off
         journey_state = {
             "story_approved": st.session_state.get("story_approved", False),
             "all_images_approved": st.session_state.get("all_images_approved", False),
             "image_approvals": st.session_state.get("image_approvals", {}),
             "edited_story_pages": st.session_state.get("edited_story_pages", {}),
             "edited_image_prompts": st.session_state.get("edited_image_prompts", {}),
-            "current_step": "step3" if st.session_state.get("all_images_approved", False) else
+            "current_step": "step3" if st.session_state.get("all_images_approved", False) else 
                            ("step2" if st.session_state.get("story_approved", False) else "step1")
         }
+        
         save_data = {
             "story": story_data,
             "metadata": metadata or {},
             "timestamp": timestamp,
             "child_name": child_name,
-            "journey_state": journey_state,
+            "journey_state": journey_state  # Save where user was in the journey
         }
-
-        # --- MongoDB persistence ---
-        user_id = get_current_user_id()
-        if user_id:
-            try:
-                from mongo_client import book_history_col
-                import uuid as _uuid
-                col = book_history_col()
-                story_for_db = json.loads(json.dumps(story_data))
-                images_for_db = compress_pil_images_for_storage(
-                    st.session_state.get("generated_images", [])
-                ) if st.session_state.get("generated_images") else []
-
-                existing_id = st.session_state.get("current_book_history_id")
-                if existing_id:
-                    col.update_one(
-                        {"_id": existing_id, "user_id": user_id},
-                        {"$set": {
-                            "story_data": story_for_db,
-                            "images": images_for_db,
-                            "metadata": {**(metadata or {}), "timestamp": timestamp, "journey_state": journey_state},
-                        }}
-                    )
-                    logger.info(f"Story updated in MongoDB doc {existing_id}")
-                else:
-                    doc_id = str(_uuid.uuid4())
-                    col.insert_one({
-                        "_id": doc_id,
-                        "user_id": user_id,
-                        "child_name": child_name,
-                        "title": story_data.get("title", f"{child_name}'s Story"),
-                        "book_type": "custom",
-                        "story_data": story_for_db,
-                        "images": images_for_db,
-                        "metadata": {**(metadata or {}), "timestamp": timestamp, "journey_state": journey_state},
-                        "created_at": datetime.utcnow(),
-                    })
-                    st.session_state.current_book_history_id = doc_id
-                    logger.info(f"Story inserted to MongoDB, id={doc_id}")
-            except Exception as db_err:
-                logger.warning(f"MongoDB save failed, falling back to local file: {db_err}")
-
-        # --- Local file fallback ---
-        filename = f"{child_name}_{timestamp}.json"
-        filepath = st.session_state.stories_dir / filename
+        
         with open(filepath, 'w', encoding='utf-8') as f:
             json.dump(save_data, f, indent=2, ensure_ascii=False)
+        
         return filepath
     except Exception as e:
         st.error(f"Failed to save story: {e}")
@@ -291,65 +206,23 @@ def save_story(story_data: Dict, child_name: str, metadata: Dict = None):
 
 
 def save_template_book_to_history(book_data: Dict):
-    """Persist template-generated book to Supabase history and local file fallback."""
+    """Persist template-generated book to story history (same storage as custom stories)."""
     try:
         child_name = book_data.get("child_name", "Child")
         template_name = book_data.get("template_name", "Template Book")
-        template_id = book_data.get("template_id")
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-
-        # Build story payload without image data to keep size manageable
-        pages_for_history = []
-        for p in book_data.get("pages", []):
-            pages_for_history.append({
-                "page_number": p.get("page_number"),
-                "profession_title": p.get("profession_title"),
-                "text": p.get("text"),
-                "image_prompt": p.get("image_prompt"),
-                # Exclude image_url (can be large base64) - regenerate when needed
-            })
-        story_payload = {
-            "title": f"{template_name} - {child_name}",
-            "pages": pages_for_history,
-            "template_id": template_id,
-            "template_name": template_name,
-        }
-
-        # --- MongoDB persistence ---
-        user_id = get_current_user_id()
-        if user_id:
-            try:
-                from mongo_client import book_history_col
-                import uuid as _uuid
-                col = book_history_col()
-                col.insert_one({
-                    "_id": str(_uuid.uuid4()),
-                    "user_id": user_id,
-                    "child_name": child_name,
-                    "title": f"{template_name} - {child_name}",
-                    "book_type": "template",
-                    "template_id": template_id,
-                    "template_name": template_name,
-                    "story_data": story_payload,
-                    "metadata": {
-                        "template_id": template_id,
-                        "template_name": template_name,
-                        "timestamp": timestamp,
-                        "gender": book_data.get("gender"),
-                        "age": book_data.get("age"),
-                    },
-                    "created_at": datetime.utcnow(),
-                })
-                logger.info(f"Template book saved to MongoDB for user {user_id}")
-            except Exception as db_err:
-                logger.warning(f"MongoDB save failed, falling back to local file: {db_err}")
-
-        # --- Local file fallback ---
         filename = f"{child_name}_{timestamp}.json"
         filepath = st.session_state.stories_dir / filename
+        # Match save_story shape so get_story_history and load_story work unchanged
+        story_payload = {
+            "title": f"{template_name} - {child_name}",
+            "pages": book_data.get("pages", []),
+            "template_id": book_data.get("template_id"),
+            "template_name": template_name,
+        }
         save_data = {
             "story": story_payload,
-            "metadata": {"template_id": template_id, "template_name": template_name},
+            "metadata": {"template_id": book_data.get("template_id"), "template_name": template_name},
             "timestamp": timestamp,
             "child_name": child_name,
             "journey_state": {
@@ -417,41 +290,7 @@ def load_story(filepath) -> Dict:
         return None
 
 def get_story_history():
-    """Get list of all saved stories, preferring MongoDB over local files."""
-    user_id = get_current_user_id()
-
-    # --- Try MongoDB first ---
-    if user_id:
-        try:
-            from mongo_client import book_history_col
-            from pymongo import DESCENDING
-            col = book_history_col()
-            rows = list(col.find(
-                {"user_id": user_id},
-                {"_id": 1, "child_name": 1, "title": 1, "book_type": 1,
-                 "template_id": 1, "template_name": 1, "created_at": 1, "metadata": 1}
-            ).sort("created_at", DESCENDING).limit(100))
-            if rows:
-                stories = []
-                for row in rows:
-                    created = row.get("created_at")
-                    ts_display = created.strftime("%Y%m%d_%H%M%S") if created else ""
-                    stories.append({
-                        "db_id": str(row["_id"]),
-                        "filepath": None,
-                        "child_name": row.get("child_name", "Unknown"),
-                        "timestamp": ts_display,
-                        "title": row.get("title", "Untitled"),
-                        "book_type": row.get("book_type", "custom"),
-                        "template_id": row.get("template_id"),
-                        "template_name": row.get("template_name"),
-                    })
-                logger.info(f"Loaded {len(stories)} stories from MongoDB")
-                return stories
-        except Exception as db_err:
-            logger.warning(f"Could not load history from MongoDB: {db_err}")
-
-    # --- Fallback to local files ---
+    """Get list of all saved stories."""
     try:
         stories = []
         if st.session_state.stories_dir.exists():
@@ -460,16 +299,12 @@ def get_story_history():
                     data = load_story(filepath)
                     if data:
                         stories.append({
-                            "db_id": None,
                             "filepath": filepath,
                             "child_name": data.get("child_name", "Unknown"),
                             "timestamp": data.get("timestamp", ""),
-                            "title": data.get("story", {}).get("title", "Untitled Story"),
-                            "book_type": data.get("metadata", {}).get("template_id") and "template" or "custom",
-                            "template_id": data.get("metadata", {}).get("template_id"),
-                            "template_name": data.get("metadata", {}).get("template_name"),
+                            "title": data.get("story", {}).get("title", "Untitled Story")
                         })
-                except Exception:
+                except:
                     continue
         return stories
     except Exception as e:
@@ -479,7 +314,6 @@ def get_story_history():
 def reset_story_state():
     """Reset all story-related session state - COMPLETE RESET."""
     st.session_state.generated_story = None
-    st.session_state.current_book_history_id = None
     st.session_state.generated_images = []
     st.session_state.image_generation_errors = {}
     st.session_state.pdf_path = None
@@ -588,18 +422,58 @@ def regenerate_story_from_page(api_key: str, existing_story: Dict, start_page: i
 
 CRITICAL: Output ONLY the JSON, no additional text before or after."""
 
-        from vertex_client import call_gemini_text
-        response_text = call_gemini_text(prompt, api_key=api_key, temperature=0.8)
+        # Use same model selection logic
+        available_models = list_available_models(api_key)
+        preferred_models = ['gemini-3-pro', 'gemini-3.0-pro', 'gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-2.0-flash-exp']
+        model_names = [m for m in preferred_models if m in available_models] if available_models else preferred_models
+        
+        if not model_names and available_models:
+            text_models = [m for m in available_models if 'image' not in m.lower() and 'vision' not in m.lower()]
+            model_names = text_models[:3] if text_models else ['gemini-1.5-pro']
+        
+        response_text = None
+        last_error = None
+        
+        for model_name in model_names:
+            try:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
+                headers = {"Content-Type": "application/json"}
+                payload = {
+                    "contents": [{"parts": [{"text": prompt}]}],
+                    "generationConfig": {"temperature": 0.8, "topK": 40, "topP": 0.95}
+                }
+                params = {"key": api_key}
+                
+                response = requests.post(url, headers=headers, json=payload, params=params)
+                response.raise_for_status()
+                
+                result = response.json()
+                if "candidates" in result and len(result["candidates"]) > 0:
+                    parts = result["candidates"][0].get("content", {}).get("parts", [])
+                    response_text = ""
+                    for part in parts:
+                        if "text" in part:
+                            response_text += part["text"]
+                    response_text = response_text.strip()
+                    logger.info(f"Successfully got response from {model_name}, length: {len(response_text)}")
+                    break
+            except Exception as e:
+                logger.error(f"Error with model {model_name}: {e}")
+                last_error = e
+                continue
+        
         if response_text is None:
-            st.error("❌ Could not regenerate story. Check your API key or Vertex AI credentials.")
+            error_msg = f"Could not regenerate story with any model. Last error: {last_error}"
+            logger.error(error_msg)
+            st.error(f"❌ {error_msg}")
             return None
-
+        
         # Extract JSON
         if "```json" in response_text:
             response_text = response_text.split("```json")[1].split("```")[0].strip()
         elif "```" in response_text:
             response_text = response_text.split("```")[1].split("```")[0].strip()
-
+        
         try:
             story_data = json.loads(response_text)
             logger.info("Successfully parsed regenerated story JSON")
@@ -610,7 +484,7 @@ CRITICAL: Output ONLY the JSON, no additional text before or after."""
             with st.expander("View API Response", expanded=False):
                 st.code(response_text[:2000])
             return None
-
+        
         # Handle format mapping and ensure visual anchor
         visual_anchor = story_data.get("visual_anchor", existing_visual_anchor)
         for page in story_data.get("pages", []):
@@ -725,19 +599,66 @@ def refine_story_with_followup(api_key: str, existing_story: Dict, followup_prom
 **OUTPUT:**
 Return ONLY the modified JSON. Every page's "text" field should reflect the requested changes. Do NOT return the same JSON. Output ONLY valid JSON, no markdown, no explanations."""
 
-        from vertex_client import call_gemini_text
-        response_text = call_gemini_text(prompt, api_key=api_key, temperature=0.8)
+        # Use same model selection logic as generate_story_with_gemini
+        available_models = list_available_models(api_key)
+        preferred_models = ['gemini-3-pro', 'gemini-3.0-pro', 'gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-2.0-flash-exp']
+        model_names = [m for m in preferred_models if m in available_models] if available_models else preferred_models
+        
+        if not model_names and available_models:
+            text_models = [m for m in available_models if 'image' not in m.lower() and 'vision' not in m.lower()]
+            model_names = text_models[:3]
+        
+        if not model_names:
+            model_names = ['gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-2.0-flash-exp']
+        
+        logger.info(f"Trying models: {model_names}")
+        response_text = None
+        last_error = None
+        
+        for model_name in model_names:
+            try:
+                logger.info(f"Attempting refinement with model: {model_name}")
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
+                headers = {"Content-Type": "application/json"}
+                payload = {
+                    "contents": [{"parts": [{"text": prompt}]}],
+                    "generationConfig": {"temperature": 0.8, "topK": 40, "topP": 0.95}  # Slightly higher temp for more variation
+                }
+                params = {"key": api_key}
+                
+                response = requests.post(url, headers=headers, json=payload, params=params)
+                response.raise_for_status()
+                
+                result = response.json()
+                if "candidates" in result and len(result["candidates"]) > 0:
+                    parts = result["candidates"][0].get("content", {}).get("parts", [])
+                    response_text = ""
+                    for part in parts:
+                        if "text" in part:
+                            response_text += part["text"]
+                    response_text = response_text.strip()
+                    logger.info(f"Successfully got response from {model_name}, length: {len(response_text)}")
+                    break
+            except Exception as e:
+                logger.error(f"Error with model {model_name}: {e}")
+                last_error = e
+                continue
+        
         if response_text is None:
-            st.error("❌ Could not refine story. Check your API key or Vertex AI credentials.")
+            error_msg = f"Could not refine story with any model. Last error: {last_error}"
+            logger.error(error_msg)
+            st.error(f"❌ {error_msg}")
+            if last_error:
+                st.error(f"Details: {str(last_error)}")
             return None
-
+        
         # Extract JSON
         original_response = response_text
         if "```json" in response_text:
             response_text = response_text.split("```json")[1].split("```")[0].strip()
         elif "```" in response_text:
             response_text = response_text.split("```")[1].split("```")[0].strip()
-
+        
         try:
             story_data = json.loads(response_text)
             logger.info("Successfully parsed refined story JSON")
@@ -846,18 +767,58 @@ Return the COMPLETE story JSON with:
 
 Output ONLY valid JSON, no markdown, no explanations."""
         
-        from vertex_client import call_gemini_text
-        response_text = call_gemini_text(prompt, api_key=api_key, temperature=0.8)
+        # Use same model selection logic
+        available_models = list_available_models(api_key)
+        preferred_models = ['gemini-3-pro', 'gemini-3.0-pro', 'gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-2.0-flash-exp']
+        model_names = [m for m in preferred_models if m in available_models] if available_models else preferred_models
+        
+        if not model_names and available_models:
+            text_models = [m for m in available_models if 'image' not in m.lower() and 'vision' not in m.lower()]
+            model_names = text_models[:3] if text_models else ['gemini-1.5-pro']
+        
+        response_text = None
+        last_error = None
+        
+        for model_name in model_names:
+            try:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
+                headers = {"Content-Type": "application/json"}
+                payload = {
+                    "contents": [{"parts": [{"text": prompt}]}],
+                    "generationConfig": {"temperature": 0.8, "topK": 40, "topP": 0.95}
+                }
+                params = {"key": api_key}
+                
+                response = requests.post(url, headers=headers, json=payload, params=params)
+                response.raise_for_status()
+                
+                result = response.json()
+                if "candidates" in result and len(result["candidates"]) > 0:
+                    parts = result["candidates"][0].get("content", {}).get("parts", [])
+                    response_text = ""
+                    for part in parts:
+                        if "text" in part:
+                            response_text += part["text"]
+                    response_text = response_text.strip()
+                    logger.info(f"Successfully got response from {model_name}")
+                    break
+            except Exception as e:
+                logger.error(f"Error with model {model_name}: {e}")
+                last_error = e
+                continue
+        
         if response_text is None:
-            st.error("❌ Could not regenerate story. Check your API key or Vertex AI credentials.")
+            error_msg = f"Could not regenerate story. Last error: {last_error}"
+            logger.error(error_msg)
+            st.error(f"❌ {error_msg}")
             return None
-
+        
         # Extract JSON
         if "```json" in response_text:
             response_text = response_text.split("```json")[1].split("```")[0].strip()
         elif "```" in response_text:
             response_text = response_text.split("```")[1].split("```")[0].strip()
-
+        
         try:
             story_data = json.loads(response_text)
         except json.JSONDecodeError as e:
@@ -929,18 +890,82 @@ def generate_story_with_gemini(api_key: str, child_name: str, age: int, gender: 
         # END OF PROMPT SECTION
         # ============================================================================
 
-        from vertex_client import call_gemini_text
-        response_text = call_gemini_text(prompt, api_key=api_key, temperature=0.7)
+        # Try to list available models first, then use appropriate ones
+        available_models = list_available_models(api_key)
+        
+        # Priority order: try Gemini 3.x first, then 1.5 Pro, then Flash
+        preferred_models = ['gemini-3-pro', 'gemini-3.0-pro', 'gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-2.0-flash-exp']
+        
+        # Filter to only models that are actually available
+        model_names = [m for m in preferred_models if m in available_models] if available_models else preferred_models
+        
+        # If no preferred models found, try all available models that support generateContent
+        if not model_names and available_models:
+            # Filter models that likely support text generation (exclude image-only models)
+            text_models = [m for m in available_models if 'image' not in m.lower() and 'vision' not in m.lower()]
+            model_names = text_models[:3]  # Try first 3 text models
+        
+        # Fallback to common models if listing failed
+        if not model_names:
+            model_names = ['gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-2.0-flash-exp']
+        
+        response_text = None
+        last_error = None
+        
+        for model_name in model_names:
+            try:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
+                headers = {
+                    "Content-Type": "application/json",
+                }
+                payload = {
+                    "contents": [{
+                        "parts": [{
+                            "text": prompt
+                        }]
+                    }],
+                    "generationConfig": {
+                        "temperature": 0.7,
+                        "topK": 40,
+                        "topP": 0.95
+                    }
+                }
+                params = {"key": api_key}
+                
+                response = requests.post(url, headers=headers, json=payload, params=params)
+                response.raise_for_status()
+                
+                result = response.json()
+                
+                # Extract text from response
+                if "candidates" in result and len(result["candidates"]) > 0:
+                    parts = result["candidates"][0].get("content", {}).get("parts", [])
+                    response_text = ""
+                    for part in parts:
+                        if "text" in part:
+                            response_text += part["text"]
+                    response_text = response_text.strip()
+                    break
+            except Exception as e:
+                last_error = e
+                continue
+        
         if response_text is None:
-            st.error("❌ Could not generate story. Check your API key or Vertex AI credentials.")
+            error_msg = f"Could not generate story with any model. Tried: {model_names}."
+            if available_models:
+                error_msg += f" Available models: {', '.join(available_models[:10])}"
+            if last_error:
+                error_msg += f" Last error: {last_error}"
+            logger.error(error_msg)
+            st.error(f"❌ {error_msg}")
             return None
-
+        
         # Try to extract JSON if wrapped in markdown code blocks
         if "```json" in response_text:
             response_text = response_text.split("```json")[1].split("```")[0].strip()
         elif "```" in response_text:
             response_text = response_text.split("```")[1].split("```")[0].strip()
-
+        
         story_data = json.loads(response_text)
         
         # Handle new format: map "visual_description" to "image_prompt" for compatibility
@@ -974,133 +999,104 @@ def generate_story_with_gemini(api_key: str, child_name: str, age: int, gender: 
         return None
 
 def generate_image_with_imagen(api_key: str, prompt: str, retry_count: int = 0, image_style: str = None, image_index: int = None) -> Image.Image:
-    """Generate image via Vertex AI (primary) or Google AI API (fallback)."""
+    """Generate image using Gemini 3 Pro Image Preview (Nano Banana Pro) via REST API."""
     try:
+        # Clear any previous error for this image
         if image_index is not None and image_index in st.session_state.image_generation_errors:
             del st.session_state.image_generation_errors[image_index]
         logger.info(f"Generating image (attempt {retry_count + 1}), prompt: {prompt[:100]}...")
-
+        # ============================================================================
+        # IMAGE STYLE PROMPT - Based on user selection
+        # ============================================================================
+        # Get image style from session state if not passed directly
         if image_style is None:
             image_style = st.session_state.get("image_style", "Cartoon/Animated (3D Pixar Style)")
-
+        
+        logger.info(f"Image style selected: {image_style}")
+        
+        # Get style modifiers from story_prompts.py (all styles defined in one place)
         style_modifiers = get_image_style(image_style)
-        no_text_instruction = "CRITICAL REQUIREMENT - ABSOLUTELY NO TEXT: This image must contain ZERO text, ZERO words, ZERO letters, ZERO numbers, ZERO speech bubbles, ZERO captions, ZERO signs, ZERO labels, ZERO writing of any kind. This is a pure illustration for a children's book - visual art only."
+        
+        logger.info(f"Style modifiers applied: {style_modifiers[:50]}...")
+        # ============================================================================
+        
+        # Enhanced prompt with style - STRONG guardrail to prevent text in images
+        # Add this instruction at the BEGINNING and END of prompt for maximum emphasis
+        no_text_instruction = "CRITICAL REQUIREMENT - ABSOLUTELY NO TEXT: This image must contain ZERO text, ZERO words, ZERO letters, ZERO numbers, ZERO speech bubbles, ZERO captions, ZERO signs, ZERO labels, ZERO writing of any kind. This is a pure illustration for a children's book - visual art only. Any visible text will make the image completely unusable. Generate ONLY visual elements - characters, objects, backgrounds - but NO text whatsoever."
         style_prompt = f"{no_text_instruction}. {prompt}. {style_modifiers}. {no_text_instruction}"
-
-        from vertex_client import call_gemini_image
-        data_url = call_gemini_image(style_prompt, api_key=api_key)
-        if data_url:
-            image_bytes = base64.b64decode(data_url.split(",", 1)[1])
-            image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-            logger.info("Image generated successfully")
-            return image
-
-        raise Exception("No image returned from Vertex AI / Google AI API")
-
+        
+        # Use REST API matching the user's working example
+        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent"
+        headers = {
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "contents": [{
+                "parts": [{
+                    "text": style_prompt
+                }]
+            }],
+            "generationConfig": {
+                "temperature": 0.4,
+                "topK": 32,
+                "topP": 1,
+                "imageConfig": {
+                    "aspectRatio": "1:1",
+                    "imageSize": "2K"
+                }
+            }
+        }
+        params = {"key": api_key}
+        
+        response = requests.post(url, headers=headers, json=payload, params=params)
+        response.raise_for_status()
+        
+        result = response.json()
+        
+        # Extract image from response
+        if "candidates" in result and len(result["candidates"]) > 0:
+            parts = result["candidates"][0].get("content", {}).get("parts", [])
+            for part in parts:
+                if "inlineData" in part:
+                    image_data = part["inlineData"]["data"]
+                    image_bytes = base64.b64decode(image_data)
+                    image = Image.open(io.BytesIO(image_bytes))
+                    logger.info("Image generated successfully")
+                    return image
+        
+        error_msg = "No image generated in response"
+        logger.error(error_msg)
+        raise Exception(error_msg)
+            
     except Exception as e:
         error_msg = f"Image generation failed: {e}"
         logger.error(f"{error_msg} (attempt {retry_count + 1})")
 
+        # Store detailed error information
         error_details = {
             "error": str(e),
             "full_error": error_msg,
             "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-            "attempt": retry_count + 1,
+            "attempt": retry_count + 1
         }
 
         if retry_count < 1:
-            logger.info("Retrying image generation...")
+            logger.info(f"Retrying image generation...")
             st.warning(f"⚠️ Image generation failed, retrying... ({str(e)[:100]})")
             time.sleep(2)
             return generate_image_with_imagen(api_key, prompt, retry_count + 1, image_style, image_index)
+        else:
+            logger.error(f"Image generation failed after all retries")
 
-        # Try OpenRouter as final fallback
-        openrouter_key = st.session_state.get("openrouter_api_key", "")
-        if openrouter_key:
-            fallback = generate_image_with_openrouter(openrouter_key, prompt, image_style)
-            if fallback:
-                logger.info("OpenRouter fallback image generation succeeded")
-                return fallback
+            # Store error in session state for this specific image
+            if image_index is not None:
+                st.session_state.image_generation_errors[image_index] = error_details
 
-        if image_index is not None:
-            st.session_state.image_generation_errors[image_index] = error_details
+            st.error(f"❌ Failed to generate image after retries: {str(e)[:200]}")
 
-        st.error(f"❌ Failed to generate image after retries: {str(e)[:200]}")
-        return Image.new('RGB', (512, 512), color=(200, 200, 200))
-
-
-def generate_image_with_openrouter(openrouter_key: str, prompt: str, image_style: str = None) -> Optional[Image.Image]:
-    """Generate image via OpenRouter API using Gemini models (fallback when direct Gemini fails)."""
-    # Models to try in order of preference (Gemini only, per user preference)
-    models = [
-        "google/gemini-2.0-flash-exp:free",
-        "google/gemini-flash-1.5-8b",
-        "google/gemini-flash-1.5",
-    ]
-
-    style_modifiers = get_image_style(image_style) if image_style else ""
-    no_text = "CRITICAL: NO TEXT, words, letters, numbers, speech bubbles, or labels in this image. Pure illustration only."
-    full_prompt = f"{no_text} {prompt}. {style_modifiers}. {no_text}"
-
-    for model in models:
-        try:
-            logger.info(f"Trying OpenRouter image generation with model: {model}")
-            response = requests.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {openrouter_key}",
-                    "Content-Type": "application/json",
-                    "HTTP-Referer": "https://children-book-generator.app",
-                    "X-Title": "Children's Book Generator",
-                },
-                json={
-                    "model": model,
-                    "messages": [{"role": "user", "content": full_prompt}],
-                    "max_tokens": 4096,
-                },
-                timeout=120,
-            )
-
-            if response.status_code != 200:
-                logger.warning(f"OpenRouter {model} returned {response.status_code}: {response.text[:200]}")
-                continue
-
-            result = response.json()
-            candidates = result.get("choices", [])
-            if not candidates:
-                continue
-
-            content = candidates[0].get("message", {}).get("content", "")
-
-            # Check for inline image data in the response
-            if isinstance(content, list):
-                for part in content:
-                    if isinstance(part, dict) and part.get("type") == "image_url":
-                        img_url = part.get("image_url", {}).get("url", "")
-                        if img_url.startswith("data:image"):
-                            b64 = img_url.split(",", 1)[1]
-                            img_bytes = base64.b64decode(b64)
-                            return Image.open(io.BytesIO(img_bytes))
-                        elif img_url:
-                            img_resp = requests.get(img_url, timeout=30)
-                            if img_resp.status_code == 200:
-                                return Image.open(io.BytesIO(img_resp.content))
-
-            # Some models return base64 directly in a text field
-            if isinstance(content, str) and content.startswith("data:image"):
-                b64 = content.split(",", 1)[1]
-                img_bytes = base64.b64decode(b64)
-                return Image.open(io.BytesIO(img_bytes))
-
-            logger.info(f"OpenRouter {model} responded but returned text, not an image")
-
-        except Exception as ex:
-            logger.warning(f"OpenRouter {model} failed: {ex}")
-            continue
-
-    logger.error("All OpenRouter models failed to generate an image")
-    return None
-
+            # Return placeholder image
+            placeholder = Image.new('RGB', (512, 512), color=(200, 200, 200))
+            return placeholder
 
 def create_pdf(story_data: Dict, images: List[Image.Image], child_name: str, output_path: str):
     """Create PDF using reportlab."""
@@ -1181,16 +1177,13 @@ def create_pdf(story_data: Dict, images: List[Image.Image], child_name: str, out
         image_x_offset = (page_width - display_width) / 2
         # Position image in the 85% area, centered vertically
         image_y_offset = image_y_start + (image_available_height - display_height) / 2
-
-        # Embed the original full-resolution image; let ReportLab handle display scaling.
-        # Previously the image was resized to display_width×display_height (points = 72 DPI
-        # equivalent), which destroyed quality. Now we keep the original pixels and only
-        # tell ReportLab the target display size.
+        
+        img_resized = img.resize((int(display_width), int(display_height)), Image.Resampling.LANCZOS)
         img_io = io.BytesIO()
-        img.save(img_io, format='PNG')
+        img_resized.save(img_io, format='PNG')
         img_io.seek(0)
-
-        c.drawImage(ImageReader(img_io), image_x_offset, image_y_offset,
+        
+        c.drawImage(ImageReader(img_io), image_x_offset, image_y_offset, 
                    width=display_width, height=display_height, preserveAspectRatio=True)
         
         # ===== TEXT AREA (Bottom 10%) =====
@@ -1255,44 +1248,6 @@ def create_pdf(story_data: Dict, images: List[Image.Image], child_name: str, out
     c.save()
 
 def main():
-    # ------------------------------------------------------------------ #
-    # Cookie-backed persistent sessions (7-day login)
-    # ------------------------------------------------------------------ #
-    _cm = None
-    _cookie_token = None
-    try:
-        import extra_streamlit_components as stx
-        _cm = stx.CookieManager(key="cbg_cm")
-        _cookie_token = _cm.get("cbg_st") or ""
-    except Exception:
-        pass
-
-    init_auth_state()
-
-    # Try to restore session from cookie if not already authenticated
-    if not is_authenticated() and _cookie_token:
-        if restore_session_from_token(_cookie_token):
-            st.rerun()
-
-    # Set cookie after new login/signup
-    if _cm and st.session_state.get("_pending_session_token"):
-        new_token = st.session_state.pop("_pending_session_token")
-        st.session_state._session_token = new_token
-        try:
-            _cm.set("cbg_st", new_token, expires_at=datetime.now() + timedelta(days=7))
-        except Exception:
-            pass
-
-    # Delete cookie after logout
-    if _cm and st.session_state.get("_token_to_delete"):
-        old_token = st.session_state.pop("_token_to_delete")
-        try:
-            _cm.delete("cbg_st")
-            from auth import _delete_session_token
-            _delete_session_token(old_token)
-        except Exception:
-            pass
-
     # Auth gate: show login/signup if not authenticated
     if not is_authenticated():
         render_auth_page()
@@ -1316,23 +1271,25 @@ def main():
         
         history = get_story_history()
 
-        # Developer: verify where data is saved
-        with st.expander("🔧 Developer: verify saves & storage"):
+        # Developer: verify where data is saved and how to check Supabase
+        with st.expander("🔧 Developer: verify saves & Supabase"):
             stories_dir = st.session_state.stories_dir
-            st.markdown("**Primary storage:** MongoDB Atlas `book_history` collection (persists across sessions).")
-            st.markdown("**Fallback storage:** Local JSON files (lost on server restart).")
             st.code(str(stories_dir), language="text")
+            st.caption("Stories (custom + template) are saved here as JSON files.")
             if stories_dir.exists():
                 files = sorted(stories_dir.glob("*.json"), reverse=True)
-                st.write(f"**{len(files)}** local JSON file(s):")
-                for f in files[:10]:
+                st.write(f"**{len(files)}** JSON file(s) in folder:")
+                for f in files[:20]:
                     st.caption(f"• {f.name}")
-                if len(files) > 10:
-                    st.caption(f"… and {len(files) - 10} more")
+                if len(files) > 20:
+                    st.caption(f"… and {len(files) - 20} more")
             else:
-                st.caption("No local files yet.")
+                st.warning("Folder does not exist yet (no stories saved).")
             st.markdown("---")
-            st.markdown("**MongoDB collections:** `users`, `book_history`, `book_cache`, `image_pool`.")
+            st.markdown("**Supabase** stores template *definitions* (tables `templates`, `template_pages`), not generated books. To check Supabase:")
+            st.markdown("1. Open your [Supabase Dashboard](https://supabase.com/dashboard) → your project → **Table Editor**.")
+            st.markdown("2. Open tables **`templates`** (list of templates) and **`template_pages`** (pages per template).")
+            st.markdown("3. Generated books (custom and template) are saved **locally** in the folder above, not in Supabase.")
         
         if history:
             st.info(f"Found {len(history)} saved stories. These are your backups - you can load any story to view, edit, and regenerate images or PDF.")
@@ -1347,36 +1304,19 @@ def main():
                     with col1:
                         st.write(f"**{display_name}**")
                         st.caption(f"Saved: {timestamp_display}")
-                        source = "Cloud" if story_info.get("db_id") else "Local"
-                        book_type_label = "Template" if story_info.get("book_type") == "template" else "Custom"
-                        st.caption(f"{book_type_label} · {source}")
+                        # Show file path for reference
+                        filepath_display = story_info['filepath']
+                        if isinstance(filepath_display, Path):
+                            st.caption(f"File: {filepath_display.name}")
+                        else:
+                            st.caption(f"File: {Path(str(filepath_display)).name}")
                     with col2:
                         if st.button("📖 Load Story", key=f"load_history_{idx}", use_container_width=True):
-                            # Load from MongoDB if we have a db_id, else from local file
-                            loaded_data = None
-                            if story_info.get("db_id"):
-                                try:
-                                    from mongo_client import book_history_col
-                                    col = book_history_col()
-                                    row = col.find_one({"_id": story_info["db_id"], "user_id": get_current_user_id()})
-                                    if row:
-                                        meta = row.get("metadata", {})
-                                        loaded_data = {
-                                            "story": row.get("story_data", {}),
-                                            "child_name": row.get("child_name", ""),
-                                            "timestamp": meta.get("timestamp", ""),
-                                            "journey_state": meta.get("journey_state", {}),
-                                            "metadata": meta,
-                                            "images": row.get("images", []),
-                                        }
-                                        st.session_state.current_book_history_id = story_info["db_id"]
-                                except Exception as load_err:
-                                    st.error(f"Failed to load from cloud: {load_err}")
-                            elif story_info.get("filepath"):
-                                filepath = story_info["filepath"]
-                                if not isinstance(filepath, Path):
-                                    filepath = Path(str(filepath))
-                                loaded_data = load_story(filepath)
+                            # Ensure filepath is a Path object
+                            filepath = story_info['filepath']
+                            if not isinstance(filepath, Path):
+                                filepath = Path(str(filepath))
+                            loaded_data = load_story(filepath)
                             if loaded_data:
                                 story_data = loaded_data.get("story")
                                 if story_data and isinstance(story_data, dict):
@@ -1384,39 +1324,23 @@ def main():
                                     if "pages" in story_data and len(story_data.get("pages", [])) > 0:
                                         st.session_state.generated_story = story_data
                                         st.session_state.current_child_name = loaded_data.get("child_name", story_info.get('child_name', 'Story'))
-                                        # Template books: load from the book cache (which has image_url)
-                                        # History records deliberately omit image_url to save space.
-                                        if story_data.get("template_id") and TEMPLATE_BOOKS_AVAILABLE:
-                                            tmpl_id = story_data["template_id"]
-                                            child_name_h = loaded_data.get("child_name", "")
-                                            meta_h = loaded_data.get("metadata", {})
-                                            gender_h = meta_h.get("gender", "Neutral") or "Neutral"
-                                            age_h = int(meta_h.get("age", 5) or 5)
-                                            tmpl_name_h = story_data.get("template_name", "")
-                                            uid_h = get_current_user_id()
-                                            cached_book = None
-                                            if uid_h:
-                                                try:
-                                                    cached_book = get_cached_template_book(
-                                                        uid_h, tmpl_id, child_name_h, gender_h, age_h
-                                                    )
-                                                except Exception as ce:
-                                                    logger.warning(f"Cache lookup failed: {ce}")
-                                            if cached_book:
-                                                st.session_state.template_generated_book = cached_book
-                                                st.session_state.generated_story = None
-                                                st.session_state.show_history = False
-                                                st.success(f"✅ Loaded your personalized template book for **{child_name_h}**!")
-                                                st.rerun()
-                                            else:
-                                                # Cache miss — pre-fill the template form so user can regenerate
-                                                st.session_state.book_mode = "Template Book"
-                                                st.session_state.selected_template_id = tmpl_id
-                                                st.session_state.selected_template_name = tmpl_name_h
-                                                st.session_state.generated_story = None
-                                                st.session_state.show_history = False
-                                                st.warning(f"Images for **{child_name_h}**'s book weren't found in cache. Fill in the details below and click Generate to rebuild it.")
-                                                st.rerun()
+                                        # Template books: restore images from saved image_url so PDF works without regenerating
+                                        if story_data.get("template_id"):
+                                            img_list = []
+                                            for p in story_data.get("pages", []):
+                                                url = p.get("image_url")
+                                                if url and url.startswith("data:image"):
+                                                    try:
+                                                        b64 = url.split(",", 1)[-1]
+                                                        raw = base64.b64decode(b64)
+                                                        img_list.append(Image.open(io.BytesIO(raw)).convert("RGB"))
+                                                    except Exception:
+                                                        img_list.append(Image.new("RGB", (512, 512), color=(220, 220, 220)))
+                                                else:
+                                                    img_list.append(Image.new("RGB", (512, 512), color=(220, 220, 220)))
+                                            st.session_state.generated_images = img_list
+                                            st.session_state.pdf_path = None
+                                            st.session_state.pdf_generation_key = None
                                         # Restore journey state if available
                                         journey_state = loaded_data.get("journey_state", {})
                                         child_name_from_file = loaded_data.get("child_name", story_info.get('child_name', 'Story'))
@@ -1430,24 +1354,17 @@ def main():
                                             st.session_state.edited_image_prompts = journey_state.get("edited_image_prompts", {})
                                             current_step = journey_state.get("current_step", "step1")
                                             
-                                            # Restore saved images for custom stories if available
+                                            # Images aren't saved for custom stories; template books already had images restored above
                                             if not story_data.get("template_id"):
-                                                saved_imgs = loaded_data.get("images", [])
-                                                if saved_imgs:
-                                                    st.session_state.generated_images = decode_stored_images(saved_imgs)
-                                                else:
-                                                    st.session_state.generated_images = []
+                                                st.session_state.generated_images = []
                                             st.session_state.pdf_path = None
                                             st.session_state.pdf_generation_key = None
-
+                                            
                                             # Show message based on where they were
-                                            has_images = bool(st.session_state.generated_images)
                                             if current_step == "step3":
-                                                img_note = "" if has_images else " Images need to be regenerated."
-                                                st.success(f"✅ Loaded story: {display_name}. You were at **Step 3 (PDF ready)**.{img_note}")
+                                                st.success(f"✅ Loaded story: {display_name}. You were at **Step 3 (PDF ready)**. Images need to be regenerated to view/download PDF, but your approval states are preserved.")
                                             elif current_step == "step2":
-                                                img_note = "" if has_images else " Images need to be regenerated."
-                                                st.success(f"✅ Loaded story: {display_name}. You were at **Step 2 (Image Review)**.{img_note}")
+                                                st.success(f"✅ Loaded story: {display_name}. You were at **Step 2 (Image Review)**. Images need to be regenerated, but your approval states are preserved.")
                                             else:
                                                 st.success(f"✅ Loaded story: {display_name}. You were at **Step 1 (Story Review)**.")
                                             
@@ -1460,11 +1377,7 @@ def main():
                                             st.session_state.edited_image_prompts = {}
                                             st.session_state.image_approvals = {}
                                             if not story_data.get("template_id"):
-                                                saved_imgs = loaded_data.get("images", [])
-                                                if saved_imgs:
-                                                    st.session_state.generated_images = decode_stored_images(saved_imgs)
-                                                else:
-                                                    st.session_state.generated_images = []
+                                                st.session_state.generated_images = []
                                             st.session_state.pdf_path = None
                                             st.session_state.pdf_generation_key = None
                                             st.success(f"✅ Loaded story: {display_name} ({len(story_data.get('pages', []))} pages). Please review the story below.")
@@ -1515,15 +1428,13 @@ def main():
         st.divider()
 
         # API Key Input - persisted per user
-        st.subheader("API Keys")
-
-        # Gemini API Key
+        st.subheader("API Key")
         current_key = st.session_state.api_key
         api_key = st.text_input(
             "Google Gemini API Key",
             type="password",
             value=current_key,
-            help="Primary key for story and image generation via Google Gemini.",
+            help="Enter your Google Gemini API key. Get one from https://makersuite.google.com/app/apikey",
         )
         if api_key != current_key:
             st.session_state.api_key = api_key
@@ -1532,90 +1443,9 @@ def main():
                 save_user_api_key(user_id, api_key)
 
         if api_key:
-            st.caption(f"Gemini key saved ({len(api_key)} chars)")
+            st.caption(f"Key saved ({len(api_key)} chars)")
         else:
-            st.caption("No Gemini key set.")
-
-        # OpenRouter API Key (backup for image generation)
-        current_or_key = st.session_state.openrouter_api_key
-        openrouter_key_input = st.text_input(
-            "OpenRouter API Key (backup)",
-            type="password",
-            value=current_or_key,
-            help="Backup key for image generation via OpenRouter (uses Gemini models). Used automatically when Gemini fails.",
-        )
-        if openrouter_key_input != current_or_key:
-            st.session_state.openrouter_api_key = openrouter_key_input
-            user_id = get_current_user_id()
-            if user_id and openrouter_key_input:
-                save_user_openrouter_key(user_id, openrouter_key_input)
-
-        if openrouter_key_input:
-            st.caption(f"OpenRouter key saved ({len(openrouter_key_input)} chars)")
-        else:
-            st.caption("No OpenRouter key — Gemini only.")
-
-        # Vertex AI (Google Cloud) credentials
-        with st.expander("Vertex AI (Google Cloud)", expanded=bool(st.session_state.vertex_project_id)):
-            user_id_v = get_current_user_id()
-
-            current_vproject = st.session_state.vertex_project_id
-            vproject_input = st.text_input(
-                "GCP Project ID",
-                value=current_vproject,
-                placeholder="my-gcp-project-id",
-                key="sidebar_vertex_project",
-                help="Your Google Cloud project ID (from GCP Console).",
-            )
-
-            current_vloc = st.session_state.vertex_location or "us-central1"
-            vloc_input = st.text_input(
-                "Location",
-                value=current_vloc,
-                placeholder="us-central1",
-                key="sidebar_vertex_location",
-                help="Vertex AI region, e.g. us-central1.",
-            )
-
-            current_vsa = st.session_state.vertex_sa_json
-            vsa_input = st.text_area(
-                "Service Account JSON",
-                value=current_vsa,
-                placeholder='{"type":"service_account","project_id":"..."}',
-                height=120,
-                key="sidebar_vertex_sa",
-                help="Paste the full contents of your GCP service account key JSON file.",
-            )
-
-            if vproject_input != current_vproject or vloc_input != current_vloc or vsa_input != current_vsa:
-                st.session_state.vertex_project_id = vproject_input
-                st.session_state.vertex_location = vloc_input or "us-central1"
-                st.session_state.vertex_sa_json = vsa_input
-                if user_id_v and (vproject_input or vsa_input):
-                    save_user_vertex_config(user_id_v, vproject_input, vloc_input or "us-central1", vsa_input)
-
-            from vertex_client import is_vertex_configured, _token, _cfg
-            if is_vertex_configured():
-                st.caption(f"Vertex AI ready · project: {st.session_state.vertex_project_id}")
-                if st.button("Test Vertex AI connection", key="test_vertex_btn", use_container_width=True):
-                    with st.spinner("Testing Vertex AI..."):
-                        try:
-                            tok = _token(raise_on_error=True)
-                            if tok:
-                                st.success(f"Auth OK — token acquired ({len(tok)} chars)")
-                                from vertex_client import call_gemini_text
-                                result = call_gemini_text("Say 'Vertex OK' and nothing else.", api_key="")
-                                if result:
-                                    st.success(f"Text generation OK: {result[:80]}")
-                                else:
-                                    cfg = _cfg()
-                                    st.error(f"Auth succeeded but text call returned nothing. Project: {cfg['project']}, Location: {cfg['location']}")
-                            else:
-                                st.error("Could not obtain auth token. Check your Service Account JSON.")
-                        except Exception as ex:
-                            st.error(f"Vertex error: {ex}")
-            else:
-                st.caption("Vertex AI not configured — Gemini API only.")
+            st.caption("No API key set. Enter your key above.")
 
         st.divider()
 
@@ -1631,18 +1461,19 @@ def main():
         current_mode = st.radio(
             "Choose creation mode:",
             options=book_mode_options,
-            key="book_mode",
             help="Custom Story: Create a unique personalized story | Template Book: Use pre-designed profession templates"
         )
 
-        # Detect mode change and clear template form state (but NOT the generated book)
-        if current_mode != previous_mode:
+        # Detect mode change and clear template state if switching TO Template Book mode
+        if current_mode != previous_mode and current_mode == "Template Book":
+            # User switched to Template Book mode, clear template state to start fresh
             for key in list(st.session_state.keys()):
-                if key in ("template_book_data", "generate_template_book",
+                if key in ("template_generated_book", "template_book_data", "generate_template_book",
                           "selected_template_id", "selected_template_name", "scroll_to_details",
                           "regenerate_template_page_idx") or key.startswith("template_page_text_") or key.startswith("template_text_area_"):
                     del st.session_state[key]
 
+        st.session_state.book_mode = current_mode
         st.session_state.previous_book_mode = current_mode
 
         st.divider()
@@ -1742,16 +1573,10 @@ def main():
     # Get API key from session state (sidebar updates session state)
     api_key = st.session_state.api_key
 
-    # Template book loaded from history: display regardless of the mode radio selection
-    if st.session_state.get("template_generated_book") and TEMPLATE_BOOKS_AVAILABLE:
-        display_template_book_preview(st.session_state.template_generated_book, api_key=api_key)
-        return
-
     # Handle Template Book Mode
     if st.session_state.book_mode == "Template Book" and TEMPLATE_BOOKS_AVAILABLE:
-        from vertex_client import is_vertex_configured
-        if not api_key and not is_vertex_configured():
-            st.info("👈 Please enter a Google Gemini API key or configure Vertex AI in the sidebar to get started.")
+        if not api_key:
+            st.info("👈 Please enter your Google Gemini API key in the sidebar to get started.")
             return
 
         if st.session_state.get("generate_template_book", False):
@@ -1774,9 +1599,8 @@ def main():
         return
 
     # Allow viewing loaded stories even without API key (needed for generating new images)
-    from vertex_client import is_vertex_configured
-    if not api_key and not is_vertex_configured() and not st.session_state.generated_story:
-        st.info("👈 Please enter a Google Gemini API key or configure Vertex AI in the sidebar to get started.")
+    if not api_key and not st.session_state.generated_story:
+        st.info("👈 Please enter your Google Gemini API key in the sidebar to get started.")
         return
     
     if generate_button:
@@ -1802,7 +1626,6 @@ def main():
             
             st.session_state.generated_story = story_data
             # CRITICAL: Clear images when new story is generated to prevent mismatch
-            st.session_state.current_book_history_id = None  # fresh INSERT on next save
             st.session_state.generated_images = []
             st.session_state.image_approvals = {}
             st.session_state.all_images_approved = False
@@ -2156,11 +1979,17 @@ def main():
             st.progress(progress_value)
             st.caption(f"Approved: {approved_count}/{total_pages} images")
 
-            # Check if API key or Vertex AI is available for image generation
-            from vertex_client import is_vertex_configured
-            if not api_key and not is_vertex_configured():
+            # Check if API key is available for image generation
+            if not api_key:
                 st.error("⚠️ **API Key Required for Image Generation**")
-                st.info("👈 Please enter a Google Gemini API key or configure Vertex AI in the sidebar to generate images.")
+                st.info("👈 Please enter your Google Gemini API key in the sidebar to generate images.")
+                st.markdown("Get your free API key from: https://makersuite.google.com/app/apikey")
+
+                # Debug information
+                with st.expander("🔍 Debug Information"):
+                    st.write(f"**API Key in session state:** {bool(st.session_state.api_key)}")
+                    st.write(f"**API Key length:** {len(st.session_state.api_key) if st.session_state.api_key else 0}")
+                    st.write(f"**Environment variable set:** {bool(os.getenv('GEMINI_API_KEY'))}")
                 return
 
             # Check if any specific image needs regeneration

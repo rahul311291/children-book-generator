@@ -7,10 +7,11 @@ import streamlit as st
 import streamlit.components.v1
 import os
 import base64
-import uuid
 from pathlib import Path
 from typing import List, Dict, Optional
 from datetime import datetime
+import uuid
+from supabase import create_client, Client
 from dotenv import load_dotenv
 from template_data import personalize_template_text, personalize_template_image_prompt, WHEN_I_GROW_UP_TEMPLATE
 from PIL import Image
@@ -18,8 +19,6 @@ import io
 import logging
 import requests
 import json
-import time
-import hashlib
 from reportlab.lib.units import inch
 from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
@@ -28,126 +27,6 @@ from reportlab.platypus import Paragraph
 from reportlab.lib.enums import TA_CENTER
 
 logger = logging.getLogger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# Image helpers
-# ---------------------------------------------------------------------------
-
-def compress_image_for_storage(data_url: str, max_size: int = 768, quality: int = 75) -> str:
-    """Resize and JPEG-compress a base64 data URL for compact Supabase storage."""
-    if not data_url or not data_url.startswith("data:image"):
-        return data_url
-    try:
-        b64 = data_url.split(",", 1)[1]
-        img = Image.open(io.BytesIO(base64.b64decode(b64))).convert("RGB")
-        img.thumbnail((max_size, max_size), Image.LANCZOS)
-        buf = io.BytesIO()
-        img.save(buf, format="JPEG", quality=quality, optimize=True)
-        compressed = base64.b64encode(buf.getvalue()).decode()
-        return f"data:image/jpeg;base64,{compressed}"
-    except Exception as e:
-        logger.warning(f"Image compression failed: {e}")
-        return data_url
-
-
-# ---------------------------------------------------------------------------
-# Shared image pool helpers (generic template images, no reference photos)
-# ---------------------------------------------------------------------------
-
-def _age_to_group(age: int) -> str:
-    """Map an age to a canonical age-group string used as pool key."""
-    if age <= 4:
-        return "2-4"
-    elif age <= 6:
-        return "4-6"
-    elif age <= 8:
-        return "6-8"
-    else:
-        return "8-12"
-
-
-def _pool_hash(template_id: str, page_number: int, age_group: str, gender: str) -> str:
-    key = f"{template_id}:{page_number}:{age_group}:{gender.lower()}"
-    return hashlib.md5(key.encode()).hexdigest()
-
-
-def get_shared_pool_image(template_id: str, page_number: int, age_group: str, gender: str) -> Optional[str]:
-    """Return image_url from shared image pool on hit, or None on miss."""
-    try:
-        from mongo_client import image_pool_col
-        ph = _pool_hash(template_id, page_number, age_group, gender)
-        doc = image_pool_col().find_one({"prompt_hash": ph}, {"image_url": 1})
-        if doc:
-            logger.info(f"Shared pool HIT: template={template_id} page={page_number} age={age_group} gender={gender}")
-            return doc["image_url"]
-    except Exception as e:
-        logger.warning(f"Shared pool lookup failed: {e}")
-    return None
-
-
-def save_to_shared_pool(template_id: str, page_number: int, age_group: str, gender: str, image_url: str) -> None:
-    """Persist a generated image to the shared pool (silent no-op on duplicate or error)."""
-    try:
-        from mongo_client import image_pool_col
-        ph = _pool_hash(template_id, page_number, age_group, gender)
-        compressed = compress_image_for_storage(image_url)
-        image_pool_col().insert_one({
-            "_id": ph,
-            "prompt_hash": ph,
-            "template_id": template_id,
-            "page_number": page_number,
-            "age_group": age_group,
-            "gender": gender.lower(),
-            "image_url": compressed,
-            "created_at": datetime.utcnow(),
-        })
-        logger.info(f"Saved to shared pool: hash={ph}")
-    except Exception as e:
-        logger.debug(f"Shared pool save skipped (likely duplicate): {e}")
-
-
-# ---------------------------------------------------------------------------
-# MongoDB book cache helpers
-# ---------------------------------------------------------------------------
-
-def get_cached_template_book(user_id: str, template_id: str, child_name: str, gender: str, age: int) -> Optional[Dict]:
-    """Fetch a previously generated book from the MongoDB cache, or None if not found."""
-    try:
-        from mongo_client import book_cache_col
-        doc = book_cache_col().find_one(
-            {"user_id": user_id, "template_id": template_id,
-             "child_name": child_name, "gender": gender, "age": age},
-            {"book_data": 1}
-        )
-        if doc:
-            logger.info(f"Cache hit for template {template_id}, child {child_name}")
-            return doc["book_data"]
-    except Exception as e:
-        logger.warning(f"Could not query book cache: {e}")
-    return None
-
-
-def save_template_book_to_cache(user_id: str, template_id: str, child_name: str, gender: str, age: int, book_data: Dict) -> None:
-    """Store a generated template book (with compressed images) in the MongoDB cache."""
-    try:
-        from mongo_client import book_cache_col
-        book_to_store = json.loads(json.dumps(book_data))
-        for page in book_to_store.get("pages", []):
-            if page.get("image_url"):
-                page["image_url"] = compress_image_for_storage(page["image_url"])
-        book_to_store.pop("reference_image_base64", None)
-
-        book_cache_col().update_one(
-            {"user_id": user_id, "template_id": template_id,
-             "child_name": child_name, "gender": gender, "age": age},
-            {"$set": {"book_data": book_to_store, "updated_at": datetime.utcnow()},
-             "$setOnInsert": {"created_at": datetime.utcnow()}},
-            upsert=True,
-        )
-        logger.info(f"Template book cached for user {user_id}, template {template_id}, child {child_name}")
-    except Exception as e:
-        logger.warning(f"Could not save book to cache: {e}")
 
 env_path = Path(__file__).parent / ".env"
 if env_path.exists():
@@ -788,28 +667,180 @@ DEFAULT_TEMPLATES: List[Dict] = [
 ]
 
 
+def init_supabase() -> Client:
+    """Initialize Supabase client."""
+    supabase_url = os.getenv("VITE_SUPABASE_URL")
+    supabase_key = os.getenv("VITE_SUPABASE_ANON_KEY") or os.getenv("VITE_SUPABASE_SUPABASE_ANON_KEY")
+
+    if not supabase_url:
+        supabase_url = os.getenv("SUPABASE_URL")
+    if not supabase_key:
+        supabase_key = os.getenv("SUPABASE_ANON_KEY")
+
+    if not supabase_url or not supabase_key:
+        try:
+            supabase_url = st.secrets.get("VITE_SUPABASE_URL") or st.secrets.get("SUPABASE_URL")
+            supabase_key = st.secrets.get("VITE_SUPABASE_ANON_KEY") or st.secrets.get("SUPABASE_ANON_KEY")
+        except Exception:
+            pass
+
+    if not supabase_url or not supabase_key:
+        error_msg = f"Supabase credentials not found. URL: {'found' if supabase_url else 'missing'}, Key: {'found' if supabase_key else 'missing'}"
+        logger.error(error_msg)
+        raise Exception(error_msg)
+
+    return create_client(supabase_url, supabase_key)
+
+
+def seed_default_templates_if_missing(supabase: Client, show_errors_in_ui: bool = False) -> None:
+    """Ensure our built-in templates exist in Supabase without overwriting user content."""
+    try:
+        logger.info(f"Seeding {len(DEFAULT_TEMPLATES)} default templates into Supabase...")
+        seeded_count = 0
+        errors = []
+        
+        for idx, tmpl in enumerate(DEFAULT_TEMPLATES):
+            name = tmpl["name"]
+            try:
+                logger.info(f"Processing template {idx+1}/{len(DEFAULT_TEMPLATES)}: '{name}'")
+                
+                # Find or create template row by name
+                existing = supabase.table("templates").select("id").eq("name", name).execute()
+                if existing.data:
+                    template_id = existing.data[0]["id"]
+                    logger.info(f"Template '{name}' already exists (ID: {template_id})")
+                else:
+                    logger.info(f"Creating new template '{name}'...")
+                    try:
+                        # Generate UUID for id if Supabase table requires it (some tables don't auto-generate)
+                        insert_data = {
+                            "id": str(uuid.uuid4()),  # Generate UUID for the id column
+                            "name": name,
+                            "description": tmpl.get("description", ""),
+                            "total_pages": tmpl.get("total_pages", len(tmpl.get("pages", []))),
+                            "cover_image": tmpl.get("cover_image", ""),
+                        }
+                        # If template already has an id, use it instead
+                        if "id" in tmpl and tmpl["id"]:
+                            insert_data["id"] = tmpl["id"]
+                        
+                        insert_resp = supabase.table("templates").insert(insert_data).execute()
+                        if not insert_resp.data:
+                            error_msg = f"Failed to insert template '{name}' - no data returned from Supabase"
+                            logger.error(error_msg)
+                            errors.append(error_msg)
+                            if show_errors_in_ui:
+                                st.error(error_msg)
+                            continue
+                        template_id = insert_resp.data[0]["id"]
+                        logger.info(f"✅ Created new template '{name}' (ID: {template_id})")
+                        if show_errors_in_ui:
+                            st.success(f"✅ Created template: {name}")
+                        seeded_count += 1
+                    except Exception as insert_error:
+                        error_msg = f"Failed to insert template '{name}': {str(insert_error)}"
+                        logger.error(error_msg)
+                        errors.append(error_msg)
+                        if show_errors_in_ui:
+                            st.error(error_msg)
+                        import traceback
+                        logger.error(traceback.format_exc())
+                        continue
+
+                # Only insert pages if none exist yet for this template_id
+                pages_existing = supabase.table("template_pages").select("id").eq("template_id", template_id).limit(1).execute()
+                if pages_existing.data:
+                    logger.info(f"Template '{name}' already has pages, skipping page insertion")
+                    continue
+
+                # Prepare pages payload
+                pages_payload = []
+                for page in tmpl.get("pages", []):
+                    page_data = {
+                        "id": str(uuid.uuid4()),  # Generate UUID for each page id
+                        "template_id": template_id,
+                        "page_number": page["page_number"],
+                        "profession_title": page["profession_title"],
+                        "text_template": page["text_template"],
+                        "image_prompt_template": page["image_prompt_template"],
+                    }
+                    # If page already has an id, use it instead
+                    if "id" in page and page["id"]:
+                        page_data["id"] = page["id"]
+                    pages_payload.append(page_data)
+                
+                if pages_payload:
+                    logger.info(f"Inserting {len(pages_payload)} pages for template '{name}'...")
+                    try:
+                        page_insert = supabase.table("template_pages").insert(pages_payload).execute()
+                        if page_insert.data:
+                            logger.info(f"✅ Inserted {len(pages_payload)} pages for template '{name}'")
+                            if show_errors_in_ui:
+                                st.success(f"✅ Inserted {len(pages_payload)} pages for {name}")
+                        else:
+                            error_msg = f"Failed to insert pages for template '{name}' - no data returned"
+                            logger.error(error_msg)
+                            errors.append(error_msg)
+                            if show_errors_in_ui:
+                                st.error(error_msg)
+                    except Exception as page_error:
+                        error_msg = f"Failed to insert pages for template '{name}': {str(page_error)}"
+                        logger.error(error_msg)
+                        errors.append(error_msg)
+                        if show_errors_in_ui:
+                            st.error(error_msg)
+                        import traceback
+                        logger.error(traceback.format_exc())
+                else:
+                    logger.warning(f"No pages to insert for template '{name}'")
+                    
+            except Exception as e:
+                error_msg = f"Error seeding template '{name}': {str(e)}"
+                logger.error(error_msg)
+                import traceback
+                logger.error(traceback.format_exc())
+                errors.append(error_msg)
+        
+        logger.info(f"Template seeding complete. Created {seeded_count} new templates out of {len(DEFAULT_TEMPLATES)}.")
+        if errors:
+            logger.error(f"Encountered {len(errors)} errors during seeding:")
+            for err in errors:
+                logger.error(f"  - {err}")
+                
+    except Exception as e:
+        error_msg = f"Critical error in seed_default_templates_if_missing: {str(e)}"
+        logger.error(error_msg)
+        import traceback
+        logger.error(traceback.format_exc())
+        raise  # Re-raise to surface the error
+
+
 def get_available_templates() -> List[Dict]:
-    """Return the built-in template list (no database call needed)."""
-    logger.info(f"Returning {len(DEFAULT_TEMPLATES)} built-in templates")
-    return [
-        {
-            "id": t["id"],
-            "name": t["name"],
-            "description": t.get("description", ""),
-            "cover_image": t.get("cover_image", ""),
-            "total_pages": t.get("total_pages", len(t.get("pages", []))),
-        }
-        for t in DEFAULT_TEMPLATES
-    ]
+    """Fetch all available templates from database (seeded via SQL migration)."""
+    try:
+        supabase = init_supabase()
+        response = supabase.table("templates").select("*").execute()
+        templates = response.data or []
+        logger.info(f"Retrieved {len(templates)} templates from Supabase")
+        return templates
+    except Exception as e:
+        logger.error(f"Error fetching templates: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        st.error(f"Failed to load templates: {e}")
+        return []
 
 
 def get_template_pages(template_id: str) -> List[Dict]:
-    """Return pages for a given template ID from the in-memory DEFAULT_TEMPLATES list."""
-    for tmpl in DEFAULT_TEMPLATES:
-        if tmpl["id"] == template_id:
-            return sorted(tmpl.get("pages", []), key=lambda p: p["page_number"])
-    logger.error(f"Template ID {template_id} not found in DEFAULT_TEMPLATES")
-    return []
+    """Fetch all pages for a specific template."""
+    try:
+        supabase = init_supabase()
+        response = supabase.table("template_pages").select("*").eq("template_id", template_id).order("page_number").execute()
+        return response.data
+    except Exception as e:
+        logger.error(f"Error fetching template pages: {e}")
+        st.error(f"Failed to load template pages: {e}")
+        return []
 
 
 def render_template_book_form():
@@ -825,15 +856,36 @@ def render_template_book_form():
 
     templates = get_available_templates()
 
+    # Debug section to help troubleshoot
     with st.expander("🔧 Debug: Template Status", expanded=False):
         st.write(f"**Templates found:** {len(templates)}")
-        for t in templates:
-            st.write(f"- {t.get('name', 'Unknown')} (ID: {t.get('id', 'N/A')}, Pages: {t.get('total_pages', 'N/A')})")
+        if templates:
+            for t in templates:
+                st.write(f"- {t.get('name', 'Unknown')} (ID: {t.get('id', 'N/A')}, Pages: {t.get('total_pages', 'N/A')})")
+        else:
+            st.error("No templates found! Check Supabase connection and seeding logs.")
         st.caption("Expected: 5 templates (When I Grow Up, Snow White, Cricket, Cinderella, Sports Day)")
-        st.caption("Templates are built-in — no database seeding required.")
+        
+        # Manual seed button
+        st.markdown("---")
+        if st.button("🔄 Force Reseed Templates", help="Manually trigger template seeding into Supabase", type="primary"):
+            try:
+                supabase = init_supabase()
+                with st.spinner("Seeding templates into Supabase..."):
+                    seed_default_templates_if_missing(supabase, show_errors_in_ui=True)
+                st.success("✅ Seeding complete! Check the messages above for details.")
+                st.info("💡 Refresh the page or check Supabase Dashboard to see the templates.")
+                st.rerun()
+            except Exception as e:
+                st.error(f"❌ Seeding failed: {str(e)}")
+                import traceback
+                with st.expander("Full Error Details"):
+                    st.code(traceback.format_exc())
+                st.warning("💡 Common issues: Check Supabase RLS policies, API keys, and table permissions.")
 
     if not templates:
         st.warning("No templates available. Please contact support.")
+        st.info("💡 Check the Debug section above for details. You may need to manually seed templates in Supabase.")
         return
 
     st.markdown("### Choose a template")
@@ -901,6 +953,11 @@ def render_template_book_form():
     selected_template_name = st.session_state.selected_template_name
     template_info = next((t for t in templates if t["id"] == selected_template_id), None)
 
+    if template_info:
+        st.markdown("---")
+        st.info(f"📚 **{template_info['name']}** – {template_info.get('description', '')}")
+        st.caption(f"This template includes {template_info.get('total_pages', 'multiple')} pages")
+
     # Auto-scroll to details section when template is selected
     if st.session_state.get("scroll_to_details"):
         st.session_state.scroll_to_details = False
@@ -919,63 +976,8 @@ def render_template_book_form():
             height=0
         )
 
-    # --- Previously generated books for this template ---
-    user_id_tbf = st.session_state.get("auth_user", {}).get("id", "")
-    if user_id_tbf:
-        try:
-            from mongo_client import book_cache_col
-            prev_entries = list(book_cache_col().find(
-                {"user_id": user_id_tbf, "template_id": selected_template_id},
-                {"child_name": 1, "gender": 1, "age": 1, "updated_at": 1},
-            ).sort("updated_at", -1).limit(5))
-            if prev_entries:
-                st.markdown("---")
-                st.markdown("### 📚 Your Previously Generated Books")
-                for entry in prev_entries:
-                    ec1, ec2 = st.columns([4, 1])
-                    with ec1:
-                        st.write(f"**{entry.get('child_name', '?')}** · {entry.get('gender', '')} · Age {entry.get('age', '')}")
-                    with ec2:
-                        if st.button("Load", key=f"load_cached_tbf_{entry['_id']}", use_container_width=True, type="primary"):
-                            cached = get_cached_template_book(
-                                user_id_tbf, selected_template_id,
-                                entry["child_name"], entry.get("gender", "Neutral"),
-                                int(entry.get("age", 5) or 5),
-                            )
-                            if cached:
-                                st.session_state.template_generated_book = cached
-                                st.rerun()
-                            else:
-                                st.warning("Cached book not found. Please generate it again.")
-        except Exception:
-            pass
-
-    # --- Full book preview ---
     st.markdown("---")
-    template_pages = get_template_pages(selected_template_id)
-
-    if template_info and template_info.get("cover_image"):
-        col_cover, col_info = st.columns([1, 2])
-        with col_cover:
-            st.image(template_info["cover_image"], use_container_width=True)
-        with col_info:
-            st.markdown(f"### {template_info['name']}")
-            st.write(template_info.get("description", "").replace("{name}", "*your child*"))
-            st.write(f"📄 **{template_info.get('total_pages', len(template_pages))} pages**")
-    elif template_info:
-        st.markdown(f"### {template_info['name']}")
-
-    with st.expander(f"📃 Preview all {len(template_pages)} pages", expanded=False):
-        for i, page in enumerate(template_pages):
-            preview_text = personalize_template_text(page['text_template'], "your child", "Neutral")
-            st.markdown(f"**Page {page['page_number']}: {page['profession_title']}**")
-            st.write(preview_text)
-            if i < len(template_pages) - 1:
-                st.markdown("---")
-
-    # --- Customize form ---
-    st.markdown("---")
-    st.markdown("### ✏️ Customize for your child")
+    st.markdown("### Personalize your book")
 
     col1, col2 = st.columns(2)
 
@@ -985,6 +987,7 @@ def render_template_book_form():
             placeholder="e.g., Emma, Jack, Alex",
             help="The child's name that will appear throughout the book"
         )
+
         gender = st.selectbox(
             "Gender *",
             options=["Boy", "Girl", "Neutral"],
@@ -1001,25 +1004,25 @@ def render_template_book_form():
         )
 
     st.markdown("### Upload Photos (Optional)")
-    st.caption("Upload up to 3 photos of the child to personalize the images. You can select multiple at once.")
+    st.caption("Upload 1-3 photos of the child to personalize select pages")
 
-    uploaded_files = st.file_uploader(
-        "Upload photos",
-        type=['png', 'jpg', 'jpeg'],
-        accept_multiple_files=True,
-        key="template_photos_multi",
-        help="Select up to 3 photos — hold Ctrl/Cmd to pick multiple files",
-    )
-    photos = list(uploaded_files or [])[:3]
-    if photos:
-        photo_cols = st.columns(min(len(photos), 3))
-        for i, (col, photo) in enumerate(zip(photo_cols, photos)):
-            with col:
-                st.image(photo, caption=f"Photo {i + 1}", use_container_width=True)
+    photo_cols = st.columns(3)
+
+    photos = []
+    for i, col in enumerate(photo_cols):
+        with col:
+            uploaded_file = st.file_uploader(
+                f"Photo {i + 1}",
+                type=['png', 'jpg', 'jpeg'],
+                key=f"template_photo_{i}"
+            )
+            if uploaded_file:
+                photos.append(uploaded_file)
+                st.image(uploaded_file, caption=f"Photo {i + 1}", use_container_width=True)
 
     st.markdown("---")
 
-    if st.button("✨ Generate My Personalized Book", type="primary", use_container_width=True):
+    if st.button("✨ Generate Template Book", type="primary", use_container_width=True):
         if not child_name:
             st.error("⚠️ Please enter the child's name")
             return
@@ -1031,14 +1034,14 @@ def render_template_book_form():
                 'child_name': child_name,
                 'gender': gender,
                 'age': age,
-                'photos': photos,
+                'photos': photos
             }
             st.session_state.generate_template_book = True
             st.rerun()
 
 
 def generate_template_book(api_key: str, book_data: Dict):
-    """Generate a complete template book with AI-generated images, using cache when available."""
+    """Generate a complete template book with AI-generated images."""
     try:
         template_id = book_data['template_id']
         child_name = book_data['child_name']
@@ -1046,19 +1049,8 @@ def generate_template_book(api_key: str, book_data: Dict):
         age = book_data['age']
         photos = book_data.get('photos', [])
 
-        # --- Check Supabase cache first ---
-        user_id = st.session_state.get("auth_user", {}).get("id", "")
-        if user_id:
-            cached = get_cached_template_book(user_id, template_id, child_name, gender, age)
-            if cached:
-                st.success("✅ Loaded your previously generated book from cache — no regeneration needed!")
-                # Re-attach reference image if photos were uploaded this session
-                if photos:
-                    cached["reference_image_base64"] = convert_uploaded_file_to_base64(photos[0])
-                st.session_state.template_generated_book = cached
-                return
-
         pages = get_template_pages(template_id)
+
         if not pages:
             st.error("No pages found for this template")
             return
@@ -1067,44 +1059,42 @@ def generate_template_book(api_key: str, book_data: Dict):
         if photos:
             reference_image_base64 = convert_uploaded_file_to_base64(photos[0])
 
-        openrouter_key = st.session_state.get("openrouter_api_key", "")
-
         generated_book = {
             'template_id': template_id,
             'template_name': book_data['template_name'],
             'child_name': child_name,
             'gender': gender,
             'age': age,
-            'reference_image_base64': reference_image_base64,
+            'reference_image_base64': reference_image_base64,  # for regenerate image in preview
             'pages': []
         }
 
         progress_bar = st.progress(0)
         status_text = st.empty()
+
         total_pages = len(pages)
-        age_group = _age_to_group(age)
-        use_shared_pool = not bool(reference_image_base64)  # only share generic images
 
         for idx, page in enumerate(pages):
             status_text.text(f"Generating page {idx + 1} of {total_pages}: {page['profession_title']}")
 
-            personalized_text = personalize_template_text(page['text_template'], child_name, gender)
-            personalized_image_prompt = personalize_template_image_prompt(
-                page['image_prompt_template'], child_name, gender, age
+            personalized_text = personalize_template_text(
+                page['text_template'],
+                child_name,
+                gender
             )
 
-            # Check shared pool first (skip if reference photo — image is person-specific)
-            image_url = None
-            if use_shared_pool:
-                image_url = get_shared_pool_image(template_id, page['page_number'], age_group, gender)
-                if image_url:
-                    status_text.text(f"♻️ Reusing cached image for page {idx + 1} of {total_pages}: {page['profession_title']}")
+            personalized_image_prompt = personalize_template_image_prompt(
+                page['image_prompt_template'],
+                child_name,
+                gender,
+                age
+            )
 
-            if not image_url:
-                image_url = generate_page_image(api_key, personalized_image_prompt, reference_image_base64, openrouter_key=openrouter_key)
-                # Contribute to shared pool if generic
-                if image_url and use_shared_pool:
-                    save_to_shared_pool(template_id, page['page_number'], age_group, gender, image_url)
+            image_url = generate_page_image(
+                api_key,
+                personalized_image_prompt,
+                reference_image_base64
+            )
 
             generated_book['pages'].append({
                 'page_number': page['page_number'],
@@ -1117,66 +1107,25 @@ def generate_template_book(api_key: str, book_data: Dict):
             progress_bar.progress((idx + 1) / total_pages)
 
         status_text.text("✅ Book generation complete!")
-        st.session_state.template_generated_book = generated_book
 
-        # --- Persist to Supabase cache ---
-        if user_id:
-            save_template_book_to_cache(user_id, template_id, child_name, gender, age, generated_book)
+        st.session_state.template_generated_book = generated_book
 
     except Exception as e:
         logger.error(f"Error generating template book: {e}")
         st.error(f"Failed to generate book: {e}")
 
 
-def _add_title_overlay(img: Image.Image, title: str) -> Image.Image:
-    """Render a semi-transparent title banner at the top of the image."""
-    from PIL import ImageDraw, ImageFont
-    img = img.convert("RGBA")
-    w, h = img.size
-    banner_h = max(48, int(h * 0.11))
-    overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
-    draw = ImageDraw.Draw(overlay)
-    draw.rectangle([0, 0, w, banner_h], fill=(0, 0, 0, 175))
-    font_size = max(20, int(banner_h * 0.52))
-    font = None
-    for fp in [
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-        "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
-        "/System/Library/Fonts/Helvetica.ttc",
-        "C:/Windows/Fonts/arialbd.ttf",
-    ]:
-        try:
-            font = ImageFont.truetype(fp, font_size)
-            break
-        except Exception:
-            continue
-    if font is None:
-        font = ImageFont.load_default()
-    title_upper = title.upper()
-    bbox = draw.textbbox((0, 0), title_upper, font=font)
-    tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-    tx = (w - tw) // 2
-    ty = (banner_h - th) // 2
-    draw.text((tx + 2, ty + 2), title_upper, font=font, fill=(0, 0, 0, 200))
-    draw.text((tx, ty), title_upper, font=font, fill=(255, 255, 255, 255))
-    return Image.alpha_composite(img, overlay).convert("RGB")
-
-
 def _template_page_image_to_pil(page: Dict) -> Optional[Image.Image]:
-    """Convert template page image_url (data URL) to PIL Image, applying title overlay if present."""
+    """Convert template page image_url (data URL or URL) to PIL Image, or None if missing/failed."""
     url = page.get("image_url")
     if not url:
         return None
     try:
         if url.startswith("data:image"):
+            # data:image/png;base64,...
             b64 = url.split(",", 1)[-1]
             raw = base64.b64decode(b64)
-            img = Image.open(io.BytesIO(raw)).convert("RGB")
-            title = page.get("profession_title", "")
-            if title:
-                img = _add_title_overlay(img, title)
-            return img
+            return Image.open(io.BytesIO(raw)).convert("RGB")
         return None
     except Exception as e:
         logger.warning(f"Could not decode template page image: {e}")
@@ -1246,8 +1195,9 @@ def create_template_pdf(book_data: Dict, output_path_or_buffer):
             image_x_offset = (page_width - display_width) / 2
             image_y_offset = (page_height - display_height) / 2
 
+            img_resized = img_pil.resize((int(display_width), int(display_height)), Image.Resampling.LANCZOS)
             img_io = io.BytesIO()
-            img_pil.save(img_io, format="PNG")
+            img_resized.save(img_io, format="PNG")
             img_io.seek(0)
             c.drawImage(ImageReader(img_io), image_x_offset, image_y_offset, width=display_width, height=display_height, preserveAspectRatio=True)
             c.showPage()
@@ -1322,8 +1272,9 @@ def create_template_pdf(book_data: Dict, output_path_or_buffer):
                     display_height = display_width / aspect_ratio
             image_x_offset = (page_width - display_width) / 2
             image_y_offset = image_y_start + (image_available_height - display_height) / 2
+            img_resized = img_pil.resize((int(display_width), int(display_height)), Image.Resampling.LANCZOS)
             img_io = io.BytesIO()
-            img_pil.save(img_io, format="PNG")
+            img_resized.save(img_io, format="PNG")
             img_io.seek(0)
             c.drawImage(ImageReader(img_io), image_x_offset, image_y_offset, width=display_width, height=display_height, preserveAspectRatio=True)
             text = page.get("text", "")
@@ -1358,219 +1309,164 @@ def convert_uploaded_file_to_base64(uploaded_file) -> str:
         return None
 
 
-def generate_page_image(api_key: str, prompt: str, reference_image_base64: Optional[str] = None, openrouter_key: str = "") -> Optional[str]:
-    """Generate a single image using Gemini API with optional reference image.
-
-    Falls back to OpenRouter (Gemini models) when the primary call fails.
-    """
-    no_text_instruction = "CRITICAL: NO TEXT in this image. No words, letters, numbers, speech bubbles, captions, signs, or labels. Pure illustration only."
-    if "cartoon animated" in prompt.lower() or "cel-shaded" in prompt.lower():
-        style_modifiers = "Children's book art, high quality, bold clean outlines, smooth cel shading"
-    else:
-        style_modifiers = "Watercolor illustration style, soft edges, gentle colors, children's book art, high quality"
-    enhanced_prompt = f"{no_text_instruction}. {prompt}. {style_modifiers}. {no_text_instruction}"
-
-    result_url = _call_gemini_image_api(api_key, enhanced_prompt, reference_image_base64)
-    if result_url:
-        return result_url
-
-    # --- OpenRouter fallback (Gemini models, no ChatGPT/DALL-E) ---
-    if openrouter_key:
-        logger.info("Gemini image API failed, trying OpenRouter fallback")
-        result_url = _call_openrouter_image(openrouter_key, enhanced_prompt)
-        if result_url:
-            return result_url
-
-    logger.warning("All image generation attempts failed for this page")
-    return None
-
-
-def _call_gemini_image_api(api_key: str, enhanced_prompt: str, reference_image_base64: Optional[str] = None) -> Optional[str]:
-    """Call Vertex AI image generation (primary) with Google AI fallback. Returns data URL or None."""
+def generate_page_image(api_key: str, prompt: str, reference_image_base64: Optional[str] = None) -> Optional[str]:
+    """Generate a single image using Gemini API with optional reference image."""
     try:
-        from vertex_client import call_gemini_image
-        return call_gemini_image(enhanced_prompt, api_key=api_key, reference_image_b64=reference_image_base64)
-    except Exception as e:
-        logger.warning(f"Gemini image API exception: {e}")
-    return None
+        # Use the correct Gemini image generation endpoint
+        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent"
 
+        headers = {
+            "Content-Type": "application/json"
+        }
 
-def _call_openrouter_image(openrouter_key: str, prompt: str) -> Optional[str]:
-    """Try to generate an image via OpenRouter using Gemini models (no DALL-E/ChatGPT)."""
-    models = [
-        "google/gemini-2.0-flash-exp:free",
-        "google/gemini-flash-1.5-8b",
-        "google/gemini-flash-1.5",
-    ]
-    for model in models:
-        try:
-            response = requests.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {openrouter_key}",
-                    "Content-Type": "application/json",
-                    "HTTP-Referer": "https://children-book-generator.app",
-                    "X-Title": "Children's Book Generator",
-                },
-                json={
-                    "model": model,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "max_tokens": 4096,
-                },
-                timeout=120,
-            )
-            if response.status_code != 200:
-                logger.warning(f"OpenRouter {model} returned {response.status_code}")
-                continue
+        no_text_instruction = "CRITICAL: NO TEXT in this image. No words, letters, numbers, speech bubbles, captions, signs, or labels. Pure illustration only."
+        if "cartoon animated" in prompt.lower() or "cel-shaded" in prompt.lower():
+            style_modifiers = "Children's book art, high quality, bold clean outlines, smooth cel shading"
+        else:
+            style_modifiers = "Watercolor illustration style, soft edges, gentle colors, children's book art, high quality"
+
+        enhanced_prompt = f"{no_text_instruction}. {prompt}. {style_modifiers}. {no_text_instruction}"
+
+        # Build the payload - with or without reference image
+        if reference_image_base64:
+            # Include reference image for face matching
+            payload = {
+                "contents": [{
+                    "parts": [
+                        {
+                            "inlineData": {
+                                "mimeType": "image/jpeg",
+                                "data": reference_image_base64
+                            }
+                        },
+                        {
+                            "text": f"{enhanced_prompt}. Make the child look exactly like the person in the reference photo - same facial features, skin tone, and hair."
+                        }
+                    ]
+                }],
+                "generationConfig": {
+                    "temperature": 0.4,
+                    "topK": 32,
+                    "topP": 1,
+                    "imageConfig": {
+                        "aspectRatio": "1:1",
+                        "imageSize": "2K"
+                    }
+                }
+            }
+        else:
+            # No reference image
+            payload = {
+                "contents": [{
+                    "parts": [{
+                        "text": enhanced_prompt
+                    }]
+                }],
+                "generationConfig": {
+                    "temperature": 0.4,
+                    "topK": 32,
+                    "topP": 1,
+                    "imageConfig": {
+                        "aspectRatio": "1:1",
+                        "imageSize": "2K"
+                    }
+                }
+            }
+
+        params = {"key": api_key}
+
+        response = requests.post(
+            url,
+            headers=headers,
+            json=payload,
+            params=params,
+            timeout=120
+        )
+
+        if response.status_code == 200:
             result = response.json()
-            choices = result.get("choices", [])
-            if not choices:
-                continue
-            content = choices[0].get("message", {}).get("content", "")
-            # Look for inline image data in list or string content
-            if isinstance(content, list):
-                for part in content:
-                    if isinstance(part, dict) and part.get("type") == "image_url":
-                        img_url = part.get("image_url", {}).get("url", "")
-                        if img_url.startswith("data:image"):
-                            return img_url
-                        if img_url:
-                            img_resp = requests.get(img_url, timeout=30)
-                            if img_resp.status_code == 200:
-                                b64 = base64.b64encode(img_resp.content).decode()
-                                return f"data:image/jpeg;base64,{b64}"
-            if isinstance(content, str) and content.startswith("data:image"):
-                return content
-            logger.info(f"OpenRouter {model} returned text only — no image in response")
-        except Exception as ex:
-            logger.warning(f"OpenRouter {model} exception: {ex}")
-    return None
+            
+            # Extract image from Gemini response format
+            if "candidates" in result and len(result["candidates"]) > 0:
+                parts = result["candidates"][0].get("content", {}).get("parts", [])
+                for part in parts:
+                    if "inlineData" in part:
+                        image_data = part["inlineData"]["data"]
+                        return f"data:image/png;base64,{image_data}"
+
+        logger.warning(f"Image generation failed with status {response.status_code}: {response.text[:500] if response.text else 'No error message'}")
+        return None
+
+    except Exception as e:
+        logger.error(f"Error generating image: {e}")
+        return None
 
 
 def display_template_book_preview(book_data: Dict, api_key: Optional[str] = None):
     """Display the generated template book for preview with edit, regenerate, and download."""
-
-    # --- Handle page deletion ---
-    if st.session_state.get("delete_template_page_idx") is not None:
-        idx = st.session_state.delete_template_page_idx
-        st.session_state.delete_template_page_idx = None
-        pages = book_data.get("pages", [])
-        if 0 <= idx < len(pages):
-            del book_data["pages"][idx]
-            # Clear all per-page session keys so they reinitialise correctly
-            for key in list(st.session_state.keys()):
-                if (key.startswith("template_page_text_") or
-                        key.startswith("template_page_prompt_") or
-                        key.startswith("template_text_area_") or
-                        key.startswith("template_prompt_area_")):
-                    del st.session_state[key]
-            st.rerun()
-
-    # --- Handle single-page image regeneration ---
+    # Handle single-page image regeneration (must run before rendering so updated image shows)
     if api_key and st.session_state.get("regenerate_template_page_idx") is not None:
         idx = st.session_state.regenerate_template_page_idx
         st.session_state.regenerate_template_page_idx = None
         pages = book_data.get("pages", [])
         if 0 <= idx < len(pages):
             page = pages[idx]
-            # Use the edited prompt from session state (allows bypassing guardrails)
-            prompt_key = f"template_page_prompt_{idx}"
-            edited_prompt = st.session_state.get(prompt_key, page.get("image_prompt", ""))
             ref_b64 = book_data.get("reference_image_base64")
-            openrouter_key = st.session_state.get("openrouter_api_key", "")
-            with st.spinner(f"Regenerating image for page {idx + 1}..."):
-                new_url = generate_page_image(api_key, edited_prompt, ref_b64, openrouter_key=openrouter_key)
+            new_url = generate_page_image(api_key, page.get("image_prompt", ""), ref_b64)
             if new_url:
                 book_data["pages"][idx]["image_url"] = new_url
-                book_data["pages"][idx]["image_prompt"] = edited_prompt
-                user_id = st.session_state.get("auth_user", {}).get("id", "")
-                if user_id:
-                    save_template_book_to_cache(
-                        user_id,
-                        book_data.get("template_id", ""),
-                        book_data.get("child_name", ""),
-                        book_data.get("gender", ""),
-                        book_data.get("age", 0),
-                        book_data,
-                    )
             else:
-                st.error(f"Image generation failed for page {idx + 1}. Edit the image prompt below to try a different description, then click Regenerate again.")
+                st.error(f"Failed to regenerate image for page {idx + 1}. Please try again.")
 
     st.success(f"✨ Your personalized book for **{book_data['child_name']}** is ready!")
+
     st.markdown("---")
-    st.markdown("### 📖 Book Preview")
+    st.markdown("### 📖 Book Preview (edit text or regenerate any image)")
 
     for idx, page in enumerate(book_data["pages"]):
         with st.container():
-            # Page header + delete button on the same row
-            hcol1, hcol2 = st.columns([5, 1])
-            with hcol1:
-                st.markdown(f"#### Page {page['page_number']}: {page['profession_title']}")
-            with hcol2:
-                if st.button("🗑️ Delete", key=f"del_tpl_page_{idx}", use_container_width=True, help="Remove this page from the book"):
-                    st.session_state.delete_template_page_idx = idx
-                    st.rerun()
+            st.markdown(f"#### Page {page['page_number']}: {page['profession_title']}")
 
             col1, col2 = st.columns([1, 1])
 
             with col1:
-                # Image display
                 if page.get("image_url"):
                     try:
                         if page["image_url"].startswith("data:image"):
-                            pil_img = _template_page_image_to_pil(page)
-                            if pil_img is not None:
-                                buf = io.BytesIO()
-                                pil_img.save(buf, format="JPEG", quality=90)
-                                st.image(buf.getvalue(), use_container_width=True)
-                            else:
-                                image_bytes = base64.b64decode(page["image_url"].split(",", 1)[1])
-                                st.image(image_bytes, use_container_width=True)
+                            image_data = page["image_url"].split(",", 1)[1]
+                            image_bytes = base64.b64decode(image_data)
+                            st.image(image_bytes, use_container_width=True)
                         else:
                             st.image(page["image_url"], use_container_width=True)
                     except Exception as e:
                         st.error(f"Failed to display image: {e}")
                 else:
-                    st.info("No image generated for this page")
-
-                if api_key and st.button("🔄 Regenerate image", key=f"regen_tpl_img_{idx}", use_container_width=True):
+                    st.info("Image generation in progress or failed")
+                # Regenerate image for this page
+                if api_key and st.button("🔄 Regenerate this image", key=f"regen_tpl_img_{idx}", use_container_width=True):
                     st.session_state.regenerate_template_page_idx = idx
                     st.rerun()
 
             with col2:
-                # Editable story text
-                st.markdown("**Story text:**")
-                key_text = f"template_page_text_{idx}"
-                if key_text not in st.session_state:
-                    st.session_state[key_text] = page.get("text", "")
+                st.markdown("**Story text (editable):**")
+                # Editable text: sync widget value back to book_data so PDF/JSON use latest
+                key_edit = f"template_page_text_{idx}"
+                if key_edit not in st.session_state:
+                    st.session_state[key_edit] = page.get("text", "")
                 current_text = st.text_area(
-                    "Story text",
-                    value=st.session_state[key_text],
-                    height=100,
+                    "Edit page text",
+                    value=st.session_state[key_edit],
+                    height=120,
                     key=f"template_text_area_{idx}",
                     label_visibility="collapsed",
                 )
-                st.session_state[key_text] = current_text
+                st.session_state[key_edit] = current_text
                 book_data["pages"][idx]["text"] = current_text
-
-                # Editable image prompt
-                st.markdown("**Image prompt** *(edit to bypass guardrails, then regenerate):*")
-                key_prompt = f"template_page_prompt_{idx}"
-                if key_prompt not in st.session_state:
-                    st.session_state[key_prompt] = page.get("image_prompt", "")
-                current_prompt = st.text_area(
-                    "Image prompt",
-                    value=st.session_state[key_prompt],
-                    height=120,
-                    key=f"template_prompt_area_{idx}",
-                    label_visibility="collapsed",
-                )
-                st.session_state[key_prompt] = current_prompt
-                book_data["pages"][idx]["image_prompt"] = current_prompt
 
             st.markdown("---")
 
-    # Download section
+    # Prominent download section at the end
+    st.markdown("---")
     st.markdown("### 📥 Download your book")
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     try:
@@ -1608,10 +1504,6 @@ def display_template_book_preview(book_data: Dict, api_key: Optional[str] = None
     with col_another:
         if st.button("🔄 Create Another Book", use_container_width=True):
             for key in list(st.session_state.keys()):
-                if (key in ("template_generated_book", "template_book_data", "generate_template_book") or
-                        key.startswith("template_page_text_") or
-                        key.startswith("template_page_prompt_") or
-                        key == "regenerate_template_page_idx" or
-                        key == "delete_template_page_idx"):
+                if key in ("template_generated_book", "template_book_data", "generate_template_book") or key.startswith("template_page_text_") or key == "regenerate_template_page_idx":
                     del st.session_state[key]
             st.rerun()
