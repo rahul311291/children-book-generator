@@ -44,20 +44,8 @@ try:
 except ImportError:
     TEMPLATE_BOOKS_AVAILABLE = False
 
-# Import book formats
-try:
-    from book_formats import BOOK_FORMATS, DEFAULT_FORMAT, get_format_by_id, get_page_count
-except ImportError:
-    BOOK_FORMATS = [
-        {"id": "short", "name": "Short Story", "pages": 6, "emoji": "📗", "desc": "Perfect for bedtime", "detail": "6 pages · ~300 words"},
-        {"id": "standard", "name": "Standard Story", "pages": 10, "emoji": "📘", "desc": "Most popular", "detail": "10 pages · ~500 words"},
-        {"id": "full", "name": "Full Adventure", "pages": 14, "emoji": "📙", "desc": "Epic journey", "detail": "14 pages · ~700 words"},
-    ]
-    DEFAULT_FORMAT = BOOK_FORMATS[1]
-    def get_format_by_id(fmt_id: str) -> dict:
-        return next((f for f in BOOK_FORMATS if f["id"] == fmt_id), DEFAULT_FORMAT)
-    def get_page_count(fmt_id: str) -> int:
-        return get_format_by_id(fmt_id)["pages"]
+# Import book formats (8 layouts based on bestselling India + global picture books)
+from book_formats import BOOK_FORMATS, DEFAULT_FORMAT, get_format_by_id, get_page_count
 
 # Setup logging
 log_dir = Path("logs")
@@ -166,28 +154,93 @@ for _k, _v in [
     ("wiz_child_name", ""), ("wiz_age", 5), ("wiz_gender", "Boy"),
     ("wiz_skin_tone", ""), ("wiz_hair_style", ""), ("wiz_eye_color", ""), ("wiz_outfit", ""),
     ("wiz_story_type", "Adventure"), ("wiz_problem", ""), ("wiz_language", "English"),
-    ("wiz_image_style", "Cartoon/Animated (3D Pixar Style)"), ("wiz_format_id", "standard"),
+    ("wiz_image_style", "Cartoon/Animated (3D Pixar Style)"), ("wiz_format_id", "illo_opposite_text"),
     ("wiz_family_structure", ""), ("wiz_hero_trait", ""), ("wiz_character_choice", ""),
     ("wiz_generate_trigger", False),
 ]:
     if _k not in st.session_state:
         st.session_state[_k] = _v
 
-def _assemble_image_prompt(page: dict, visual_anchor: str) -> str:
+
+def _resolve_book_format() -> dict:
+    """Get the currently selected book format from session state, or None."""
+    try:
+        fmt_id = st.session_state.get("wiz_format_id") or st.session_state.get("selected_book_format")
+        if fmt_id:
+            from book_formats import get_format_by_id
+            return get_format_by_id(fmt_id)
+    except Exception:
+        pass
+    return None
+
+
+def _assemble_image_prompt(page: dict, visual_anchor: str, book_format: dict = None) -> str:
     """
-    Assemble the final image prompt respecting image_type.
-    - "scene" pages: grand environment / crowd / event; visual_anchor added only lightly
-    - "character" pages (default): scene context then full visual_anchor
+    Build the final image prompt for one page.
+
+    Strategy:
+      1. Take the rich visual_description the LLM produced
+      2. Lead with a SHOT-TYPE directive so the image model frames correctly
+      3. For scene/wide/crowd shots, do NOT append visual_anchor (it just makes
+         the model paint a single character in a stadium)
+      4. For character close-ups, append visual_anchor if not already present
+      5. If book_format is provided, wrap in its image_prompt_template
     """
-    raw = page.get("image_prompt") or page.get("visual_description", "")
-    image_type = page.get("image_type", "character").lower()
-    if not visual_anchor or visual_anchor in raw:
-        return raw
-    if image_type == "scene":
-        # Scene pages: anchor is irrelevant — the spectacle is the subject
-        return raw
-    # Character page: append anchor so model knows who to draw
-    return f"{raw}. Character in scene: {visual_anchor}."
+    raw = (page.get("image_prompt") or page.get("visual_description", "")).strip()
+    shot_type = (page.get("shot_type") or page.get("image_type", "")).lower()
+    primary_subject = page.get("primary_subject", "").strip()
+
+    # Map shot_type → leading cinematic directive
+    shot_directives = {
+        "wide_establishing": "WIDE CINEMATIC ESTABLISHING SHOT.",
+        "aerial_panorama": "AERIAL PANORAMIC VIEW from high above.",
+        "crowd_ensemble": "WIDE ENSEMBLE SHOT showing many distinct characters together.",
+        "action_dynamic": "DYNAMIC ACTION SHOT with motion, energy, and bold composition.",
+        "mid_shot_character": "MEDIUM SHOT of the protagonist, waist-up, performing an action.",
+        "close_up_emotion": "CLOSE-UP capturing emotional expression and detail.",
+        "montage_sequence": (
+            "MULTI-PANEL MONTAGE: divide the frame into 3-4 sub-images showing different "
+            "characters performing the same activity simultaneously."
+        ),
+        "environment_only": "PURE ENVIRONMENT SHOT — no characters, just the setting in detail.",
+        # Legacy values from older stories
+        "scene": "WIDE SCENE SHOT showing the environment and many figures.",
+        "character": "MEDIUM SHOT of the protagonist in a meaningful setting.",
+    }
+    directive = shot_directives.get(shot_type, "")
+
+    # Decide whether to append the character anchor
+    is_scene_shot = shot_type in {
+        "wide_establishing", "aerial_panorama", "crowd_ensemble",
+        "montage_sequence", "environment_only", "scene",
+    }
+
+    parts = []
+    if directive:
+        parts.append(directive)
+    if primary_subject and primary_subject.lower() not in raw.lower():
+        parts.append(f"Primary subject of this image: {primary_subject}.")
+    parts.append(raw)
+
+    if visual_anchor and not is_scene_shot and visual_anchor not in raw:
+        parts.append(f"Character appearing in this scene: {visual_anchor}.")
+
+    final = " ".join(parts)
+
+    # Apply book format's image template wrapping if provided
+    if book_format and book_format.get("image_prompt_template"):
+        template = book_format["image_prompt_template"]
+        # Templates use {SCENE}, {ART_STYLE}, etc. — substitute SCENE with our prompt
+        if "{SCENE}" in template:
+            final = template.replace("{SCENE}", final).replace("{ART_STYLE}", "").replace("{PALETTE}", "").replace("{MOOD}", "")
+        elif "{SCENE/CHARACTERS}" in template:
+            final = template.replace("{SCENE/CHARACTERS}", final).replace("{ART_STYLE}", "")
+        elif "{ACTION/DIALOGUE MOMENT}" in template:
+            final = template.replace("{ACTION/DIALOGUE MOMENT}", final).replace("{ART_STYLE}", "").replace("{PALETTE: jewel tones / bright flat}", "")
+        elif "{SUBJECT}" in template:
+            final = template.replace("{SUBJECT}", final).replace("{ART_STYLE}", "")
+
+    return final
 
 
 def compress_pil_images_for_storage(images: list, max_size: int = 768, quality: int = 75) -> list:
@@ -668,10 +721,11 @@ CRITICAL: Output ONLY the JSON, no additional text before or after."""
 
         # Handle format mapping and ensure visual anchor
         visual_anchor = story_data.get("visual_anchor", existing_visual_anchor)
+        book_format = _resolve_book_format()
         for page in story_data.get("pages", []):
             if "visual_description" in page and "image_prompt" not in page:
                 page["image_prompt"] = page["visual_description"]
-            page["image_prompt"] = _assemble_image_prompt(page, visual_anchor)
+            page["image_prompt"] = _assemble_image_prompt(page, visual_anchor, book_format)
         
         # Verify we got a valid story structure
         if not story_data.get("pages") or len(story_data.get("pages", [])) == 0:
@@ -803,10 +857,11 @@ Return ONLY the modified JSON. Every page's "text" field should reflect the requ
         
         # Handle format mapping
         visual_anchor = story_data.get("visual_anchor", existing_visual_anchor)
+        book_format = _resolve_book_format()
         for page in story_data.get("pages", []):
             if "visual_description" in page and "image_prompt" not in page:
                 page["image_prompt"] = page["visual_description"]
-            page["image_prompt"] = _assemble_image_prompt(page, visual_anchor)
+            page["image_prompt"] = _assemble_image_prompt(page, visual_anchor, book_format)
         
         # Verify we got a valid story structure
         if not story_data.get("pages") or len(story_data.get("pages", [])) == 0:
@@ -921,10 +976,11 @@ Output ONLY valid JSON, no markdown, no explanations."""
         
         # Handle format mapping and ensure visual anchor
         visual_anchor = story_data.get("visual_anchor", existing_visual_anchor)
+        book_format = _resolve_book_format()
         for page in story_data.get("pages", []):
             if "visual_description" in page and "image_prompt" not in page:
                 page["image_prompt"] = page["visual_description"]
-            page["image_prompt"] = _assemble_image_prompt(page, visual_anchor)
+            page["image_prompt"] = _assemble_image_prompt(page, visual_anchor, book_format)
         
         # Verify structure
         if not story_data.get("pages") or len(story_data.get("pages", [])) != len(existing_pages):
@@ -945,22 +1001,27 @@ Output ONLY valid JSON, no markdown, no explanations."""
             st.code(traceback.format_exc())
         return None
 
-def generate_story_with_gemini(api_key: str, child_name: str, age: int, gender: str, 
+def generate_story_with_gemini(api_key: str, child_name: str, age: int, gender: str,
                                physical_desc: str, problem: str, language: str,
                                family_structure: str = "", hero_trait: str = "", character_choice: str = "",
-                               story_type: str = "Behavioral/Problem-solving", image_style: str = "Cartoon/Animated (3D Pixar Style)") -> Dict:
+                               story_type: str = "Behavioral/Problem-solving",
+                               image_style: str = "Cartoon/Animated (3D Pixar Style)",
+                               format_id: str = None) -> Dict:
     """Generate story using Gemini API via REST."""
     try:
-        logger.info(f"Generating story for {child_name}, age {age}, problem: {problem[:50]}...")
+        logger.info(f"Generating story for {child_name}, age {age}, problem: {problem[:50]}..., format={format_id}")
         # Create visual anchor (incorporate character style)
         visual_anchor = create_visual_anchor(child_name, age, gender, physical_desc, character_choice)
-        
-        # ============================================================================
-        # AGE-SPECIFIC PROMPTS - Edit story_prompts.py to customize prompts
-        # ============================================================================
-        # All prompts are now in story_prompts.py - edit that file to change prompts
-        # Each age group (2-3, 3-4, 4-5, 5-6, 6-7, 7-8, 8-10) has its own section
-        
+
+        # Resolve book format
+        book_format = None
+        if format_id:
+            try:
+                from book_formats import get_format_by_id
+                book_format = get_format_by_id(format_id)
+            except Exception:
+                book_format = None
+
         prompt = get_full_prompt(
             age=age,
             child_name=child_name,
@@ -971,13 +1032,10 @@ def generate_story_with_gemini(api_key: str, child_name: str, age: int, gender: 
             hero_trait=hero_trait,
             character_companion=character_choice,
             story_type=story_type,
+            book_format=book_format,
         )
-        
-        logger.info(f"Using age-specific prompt for age {age}")
-        
-        # ============================================================================
-        # END OF PROMPT SECTION
-        # ============================================================================
+
+        logger.info(f"Using age-specific prompt for age {age}, format {format_id}")
 
         from vertex_client import call_gemini_text
         response_text = call_gemini_text(prompt, api_key=api_key, temperature=0.7)
@@ -1000,7 +1058,7 @@ def generate_story_with_gemini(api_key: str, child_name: str, age: int, gender: 
             if "visual_description" in page and "image_prompt" not in page:
                 page["image_prompt"] = page["visual_description"]
             # Ensure visual anchor is in image prompt
-            page["image_prompt"] = _assemble_image_prompt(page, visual_anchor)
+            page["image_prompt"] = _assemble_image_prompt(page, visual_anchor, book_format)
         
         return story_data
         
@@ -1557,31 +1615,65 @@ def render_custom_wizard():
             lang_idx = lang_options.index(st.session_state.wiz_language) if st.session_state.wiz_language in lang_options else 0
             st.session_state.wiz_language = st.selectbox("Language *", lang_options, index=lang_idx)
 
-        # Book format
-        st.markdown("**Book Length:**")
-        fmt_cols = st.columns(len(BOOK_FORMATS))
-        for fi, fmt in enumerate(BOOK_FORMATS):
-            with fmt_cols[fi]:
-                selected = st.session_state.wiz_format_id == fmt["id"]
-                bg = "#667eea" if selected else "#f0f2f6"
-                fg = "white" if selected else "#333"
-                st.markdown(f"""
-                <div style="background:{bg};color:{fg};border-radius:12px;padding:14px;
-                     text-align:center;border:2px solid {"#667eea" if selected else "#e0e0e0"};">
-                  <div style="font-size:28px;">{fmt['emoji']}</div>
-                  <div style="font-weight:700;font-size:14px;">{fmt['name']}</div>
-                  <div style="font-size:12px;opacity:0.85;">{fmt['desc']}</div>
-                  <div style="font-size:11px;opacity:0.7;">{fmt['detail']}</div>
-                </div>
-                """, unsafe_allow_html=True)
-                if st.button(
-                    ("✓ " if selected else "") + fmt["name"],
-                    key=f"fmt_{fi}",
-                    use_container_width=True,
-                    type="primary" if selected else "secondary"
-                ):
-                    st.session_state.wiz_format_id = fmt["id"]
-                    st.rerun()
+        # Book format — 8 formats in a 2-column grid with visual layout previews
+        st.markdown("### 📚 Book Format")
+        st.caption(
+            "Each format defines how the book is laid out: image-text balance, "
+            "word count, page count, and bestseller examples that use this style."
+        )
+        try:
+            from book_formats import get_layout_preview_html
+        except Exception:
+            get_layout_preview_html = lambda _: ""
+
+        n_per_row = 2
+        for row_start in range(0, len(BOOK_FORMATS), n_per_row):
+            row_formats = BOOK_FORMATS[row_start: row_start + n_per_row]
+            cols = st.columns(n_per_row)
+            for fi_in_row, fmt in enumerate(row_formats):
+                fi = row_start + fi_in_row
+                with cols[fi_in_row]:
+                    selected = st.session_state.wiz_format_id == fmt["id"]
+                    border_color = "#667eea" if selected else "#e0e0e0"
+                    border_w = "3px" if selected else "1px"
+                    bg = "#eef0ff" if selected else "#ffffff"
+                    bestsellers = " · ".join(fmt.get("bestsellers", [])[:2])
+                    preview = get_layout_preview_html(fmt["id"])
+
+                    st.markdown(f"""
+                    <div style="background:{bg};border-radius:12px;padding:14px;
+                         border:{border_w} solid {border_color};margin-bottom:8px;">
+                      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+                        <div style="font-size:32px;">{fmt['emoji']}</div>
+                        <div style="flex:1;">
+                          <div style="font-weight:700;font-size:15px;color:#1a1a2e;line-height:1.2;">
+                            {fmt['name']}
+                          </div>
+                          <div style="font-size:11px;color:#888;margin-top:2px;">
+                            {fmt['badge']} · Ages {fmt['age_range']}
+                          </div>
+                        </div>
+                      </div>
+                      <div style="margin:10px 0;">{preview}</div>
+                      <div style="font-size:13px;color:#444;margin-top:8px;line-height:1.4;">
+                        {fmt['desc']}
+                      </div>
+                      <div style="font-size:12px;color:#666;margin-top:6px;">
+                        📄 {fmt['detail']}
+                      </div>
+                      <div style="font-size:11px;color:#999;margin-top:4px;font-style:italic;">
+                        Like: {bestsellers}
+                      </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    if st.button(
+                        ("✓ Selected" if selected else "Choose this format"),
+                        key=f"fmt_{fi}",
+                        use_container_width=True,
+                        type="primary" if selected else "secondary",
+                    ):
+                        st.session_state.wiz_format_id = fmt["id"]
+                        st.rerun()
 
         st.markdown("<br>", unsafe_allow_html=True)
         bcol1, bcol2 = st.columns(2)
@@ -1632,7 +1724,7 @@ def render_custom_wizard():
         with summary_cols[1]:
             st.metric("Story Type", st.session_state.wiz_story_type)
         with summary_cols[2]:
-            st.metric("Length", f"{fmt['pages']} pages")
+            st.metric("Length", f"{fmt.get('page_count', fmt.get('pages', 10))} pages")
 
         st.markdown("<br>", unsafe_allow_html=True)
         bcol1, bcol2 = st.columns(2)
@@ -2100,7 +2192,8 @@ def main():
         with st.spinner("🔄 Generating your personalized story..."):
             story_data = generate_story_with_gemini(
                 api_key, child_name, age, gender, physical_desc, problem, language,
-                family_structure, hero_trait, character_choice, story_type, image_style
+                family_structure, hero_trait, character_choice, story_type, image_style,
+                format_id=format_id,
             )
 
             if not story_data:

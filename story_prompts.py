@@ -441,42 +441,114 @@ OUTPUT_FORMAT = """
 OUTPUT FORMAT (Return as JSON only):
 
 {{
-  "title": "Creative Story Title that reflects the actual plot",
-  "visual_anchor": "Complete appearance of {child_name}: age, gender, skin tone, hair (exact style + color), eye color, SPECIFIC outfit. Use this word-for-word in character-focused image descriptions.",
+  "title": "Creative title using the EXACT name '{child_name}' if relevant",
+  "visual_anchor": "Concise consistent appearance of {child_name}: age, gender, skin tone, hair, eye color, ONE specific outfit. ~25 words. Used on character-focused pages only.",
   "pages": [
     {{
       "page_number": 1,
-      "text": "Story text for this page...",
-      "image_type": "scene OR character",
-      "visual_description": "See rules below"
+      "text": "Story text for this page (use exact name '{child_name}')",
+      "shot_type": "ONE OF: wide_establishing | aerial_panorama | crowd_ensemble | action_dynamic | mid_shot_character | close_up_emotion | montage_sequence | environment_only",
+      "primary_subject": "ONE short sentence stating WHAT THIS IMAGE PRIMARILY SHOWS. For scene shots this is the environment/event/crowd, NOT the protagonist.",
+      "visual_description": "RICH 3-5 sentence cinematic description following the structure in the rules below."
     }}
   ]
 }}
 
-RULES FOR image_type and visual_description:
+═══════════════════════════════════════════════════════════════════════════
+HOW TO WRITE visual_description (THE MOST IMPORTANT PART)
+═══════════════════════════════════════════════════════════════════════════
 
-If image_type = "scene":
-  - This page shows a large-scale environment, event, crowd, or panorama
-  - Start with: WIDE SHOT / PANORAMA / AERIAL VIEW / CROWD SCENE (pick the right camera angle)
-  - Describe the environment in rich detail: architecture, atmosphere, scale, colours, lighting
-  - List the specific subjects visible (e.g. "a lion sprinting, a giraffe leaping, a kangaroo
-    bounding — dozens of animals of every species competing on a vast grassy track")
-  - {child_name} may appear as a small figure if relevant, but is NOT the subject
-  - Do NOT use the full visual_anchor — just "a small fairy figure watching in wonder" is enough
-  - End with: mood, lighting, time of day
+Required structure for EVERY visual_description:
 
-If image_type = "character":
-  - {child_name} is the clear subject of this illustration
-  - Start with the SCENE CONTEXT (where, what is happening), then describe {child_name} using
-    the EXACT visual_anchor text
-  - Include expressive emotion, body language, action
-  - Background supports but does not overpower
+  Sentence 1: SHOT TYPE + PRIMARY SUBJECT
+    e.g. "Wide cinematic establishing shot of a vast jungle clearing transformed
+         into an arena, packed with thousands of cheering animals."
 
-CRITICAL:
-- Every visual_description must be 2-4 rich, specific sentences
-- Every page must show a DIFFERENT scene reflecting its own story event
-- For ensemble/event stories: use "scene" for at least 60% of pages
-- No generic character portraits — images must tell THIS PAGE'S story moment
+  Sentence 2: ENVIRONMENT / SETTING DETAILS
+    e.g. "Bamboo grandstands rise on three sides, draped with banners of leaves
+         and flowers; golden afternoon sunlight streams through the canopy above."
+
+  Sentence 3: SPECIFIC ACTION / WHAT IS HAPPENING
+    e.g. "On the central track a lion is mid-sprint, a kangaroo bounds alongside
+         a cheetah, and a giraffe gallops in long strides — all racing for the finish line."
+
+  Sentence 4: CHARACTER PLACEMENT (only if relevant)
+    For shot_type=wide_establishing/aerial_panorama/crowd_ensemble/environment_only:
+      Either omit, or write: "{child_name} appears as a tiny figure in the stands,
+      one wide-eyed onlooker among hundreds."
+    For shot_type=mid_shot_character/close_up_emotion:
+      Write the full visual_anchor here: "{child_name} stands in the foreground —
+      [paste visual_anchor word-for-word]."
+    For shot_type=action_dynamic:
+      Write a brief mention: "{child_name} ([brief 5-word descriptor]) is in motion."
+
+  Sentence 5: ATMOSPHERE / MOOD / LIGHTING / COLOR PALETTE
+    e.g. "Dust rises from the track, flags snap in the breeze, the mood is
+         electric and triumphant — bold saturated colors, dynamic motion lines."
+
+═══════════════════════════════════════════════════════════════════════════
+SHOT TYPE GUIDE
+═══════════════════════════════════════════════════════════════════════════
+
+  wide_establishing  - Sets the scene: location, scale, what world we're in
+  aerial_panorama    - Bird's eye view; shows extent of environment/crowd
+  crowd_ensemble     - Many characters together; protagonist NOT singled out
+  action_dynamic     - Mid-action with motion blur, bold poses, energy
+  mid_shot_character - Protagonist waist-up doing something specific
+  close_up_emotion   - Face / hands / object close-up; emotional moment
+  montage_sequence   - Multiple small images in one frame (e.g. 4 different
+                       competitors trying the same sport)
+  environment_only   - Pure scene/object/place with NO characters (transitions)
+
+═══════════════════════════════════════════════════════════════════════════
+VARIETY MANDATE (HARD REQUIREMENT)
+═══════════════════════════════════════════════════════════════════════════
+
+Across the book:
+  - Use AT LEAST 5 different shot_type values
+  - Never use the same shot_type for 3 pages in a row
+  - Open with wide_establishing or aerial_panorama (set the world)
+  - Climactic moments → action_dynamic or crowd_ensemble (NOT character close-ups)
+  - End with a mid_shot_character or close_up_emotion (resolution feels personal)
+
+For STORIES INVOLVING crowds, events, journeys, gatherings, competitions, festivals:
+  - At least 60% of pages must be scene-focused (wide_establishing,
+    aerial_panorama, crowd_ensemble, action_dynamic, montage_sequence,
+    or environment_only)
+  - The visual richness of the EVENT is the star — don't waste pages on
+    static character portraits
+
+For QUIET / INTIMATE / PERSONAL stories:
+  - Mix close_up_emotion, mid_shot_character, environment_only, wide_establishing
+  - One or two action_dynamic moments at the climax
+
+═══════════════════════════════════════════════════════════════════════════
+GOOD vs BAD EXAMPLES
+═══════════════════════════════════════════════════════════════════════════
+
+❌ BAD (character-centric, ignores plot scale):
+   "{child_name}, a 6-year-old girl with brown hair in a yellow dress, stands
+   smiling. She is at a sports event."
+
+✓ GOOD (scene-focused, plot-specific):
+   "Wide cinematic shot of an enormous outdoor sports arena carved from a
+   hillside, the curved bamboo stands rising into the misty mountains.
+   Hundreds of jungle creatures fill every seat, a lion conductor raising
+   his paw to signal the start of the games. {child_name} appears as a small
+   figure in the front row, eyes wide. Late afternoon light rakes across the
+   field, banners snap in the breeze."
+
+❌ BAD (vague, no shot direction):
+   "An action scene where animals compete. {child_name} cheers."
+
+✓ GOOD (explicit, dynamic, multi-figure):
+   "Dynamic action shot at ground level: the dirt track exploding with motion
+   as a kangaroo, a tiger, an antelope and a gorilla all sprint toward the
+   camera, dust kicked up in golden afternoon light. Stadium crowd a blur of
+   color in the background. {child_name} is among the runners, second from left,
+   pumping her arms. Energy radiates outward — this is the climactic race."
+
+═══════════════════════════════════════════════════════════════════════════
 
 CRITICAL: Output ONLY valid JSON. No extra text before or after.
 """
@@ -503,29 +575,63 @@ def get_prompt_for_age(age: int) -> str:
 
 def get_full_prompt(age: int, child_name: str, gender: str, story_theme: str,
                     language: str, family_info: str = "", hero_trait: str = "",
-                    character_companion: str = "", story_type: str = "") -> str:
+                    character_companion: str = "", story_type: str = "",
+                    book_format: dict = None) -> str:
     """Build the complete prompt with all placeholders filled in."""
 
+    # ── NAME LOCK (CRITICAL) ────────────────────────────────────────────────
+    # Some models silently rename the child if the name resembles a famous
+    # character (Elsa, Anna, Harry...). This block forces exact preservation.
+    name_lock = f"""
+=== NAME LOCK (ABSOLUTE RULE) ===
+The child's name is EXACTLY: {child_name}
+
+You MUST use this exact spelling on every page, in the title, and in every
+visual_description. NEVER:
+  - Substitute it with a similar-sounding name
+  - Change it because it matches a Disney/Pixar/published character
+  - Add nicknames, pet names, or alternative spellings
+  - Translate it to another language
+
+The story is for THIS specific real child named "{child_name}". The name is
+not a copyright concern — the child's parent typed it themselves. Use it as-is.
+=== END NAME LOCK ===
+"""
+
     # ── PLOT-FIRST BLOCK ────────────────────────────────────────────────────
-    # This is injected BEFORE the age-specific rules so the model sees it first
     story_type_line = f"STORY TYPE: {story_type}" if story_type else ""
     plot_anchor = f"""
 === THE STORY YOU MUST TELL (HIGHEST PRIORITY) ===
-The parent has described exactly what they want. You MUST build the entire story around this:
+The parent has described exactly what they want. Build the entire story around this:
 
   "{story_theme}"
 
 {story_type_line}
 
 THIS IS NOT A SUGGESTION. Every page, every scene, every image description must
-serve this specific plot. Do not replace it with a generic story about the same topic.
-If the parent says "Arjun discovers a magic door in the park", the story is about that
-magic door — not a generic adventure. If they say "learning to ride a bike", every page
-must show specific moments from that journey.
+serve THIS specific plot. Do not replace it with a generic story about the same
+topic. If the parent says "Arjun discovers a magic door in the park", the story
+is about that magic door — not a generic adventure.
 
 The age-appropriate rules below govern LANGUAGE and STRUCTURE only — they do not
-override or replace this story. Adapt the structure to fit the plot, not the other way around.
+override or replace this story. Adapt the structure to fit the plot.
 === END PLOT ANCHOR ===
+"""
+
+    # ── BOOK FORMAT BLOCK ───────────────────────────────────────────────────
+    format_block = ""
+    if book_format:
+        page_count = book_format.get("page_count", 10)
+        words_per = book_format.get("words_per_spread", "30-50")
+        extra = book_format.get("story_extra_rule", "")
+        extra_line = f"\nFORMAT-SPECIFIC RULE: {extra}" if extra else ""
+        format_block = f"""
+=== BOOK FORMAT ===
+This book follows the "{book_format.get('name')}" format:
+  - EXACTLY {page_count} pages (do not return more or fewer)
+  - {words_per} words per page
+  - Bestseller examples in this format: {', '.join(book_format.get('bestsellers', [])[:3])}{extra_line}
+=== END BOOK FORMAT ===
 """
 
     # Get age-appropriate prompt
@@ -535,34 +641,26 @@ override or replace this story. Adapt the structure to fit the plot, not the oth
     family_text = f"FAMILY CONTEXT: {family_info}" if family_info else ""
     hero_text = f"HERO TRAIT (use to help solve the plot): {hero_trait}" if hero_trait else ""
     character_text = (
-        f"FAMOUS CHARACTER COMPANION: Include {character_companion} as a friend in this story with dialogue. "
-        f"They appear in images too."
+        f"FAMOUS CHARACTER COMPANION: Include {character_companion} as a friend in this story "
+        f"with dialogue. They appear in images too."
         if character_companion else ""
     )
 
-    # Fill in placeholders
     prompt = base_prompt.format(
-        child_name=child_name,
-        age=age,
-        gender=gender,
-        story_theme=story_theme,
-        language=language,
-        family_info=family_text,
-        hero_trait=hero_text,
+        child_name=child_name, age=age, gender=gender, story_theme=story_theme,
+        language=language, family_info=family_text, hero_trait=hero_text,
         character_companion=character_text,
     )
 
-    # Add visual consistency rules
     visual_rules = VISUAL_CONSISTENCY_RULES.format(
         child_name=child_name,
         character_companion=character_companion if character_companion else "N/A",
     )
 
-    # Add output format
     output = OUTPUT_FORMAT.format(child_name=child_name)
 
-    # Plot anchor goes FIRST so the model sees it before age-specific rules
-    return plot_anchor + "\n\n" + prompt + "\n\n" + visual_rules + "\n\n" + output
+    # Order matters: NAME LOCK > PLOT > FORMAT > age rules > visual rules > output spec
+    return name_lock + "\n\n" + plot_anchor + "\n\n" + format_block + "\n\n" + prompt + "\n\n" + visual_rules + "\n\n" + output
 
 
 # ============================================================================
