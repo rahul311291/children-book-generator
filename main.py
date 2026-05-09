@@ -1096,9 +1096,11 @@ def generate_image_with_imagen(
         if image_style is None:
             image_style = st.session_state.get("image_style", "Cartoon/Animated (3D Pixar Style)")
 
-        # Use reference photo from session state if not explicitly passed
+        # Use reference photos from session state if not explicitly passed
         if not reference_image_b64:
-            reference_image_b64 = st.session_state.get("wiz_reference_photo_b64", "") or None
+            photos = st.session_state.get("wiz_reference_photos_b64", []) or []
+            if photos:
+                reference_image_b64 = photos  # list of base64 strings
 
         style_modifiers = get_image_style(image_style)
         no_text_instruction = "CRITICAL REQUIREMENT - ABSOLUTELY NO TEXT: This image must contain ZERO text, ZERO words, ZERO letters, ZERO numbers, ZERO speech bubbles, ZERO captions, ZERO signs, ZERO labels, ZERO writing of any kind. This is a pure illustration for a children's book - visual art only."
@@ -1117,12 +1119,14 @@ def generate_image_with_imagen(
             if is_scene else ""
         )
 
-        # Add reference-photo instruction to prompt when a photo is provided
+        # Add reference-photo instruction to prompt when photos are provided
+        n_photos = len(reference_image_b64) if isinstance(reference_image_b64, list) else (1 if reference_image_b64 else 0)
         photo_instruction = (
-            " CHARACTER REFERENCE PHOTO PROVIDED: The child character in this illustration "
-            "MUST closely resemble the person in the reference photo — same facial features, "
-            "skin tone, hair, and expression style. Keep this likeness consistent across all pages."
-            if reference_image_b64 else ""
+            f" CHARACTER REFERENCE: {n_photos} reference photo(s) of the child are provided. "
+            "The child character in this illustration MUST closely resemble the person in these "
+            "photos — same facial features, skin tone, hair, and expression style. "
+            "Keep this likeness consistent across all pages."
+            if n_photos > 0 else ""
         )
 
         style_prompt = f"{no_text_instruction}.{scene_instruction}{photo_instruction} {prompt}. {style_modifiers}. {no_text_instruction}"
@@ -1625,59 +1629,62 @@ def render_custom_wizard():
         st.markdown(f"## 🎨 What does {child} look like?")
 
         # ── Photo upload ────────────────────────────────────────────────
-        st.markdown("#### 📸 Upload a Photo of " + child + " *(recommended)*")
+        st.markdown("#### 📸 Upload Photos of " + child + " *(recommended)*")
         st.caption(
-            "Upload a clear photo of your child's face. The AI will use it as a "
+            "Upload up to 3 clear photos of your child's face. The AI uses these as a "
             "character reference so every illustration looks like your real child. "
-            "A front-facing photo in good lighting works best."
+            "Front-facing photos in good lighting work best."
         )
 
-        photo_col, preview_col = st.columns([3, 1])
-        with photo_col:
-            uploaded_photo = st.file_uploader(
-                f"Upload {child}'s photo",
-                type=["jpg", "jpeg", "png", "webp"],
-                key="wiz_photo_uploader",
-                label_visibility="collapsed",
-            )
-            if uploaded_photo is not None:
+        uploaded_photos = st.file_uploader(
+            f"Upload up to 3 photos of {child}",
+            type=["jpg", "jpeg", "png", "webp"],
+            accept_multiple_files=True,
+            key="wiz_photo_uploader",
+            label_visibility="collapsed",
+        )
+        if uploaded_photos:
+            capped = uploaded_photos[:3]
+            if len(uploaded_photos) > 3:
+                st.warning("Only the first 3 photos will be used.")
+            photos_b64 = []
+            for uf in capped:
                 try:
-                    photo_bytes = uploaded_photo.read()
-                    # Convert to JPEG base64 for the AI
-                    from PIL import Image as PILImage
+                    from PIL import Image as _PILImage
                     import io as _io
                     import base64 as _b64
-                    photo_img = PILImage.open(_io.BytesIO(photo_bytes)).convert("RGB")
-                    # Resize to max 512px on longest side to keep payload small
+                    raw = uf.read()
+                    pimg = _PILImage.open(_io.BytesIO(raw)).convert("RGB")
                     max_side = 512
-                    w, h = photo_img.size
+                    w, h = pimg.size
                     if max(w, h) > max_side:
                         scale = max_side / max(w, h)
-                        photo_img = photo_img.resize((int(w * scale), int(h * scale)), PILImage.LANCZOS)
+                        pimg = pimg.resize((int(w * scale), int(h * scale)), _PILImage.LANCZOS)
                     buf = _io.BytesIO()
-                    photo_img.save(buf, format="JPEG", quality=85)
-                    st.session_state.wiz_reference_photo_b64 = _b64.b64encode(buf.getvalue()).decode()
-                    st.success(f"✅ Photo uploaded! {child}'s likeness will be used in all illustrations.")
+                    pimg.save(buf, format="JPEG", quality=85)
+                    photos_b64.append(_b64.b64encode(buf.getvalue()).decode())
                 except Exception as _pe:
                     st.error(f"Could not process photo: {_pe}")
-            elif st.session_state.wiz_reference_photo_b64:
-                st.info("✅ Photo already uploaded from a previous step.")
+            if photos_b64:
+                st.session_state.wiz_reference_photos_b64 = photos_b64
+                st.success(f"✅ {len(photos_b64)} photo(s) uploaded! {child}'s likeness will be used in all illustrations.")
+        elif st.session_state.wiz_reference_photos_b64:
+            st.info(f"✅ {len(st.session_state.wiz_reference_photos_b64)} photo(s) already uploaded.")
 
-        with preview_col:
-            if st.session_state.wiz_reference_photo_b64:
-                try:
-                    import base64 as _b64
+        # Preview thumbnails
+        if st.session_state.wiz_reference_photos_b64:
+            preview_cols = st.columns(min(len(st.session_state.wiz_reference_photos_b64), 3))
+            import base64 as _b64p
+            for pi, b64str in enumerate(st.session_state.wiz_reference_photos_b64):
+                with preview_cols[pi]:
                     st.markdown(
-                        f'<img src="data:image/jpeg;base64,{st.session_state.wiz_reference_photo_b64}" '
+                        f'<img src="data:image/jpeg;base64,{b64str}" '
                         f'style="width:100%;border-radius:8px;border:2px solid #667eea;" />',
-                        unsafe_allow_html=True
+                        unsafe_allow_html=True,
                     )
-                except Exception:
-                    pass
-            if st.session_state.wiz_reference_photo_b64:
-                if st.button("🗑️ Remove photo", key="wiz_remove_photo"):
-                    st.session_state.wiz_reference_photo_b64 = ""
-                    st.rerun()
+            if st.button("🗑️ Remove all photos", key="wiz_remove_photos"):
+                st.session_state.wiz_reference_photos_b64 = []
+                st.rerun()
 
         # ── Text description (optional if photo provided) ────────────────
         st.markdown("---")
@@ -1866,7 +1873,7 @@ def render_custom_wizard():
         st.markdown("#### 📋 Story Summary")
         fmt = get_format_by_id(st.session_state.wiz_format_id)
 
-        has_photo = bool(st.session_state.get("wiz_reference_photo_b64"))
+        has_photo = bool(st.session_state.get("wiz_reference_photos_b64"))
         summary_cols = st.columns(4)
         with summary_cols[0]:
             st.metric("Hero", f"{child}, {st.session_state.wiz_age}yo")
@@ -2375,7 +2382,7 @@ def main():
                 "story_type": story_type,
                 "image_style": image_style,
                 "format_id": format_id,
-                "has_reference_photo": bool(st.session_state.get("wiz_reference_photo_b64")),
+                "has_reference_photo": bool(st.session_state.get("wiz_reference_photos_b64")),
             }
             save_story(story_data, child_name, metadata)
 
