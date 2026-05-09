@@ -408,29 +408,30 @@ RULES FOR 8-10 YEAR OLDS:
 # COMMON VISUAL CONSISTENCY RULES (Applied to ALL ages)
 # ============================================================================
 VISUAL_CONSISTENCY_RULES = """
-VISUAL CONSISTENCY (CRITICAL - Apply to ALL ages):
+VISUAL CONSISTENCY RULES:
 
-1. CHARACTER APPEARANCE:
+1. CHARACTER APPEARANCE (for close-up / interaction pages):
    - Create a 'Visual Anchor' that describes {child_name} exactly
    - Include: age, gender, skin tone, hair color/style, eye color, ONE consistent outfit
-   - This EXACT description must appear in EVERY image prompt
+   - Use this EXACT description on every page where {child_name} is the focus
    - NEVER change the outfit, hairstyle, or features between pages
-   
-2. OUTFIT RULE:
-   - Pick ONE outfit at the start
-   - If parent provided "favorite outfit", use exactly that
-   - If not, choose simple clothing (e.g., "red t-shirt and blue jeans")
-   - Use IDENTICAL outfit description word-for-word on every page
-   
-3. HAIRSTYLE RULE:
-   - Describe hairstyle specifically: "curly black hair in two ponytails"
-   - NEVER change hairstyle between pages
-   - Use the same description every time
-   
+
+2. SCENE-FOCUSED PAGES (grand vistas, crowds, events, panoramas):
+   - Use image_type = "scene" for these pages
+   - {child_name} may appear SMALL in the scene, as one figure among many
+   - Do NOT make {child_name} the visual centre of a scene page
+   - The crowd, environment, event, or spectacle IS the subject
+   - Example: an Olympic arena filled with hundreds of animals — {child_name} is a
+     small figure watching from the stands or participating in a crowd
+
+3. CHARACTER CLOSE-UP PAGES:
+   - Use image_type = "character" for these pages
+   - {child_name} fills most of the frame; scene is supporting background
+   - Full visual_anchor description required
+
 4. FAMOUS CHARACTER COMPANION (Only if specified):
-   - If {character_companion} is provided, include that character in the story
+   - If {character_companion} is provided, include them in relevant pages
    - They should have dialogue and appear in illustrations
-   - They help {child_name} but don't solve everything for them
 """
 
 # ============================================================================
@@ -441,22 +442,41 @@ OUTPUT FORMAT (Return as JSON only):
 
 {{
   "title": "Creative Story Title that reflects the actual plot",
-  "visual_anchor": "Complete appearance of {child_name}: age, gender, skin tone, hair (exact style + color), eye color, SPECIFIC outfit. Use this word-for-word in every visual_description.",
+  "visual_anchor": "Complete appearance of {child_name}: age, gender, skin tone, hair (exact style + color), eye color, SPECIFIC outfit. Use this word-for-word in character-focused image descriptions.",
   "pages": [
     {{
       "page_number": 1,
       "text": "Story text for this page...",
-      "visual_description": "SCENE FIRST — describe the specific setting and what is happening in the plot (WHERE: e.g. 'a sun-dappled forest clearing with tall oak trees', WHAT: e.g. '{child_name} discovers a glowing door in the tree trunk'). Then CHARACTER: include the complete visual_anchor with IDENTICAL outfit. Include mood/lighting/atmosphere. 2-3 rich sentences. The scene must directly reflect THIS PAGE'S story event — not a generic character portrait."
+      "image_type": "scene OR character",
+      "visual_description": "See rules below"
     }}
   ]
 }}
 
-CRITICAL RULES FOR visual_description:
-- Lead with the SCENE and PLOT ACTION specific to this page, not the character
-- The background, environment, and what is happening must be specific and vivid
-- Character description (visual_anchor) comes AFTER the scene is established
-- Every page must show a DIFFERENT scene matching its story event
-- NO generic character-only portraits — every image must tell the story moment
+RULES FOR image_type and visual_description:
+
+If image_type = "scene":
+  - This page shows a large-scale environment, event, crowd, or panorama
+  - Start with: WIDE SHOT / PANORAMA / AERIAL VIEW / CROWD SCENE (pick the right camera angle)
+  - Describe the environment in rich detail: architecture, atmosphere, scale, colours, lighting
+  - List the specific subjects visible (e.g. "a lion sprinting, a giraffe leaping, a kangaroo
+    bounding — dozens of animals of every species competing on a vast grassy track")
+  - {child_name} may appear as a small figure if relevant, but is NOT the subject
+  - Do NOT use the full visual_anchor — just "a small fairy figure watching in wonder" is enough
+  - End with: mood, lighting, time of day
+
+If image_type = "character":
+  - {child_name} is the clear subject of this illustration
+  - Start with the SCENE CONTEXT (where, what is happening), then describe {child_name} using
+    the EXACT visual_anchor text
+  - Include expressive emotion, body language, action
+  - Background supports but does not overpower
+
+CRITICAL:
+- Every visual_description must be 2-4 rich, specific sentences
+- Every page must show a DIFFERENT scene reflecting its own story event
+- For ensemble/event stories: use "scene" for at least 60% of pages
+- No generic character portraits — images must tell THIS PAGE'S story moment
 
 CRITICAL: Output ONLY valid JSON. No extra text before or after.
 """

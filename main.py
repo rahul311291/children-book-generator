@@ -173,6 +173,23 @@ for _k, _v in [
     if _k not in st.session_state:
         st.session_state[_k] = _v
 
+def _assemble_image_prompt(page: dict, visual_anchor: str) -> str:
+    """
+    Assemble the final image prompt respecting image_type.
+    - "scene" pages: grand environment / crowd / event; visual_anchor added only lightly
+    - "character" pages (default): scene context then full visual_anchor
+    """
+    raw = page.get("image_prompt") or page.get("visual_description", "")
+    image_type = page.get("image_type", "character").lower()
+    if not visual_anchor or visual_anchor in raw:
+        return raw
+    if image_type == "scene":
+        # Scene pages: anchor is irrelevant — the spectacle is the subject
+        return raw
+    # Character page: append anchor so model knows who to draw
+    return f"{raw}. Character in scene: {visual_anchor}."
+
+
 def compress_pil_images_for_storage(images: list, max_size: int = 768, quality: int = 75) -> list:
     """Compress a list of PIL Images to base64 JPEG data URLs for Supabase storage."""
     result = []
@@ -654,9 +671,7 @@ CRITICAL: Output ONLY the JSON, no additional text before or after."""
         for page in story_data.get("pages", []):
             if "visual_description" in page and "image_prompt" not in page:
                 page["image_prompt"] = page["visual_description"]
-            image_prompt = page.get("image_prompt", "")
-            if visual_anchor and visual_anchor not in image_prompt:
-                page["image_prompt"] = f"{image_prompt}. Character in scene: {visual_anchor}."
+            page["image_prompt"] = _assemble_image_prompt(page, visual_anchor)
         
         # Verify we got a valid story structure
         if not story_data.get("pages") or len(story_data.get("pages", [])) == 0:
@@ -791,9 +806,7 @@ Return ONLY the modified JSON. Every page's "text" field should reflect the requ
         for page in story_data.get("pages", []):
             if "visual_description" in page and "image_prompt" not in page:
                 page["image_prompt"] = page["visual_description"]
-            image_prompt = page.get("image_prompt", "")
-            if visual_anchor and visual_anchor not in image_prompt:
-                page["image_prompt"] = f"{image_prompt}. Character in scene: {visual_anchor}."
+            page["image_prompt"] = _assemble_image_prompt(page, visual_anchor)
         
         # Verify we got a valid story structure
         if not story_data.get("pages") or len(story_data.get("pages", [])) == 0:
@@ -911,9 +924,7 @@ Output ONLY valid JSON, no markdown, no explanations."""
         for page in story_data.get("pages", []):
             if "visual_description" in page and "image_prompt" not in page:
                 page["image_prompt"] = page["visual_description"]
-            image_prompt = page.get("image_prompt", "")
-            if visual_anchor and visual_anchor not in image_prompt:
-                page["image_prompt"] = f"{image_prompt}. Character in scene: {visual_anchor}."
+            page["image_prompt"] = _assemble_image_prompt(page, visual_anchor)
         
         # Verify structure
         if not story_data.get("pages") or len(story_data.get("pages", [])) != len(existing_pages):
@@ -989,9 +1000,7 @@ def generate_story_with_gemini(api_key: str, child_name: str, age: int, gender: 
             if "visual_description" in page and "image_prompt" not in page:
                 page["image_prompt"] = page["visual_description"]
             # Ensure visual anchor is in image prompt
-            image_prompt = page.get("image_prompt", "")
-            if visual_anchor and visual_anchor not in image_prompt:
-                page["image_prompt"] = f"{image_prompt}. Character in scene: {visual_anchor}."
+            page["image_prompt"] = _assemble_image_prompt(page, visual_anchor)
         
         return story_data
         
@@ -1024,7 +1033,20 @@ def generate_image_with_imagen(api_key: str, prompt: str, retry_count: int = 0, 
 
         style_modifiers = get_image_style(image_style)
         no_text_instruction = "CRITICAL REQUIREMENT - ABSOLUTELY NO TEXT: This image must contain ZERO text, ZERO words, ZERO letters, ZERO numbers, ZERO speech bubbles, ZERO captions, ZERO signs, ZERO labels, ZERO writing of any kind. This is a pure illustration for a children's book - visual art only."
-        style_prompt = f"{no_text_instruction}. {prompt}. {style_modifiers}. {no_text_instruction}"
+
+        # Detect scene/panorama prompts and add a scale instruction
+        scene_keywords = ("wide shot", "panorama", "aerial", "crowd scene", "stadium",
+                          "dozens", "hundreds", "grand", "epic scale", "all the animals",
+                          "across the globe", "spectacle", "olympics", "competition")
+        is_scene = any(kw in prompt.lower() for kw in scene_keywords)
+        scene_instruction = (
+            " IMPORTANT: This is a GRAND SCALE SCENE — show many characters and a rich environment. "
+            "Do NOT focus on a single character. Show the full scope: crowd, stadium, jungle arena, "
+            "diverse animals of many species. The scene is the subject, not one individual."
+            if is_scene else ""
+        )
+
+        style_prompt = f"{no_text_instruction}.{scene_instruction} {prompt}. {style_modifiers}. {no_text_instruction}"
 
         from vertex_client import call_gemini_image
         data_url = call_gemini_image(style_prompt, api_key=api_key)
