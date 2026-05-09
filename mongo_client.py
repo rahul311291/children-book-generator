@@ -61,6 +61,10 @@ def sessions_col() -> Collection:
     return get_db()["sessions"]
 
 
+def otps_col() -> Collection:
+    return get_db()["otps"]
+
+
 def ensure_indexes() -> None:
     """Create indexes on first startup (idempotent)."""
     try:
@@ -72,5 +76,7 @@ def ensure_indexes() -> None:
         )
         image_pool_col().create_index("prompt_hash", unique=True)
         sessions_col().create_index("expires_at", expireAfterSeconds=0)
+        otps_col().create_index("expires_at", expireAfterSeconds=0)
+        otps_col().create_index("email")
     except Exception:
         pass
