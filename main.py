@@ -1464,10 +1464,13 @@ def render_gallery():
     """Show recent books from all users as inspiration."""
     try:
         from mongo_client import book_history_col
-        books = list(book_history_col().find(
-            {"images": {"$exists": True, "$not": {"$size": 0}}},
-            {"_id": 1, "child_name": 1, "story_data": 1, "metadata": 1, "created_at": 1}
-        ).sort("created_at", -1).limit(48))
+        # Fetch recent books; filter for those with saved images in Python
+        # (avoids MongoDB version quirks with $not/$size operators)
+        candidates = list(book_history_col().find(
+            {},
+            {"_id": 1, "child_name": 1, "story_data": 1, "metadata": 1, "created_at": 1, "images": 1}
+        ).sort("created_at", -1).limit(200))
+        books = [b for b in candidates if b.get("images")][:48]
     except Exception:
         books = []
 
