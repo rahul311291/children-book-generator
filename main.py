@@ -1376,13 +1376,53 @@ def create_pdf(story_data: Dict, images: List[Image.Image], child_name: str, out
     c.save()
 
 
+def _load_gallery_book(doc_id: str) -> None:
+    """Load a community gallery book into session state for viewing."""
+    try:
+        from mongo_client import book_history_col
+        col = book_history_col()
+        row = col.find_one({"_id": doc_id})
+        if not row:
+            st.error("Could not load that book.")
+            return
+        story_data = row.get("story_data", {})
+        if not story_data or not story_data.get("pages"):
+            st.error("Book has no pages.")
+            return
+        meta = row.get("metadata", {})
+        journey_state = meta.get("journey_state", {})
+
+        st.session_state.generated_story = story_data
+        st.session_state.current_child_name = row.get("child_name", "")
+        # Don't point at the gallery owner's doc — treat as a fresh load
+        st.session_state.current_book_history_id = None
+        st.session_state.book_mode = "custom"
+        st.session_state.wiz_generate_trigger = False
+
+        # Restore images
+        saved_imgs = row.get("images", [])
+        st.session_state.generated_images = decode_stored_images(saved_imgs) if saved_imgs else []
+
+        # Restore journey state so the user lands on the right step
+        st.session_state.story_approved = journey_state.get("story_approved", False)
+        st.session_state.all_images_approved = journey_state.get("all_images_approved", False)
+        st.session_state.image_approvals = journey_state.get("image_approvals", {})
+        st.session_state.edited_story_pages = journey_state.get("edited_story_pages", {})
+        st.session_state.edited_image_prompts = journey_state.get("edited_image_prompts", {})
+        st.session_state.pdf_path = None
+        st.session_state.pdf_generation_key = None
+        st.session_state.show_history = False
+    except Exception as e:
+        st.error(f"Failed to load book: {e}")
+
+
 def render_gallery():
     """Show recent books from all users as inspiration."""
     try:
         from mongo_client import book_history_col
         books = list(book_history_col().find(
             {},
-            {"child_name": 1, "story_data": 1, "metadata": 1, "created_at": 1}
+            {"_id": 1, "child_name": 1, "story_data": 1, "metadata": 1, "created_at": 1}
         ).sort("created_at", -1).limit(48))
     except Exception:
         books = []
@@ -1397,6 +1437,7 @@ def render_gallery():
     cols = st.columns(4)
     for i, book in enumerate(books):
         with cols[i % 4]:
+            doc_id = book.get("_id", "")
             title = (book.get("story_data") or {}).get("title", "Untitled Story")
             child = book.get("child_name", "")
             meta = book.get("metadata") or {}
@@ -1407,15 +1448,18 @@ def render_gallery():
             emojis = ["📖", "🌟", "🦋", "🌈", "🚀", "🌙", "🦁", "🐬"]
             emoji = emojis[i % len(emojis)]
             st.markdown(f"""
-            <div style="background:#f8f9ff;border-radius:12px;padding:14px 12px;margin-bottom:10px;
-                 border:1px solid #e0e7ff;cursor:default;">
+            <div style="background:#f8f9ff;border-radius:12px;padding:14px 12px;margin-bottom:4px;
+                 border:1px solid #e0e7ff;">
               <div style="font-size:28px;text-align:center;margin-bottom:6px;">{emoji}</div>
               <div style="font-weight:600;font-size:13px;color:#1a1a2e;line-height:1.3;
-                   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{title}</div>
+                   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="{title}">{title}</div>
               <div style="color:#666;font-size:12px;margin-top:3px;">For {child}{", age "+str(age) if age else ""}</div>
               <div style="color:#aaa;font-size:11px;margin-top:2px;">{lang+"  · " if lang else ""}{date_str}</div>
             </div>
             """, unsafe_allow_html=True)
+            if doc_id and st.button("Read Story →", key=f"gallery_view_{doc_id}_{i}", use_container_width=True):
+                _load_gallery_book(doc_id)
+                st.rerun()
 
 
 def render_landing():
