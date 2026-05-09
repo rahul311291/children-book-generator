@@ -156,7 +156,7 @@ for _k, _v in [
     ("wiz_story_type", "Adventure"), ("wiz_problem", ""), ("wiz_language", "English"),
     ("wiz_image_style", "Cartoon/Animated (3D Pixar Style)"), ("wiz_format_id", "illo_opposite_text"),
     ("wiz_family_structure", ""), ("wiz_hero_trait", ""), ("wiz_character_choice", ""),
-    ("wiz_generate_trigger", False), ("wiz_reference_photo_b64", ""),
+    ("wiz_generate_trigger", False), ("wiz_reference_photos_b64", []),
 ]:
     if _k not in st.session_state:
         st.session_state[_k] = _v
@@ -1461,7 +1461,7 @@ def render_gallery():
     try:
         from mongo_client import book_history_col
         books = list(book_history_col().find(
-            {},
+            {"images": {"$exists": True, "$not": {"$size": 0}}},
             {"_id": 1, "child_name": 1, "story_data": 1, "metadata": 1, "created_at": 1}
         ).sort("created_at", -1).limit(48))
     except Exception:
@@ -3097,216 +3097,206 @@ def main():
                     st.session_state.pdf_generation_key = current_pdf_key
         
         st.header("📚 Step 3: Download Your Storybook")
-        st.success("🎉 All content approved! Your storybook is ready to download.")
+        story_title = st.session_state.generated_story.get("title", f"{child_name}'s Storybook")
+        st.subheader(story_title)
 
+        # ── Download buttons (top) ──────────────────────────────────────
+        if st.session_state.pdf_path and os.path.exists(st.session_state.pdf_path):
+            with open(st.session_state.pdf_path, "rb") as _pdf:
+                st.download_button(
+                    label="📥 Download PDF",
+                    data=_pdf.read(),
+                    file_name=f"{child_name}_Storybook.pdf",
+                    mime="application/pdf",
+                    type="primary",
+                    use_container_width=True,
+                    key="pdf_download_top",
+                )
         st.divider()
 
-        # Navigation buttons to go back
-        col_nav1, col_nav2, col_nav3 = st.columns(3)
-        with col_nav1:
-            if st.button("← Back to Story Review", use_container_width=True, type="secondary"):
+        # ── Navigation ──────────────────────────────────────────────────
+        nav1, nav2, _ = st.columns(3)
+        with nav1:
+            if st.button("← Back to Story Review", use_container_width=True):
                 st.session_state.story_approved = False
                 st.rerun()
-        with col_nav2:
-            if st.button("← Back to Image Review", use_container_width=True, type="secondary"):
+        with nav2:
+            if st.button("← Back to Image Review", use_container_width=True):
                 st.session_state.all_images_approved = False
                 st.rerun()
-        with col_nav3:
-            st.write("")  # Spacing
 
         st.divider()
 
-        if st.session_state.pdf_path and os.path.exists(st.session_state.pdf_path):
-            # Final Preview with editing capabilities
-            st.subheader("Final Preview & Edit")
-            st.markdown("You can edit text, delete pages, or rearrange pages here. Changes will require regenerating the PDF.")
-            
+        # ── Book reader: image + text side by side ──────────────────────
+        pages = st.session_state.generated_story.get("pages", [])
+        for i, page in enumerate(pages):
+            if i >= len(st.session_state.generated_images):
+                break
+            page_num = page.get("page_number", i + 1)
+            img = st.session_state.generated_images[i]
+            text = st.session_state.edited_story_pages.get(i, page.get("text", ""))
+
+            img_col, txt_col = st.columns([1, 1])
+            with img_col:
+                if img is not None:
+                    st.image(img, use_container_width=True)
+                else:
+                    st.markdown(
+                        "<div style='background:#f0f0f0;border-radius:8px;padding:40px;"
+                        "text-align:center;color:#999;font-size:24px;'>🖼️</div>",
+                        unsafe_allow_html=True,
+                    )
+                # Regenerate this image
+                if st.button(f"🔄 Regenerate Image", key=f"step3_regen_{i}", use_container_width=True):
+                    if i in st.session_state.image_approvals:
+                        del st.session_state.image_approvals[i]
+                    st.session_state.all_images_approved = False
+                    if i < len(st.session_state.generated_images):
+                        st.session_state.generated_images[i] = None
+                    st.session_state[f"regenerate_image_{i}"] = True
+                    st.rerun()
+
+            with txt_col:
+                st.markdown(
+                    f"<p style='font-size:12px;color:#aaa;margin-bottom:4px;'>Page {page_num}</p>",
+                    unsafe_allow_html=True,
+                )
+                st.markdown(
+                    f"<p style='font-size:16px;line-height:1.7;color:#1a1a2e;'>{text}</p>",
+                    unsafe_allow_html=True,
+                )
+                # Inline text edit
+                if st.button(f"✏️ Edit Text", key=f"step3_edit_text_{i}", use_container_width=True):
+                    st.session_state[f"step3_editing_text_{i}"] = True
+                    st.rerun()
+                if st.session_state.get(f"step3_editing_text_{i}"):
+                    new_text = st.text_area(
+                        "Edit text",
+                        value=text,
+                        key=f"step3_text_area_{i}",
+                        height=120,
+                        label_visibility="collapsed",
+                    )
+                    save_col, cancel_col = st.columns(2)
+                    with save_col:
+                        if st.button("💾 Save", key=f"step3_save_text_{i}", type="primary"):
+                            st.session_state.edited_story_pages[i] = new_text
+                            st.session_state.generated_story["pages"][i]["text"] = new_text
+                            st.session_state[f"step3_editing_text_{i}"] = False
+                            st.session_state.pdf_generation_key = None
+                            st.rerun()
+                    with cancel_col:
+                        if st.button("❌ Cancel", key=f"step3_cancel_text_{i}"):
+                            st.session_state[f"step3_editing_text_{i}"] = False
+                            st.rerun()
+
+            st.divider()
+
+        # ── Advanced page management (collapsible) ──────────────────────
+        with st.expander("⚙️ Advanced: Delete or Reorder Pages"):
             pages = st.session_state.generated_story.get("pages", [])
-            
-            # Page management controls
             if len(pages) > 1:
-                st.markdown("**Page Management:**")
-                col_del, col_up, col_down = st.columns([1, 1, 1])
+                col_del, col_up, col_down = st.columns(3)
                 with col_del:
                     page_to_delete = st.selectbox(
                         "Delete Page",
                         options=[f"Page {i+1}" for i in range(len(pages))],
                         key="delete_page_select",
-                        index=None
+                        index=None,
                     )
                     if page_to_delete and st.button("🗑️ Delete Page", key="delete_page_btn"):
                         page_idx = int(page_to_delete.split()[1]) - 1
                         if 0 <= page_idx < len(pages):
-                            # Remove page and corresponding image
                             pages.pop(page_idx)
                             if page_idx < len(st.session_state.generated_images):
                                 st.session_state.generated_images.pop(page_idx)
-                            
-                            # Clean up approvals - remove deleted page and reindex remaining approvals
-                            new_approvals = {}
-                            for old_idx, approved in st.session_state.image_approvals.items():
-                                if old_idx < page_idx:
-                                    # Keep approvals before deleted page
-                                    new_approvals[old_idx] = approved
-                                elif old_idx > page_idx:
-                                    # Shift approvals after deleted page down by 1
-                                    new_approvals[old_idx - 1] = approved
+                            new_approvals = {
+                                (k - 1 if k > page_idx else k): v
+                                for k, v in st.session_state.image_approvals.items()
+                                if k != page_idx
+                            }
                             st.session_state.image_approvals = new_approvals
-                            
-                            # Clean up edited pages and prompts - reindex them
-                            new_edited_pages = {}
-                            for old_idx, text in st.session_state.edited_story_pages.items():
-                                if old_idx < page_idx:
-                                    new_edited_pages[old_idx] = text
-                                elif old_idx > page_idx:
-                                    new_edited_pages[old_idx - 1] = text
-                            st.session_state.edited_story_pages = new_edited_pages
-                            
-                            new_edited_prompts = {}
-                            for old_idx, prompt in st.session_state.edited_image_prompts.items():
-                                if old_idx < page_idx:
-                                    new_edited_prompts[old_idx] = prompt
-                                elif old_idx > page_idx:
-                                    new_edited_prompts[old_idx - 1] = prompt
-                            st.session_state.edited_image_prompts = new_edited_prompts
-                            
+                            new_ep = {
+                                (k - 1 if k > page_idx else k): v
+                                for k, v in st.session_state.edited_story_pages.items()
+                                if k != page_idx
+                            }
+                            st.session_state.edited_story_pages = new_ep
+                            new_eip = {
+                                (k - 1 if k > page_idx else k): v
+                                for k, v in st.session_state.edited_image_prompts.items()
+                                if k != page_idx
+                            }
+                            st.session_state.edited_image_prompts = new_eip
                             st.session_state.generated_story["pages"] = pages
-                            # Update page numbers
                             for idx, p in enumerate(pages):
                                 p["page_number"] = idx + 1
-                            # Force PDF regeneration
                             st.session_state.pdf_generation_key = None
                             st.success(f"Deleted {page_to_delete}")
                             st.rerun()
-                
+
+                def _swap_pages(idx_a: int, idx_b: int) -> None:
+                    p = st.session_state.generated_story["pages"]
+                    p[idx_a], p[idx_b] = p[idx_b], p[idx_a]
+                    imgs = st.session_state.generated_images
+                    if idx_a < len(imgs) and idx_b < len(imgs):
+                        imgs[idx_a], imgs[idx_b] = imgs[idx_b], imgs[idx_a]
+                    for d in (st.session_state.image_approvals, st.session_state.edited_story_pages, st.session_state.edited_image_prompts):
+                        va, vb = d.get(idx_a), d.get(idx_b)
+                        if vb is not None:
+                            d[idx_a] = vb
+                        elif idx_a in d:
+                            del d[idx_a]
+                        if va is not None:
+                            d[idx_b] = va
+                        elif idx_b in d:
+                            del d[idx_b]
+                    for idx, pg in enumerate(p):
+                        pg["page_number"] = idx + 1
+                    st.session_state.pdf_generation_key = None
+
                 with col_up:
                     page_to_move_up = st.selectbox(
                         "Move Page Up",
                         options=[f"Page {i+1}" for i in range(1, len(pages))],
                         key="move_up_select",
-                        index=None
+                        index=None,
                     )
                     if page_to_move_up and st.button("⬆️ Move Up", key="move_up_btn"):
-                        page_idx = int(page_to_move_up.split()[1]) - 1
-                        if page_idx > 0:
-                            # Swap pages
-                            pages[page_idx], pages[page_idx - 1] = pages[page_idx - 1], pages[page_idx]
-                            # Swap images
-                            if page_idx < len(st.session_state.generated_images) and (page_idx - 1) < len(st.session_state.generated_images):
-                                st.session_state.generated_images[page_idx], st.session_state.generated_images[page_idx - 1] = \
-                                    st.session_state.generated_images[page_idx - 1], st.session_state.generated_images[page_idx]
-                            # Swap edited story pages
-                            temp_text = st.session_state.edited_story_pages.get(page_idx)
-                            st.session_state.edited_story_pages[page_idx] = st.session_state.edited_story_pages.get(page_idx - 1)
-                            st.session_state.edited_story_pages[page_idx - 1] = temp_text
-                            # Swap edited image prompts
-                            temp_prompt = st.session_state.edited_image_prompts.get(page_idx)
-                            st.session_state.edited_image_prompts[page_idx] = st.session_state.edited_image_prompts.get(page_idx - 1)
-                            st.session_state.edited_image_prompts[page_idx - 1] = temp_prompt
-                            # Swap approvals
-                            temp_approval = st.session_state.image_approvals.get(page_idx, False)
-                            st.session_state.image_approvals[page_idx] = st.session_state.image_approvals.get(page_idx - 1, False)
-                            st.session_state.image_approvals[page_idx - 1] = temp_approval
-                            st.session_state.generated_story["pages"] = pages
-                            # Update page numbers
-                            for idx, p in enumerate(pages):
-                                p["page_number"] = idx + 1
-                            st.session_state.pdf_generation_key = None
+                        idx = int(page_to_move_up.split()[1]) - 1
+                        if idx > 0:
+                            _swap_pages(idx, idx - 1)
                             st.success(f"Moved {page_to_move_up} up")
                             st.rerun()
-                
+
                 with col_down:
                     page_to_move_down = st.selectbox(
                         "Move Page Down",
                         options=[f"Page {i+1}" for i in range(len(pages) - 1)],
                         key="move_down_select",
-                        index=None
+                        index=None,
                     )
                     if page_to_move_down and st.button("⬇️ Move Down", key="move_down_btn"):
-                        page_idx = int(page_to_move_down.split()[1]) - 1
-                        if page_idx < len(pages) - 1:
-                            # Swap pages
-                            pages[page_idx], pages[page_idx + 1] = pages[page_idx + 1], pages[page_idx]
-                            # Swap images
-                            if page_idx < len(st.session_state.generated_images) and (page_idx + 1) < len(st.session_state.generated_images):
-                                st.session_state.generated_images[page_idx], st.session_state.generated_images[page_idx + 1] = \
-                                    st.session_state.generated_images[page_idx + 1], st.session_state.generated_images[page_idx]
-                            # Swap edited story pages
-                            temp_text = st.session_state.edited_story_pages.get(page_idx)
-                            st.session_state.edited_story_pages[page_idx] = st.session_state.edited_story_pages.get(page_idx + 1)
-                            st.session_state.edited_story_pages[page_idx + 1] = temp_text
-                            # Swap edited image prompts
-                            temp_prompt = st.session_state.edited_image_prompts.get(page_idx)
-                            st.session_state.edited_image_prompts[page_idx] = st.session_state.edited_image_prompts.get(page_idx + 1)
-                            st.session_state.edited_image_prompts[page_idx + 1] = temp_prompt
-                            # Swap approvals
-                            temp_approval = st.session_state.image_approvals.get(page_idx, False)
-                            st.session_state.image_approvals[page_idx] = st.session_state.image_approvals.get(page_idx + 1, False)
-                            st.session_state.image_approvals[page_idx + 1] = temp_approval
-                            st.session_state.generated_story["pages"] = pages
-                            # Update page numbers
-                            for idx, p in enumerate(pages):
-                                p["page_number"] = idx + 1
-                            st.session_state.pdf_generation_key = None
+                        idx = int(page_to_move_down.split()[1]) - 1
+                        if idx < len(pages) - 1:
+                            _swap_pages(idx, idx + 1)
                             st.success(f"Moved {page_to_move_down} down")
                             st.rerun()
-                
-                st.divider()
-            
-            # Editable preview of pages
-            for i, page in enumerate(pages):
-                if i < len(st.session_state.generated_images):
-                    page_num = page.get('page_number', i+1)
-                    with st.expander(f"📄 Page {page_num} - Click to Edit", expanded=False):
-                        # Editable text
-                        edited_text = st.session_state.edited_story_pages.get(i, page.get("text", ""))
-                        new_text = st.text_area(
-                            f"Story Text (Page {page_num})",
-                            value=edited_text,
-                            key=f"final_edit_text_{i}",
-                            height=100,
-                            help="Edit the story text for this page"
-                        )
-                        
-                        # Save edited text
-                        if new_text != page.get("text", ""):
-                            st.session_state.edited_story_pages[i] = new_text
-                            st.session_state.generated_story["pages"][i]["text"] = new_text
-                            # Force PDF regeneration
-                            st.session_state.pdf_generation_key = None
-                        
-                        # Show image
-                        st.image(st.session_state.generated_images[i], use_container_width=True)
 
-                        # Display error message if image generation failed
-                        if i in st.session_state.image_generation_errors:
-                            error_info = st.session_state.image_generation_errors[i]
-                            st.error(f"⚠️ **Image Generation Failed**")
-                            with st.expander("Error Details", expanded=False):
-                                st.write(f"**Error:** {error_info.get('error', 'Unknown error')}")
-                                st.write(f"**Time:** {error_info.get('timestamp', 'N/A')}")
-                                st.write(f"**Attempts:** {error_info.get('attempt', 'N/A')}")
-                                st.info("💡 Go back to Step 2 to regenerate this image")
-
-                        # Regenerate PDF button if text was edited
-                        if new_text != edited_text:
-                            if st.button(f"🔄 Regenerate PDF with Changes", key=f"regen_pdf_{i}"):
-                                st.rerun()
-
-            # Download button at the bottom - after all preview content
-            st.divider()
-            st.subheader("📥 Download Your Storybook")
-            with open(st.session_state.pdf_path, "rb") as pdf_file:
-                pdf_bytes = pdf_file.read()
+        # ── Download button (bottom) ────────────────────────────────────
+        st.divider()
+        if st.session_state.pdf_path and os.path.exists(st.session_state.pdf_path):
+            with open(st.session_state.pdf_path, "rb") as _pdf2:
                 st.download_button(
                     label="📥 Download PDF",
-                    data=pdf_bytes,
+                    data=_pdf2.read(),
                     file_name=f"{child_name}_Storybook.pdf",
                     mime="application/pdf",
                     type="primary",
-                    use_container_width=True
+                    use_container_width=True,
+                    key="pdf_download_bottom",
                 )
-            st.info("💡 Print this PDF on 8.5x8.5 inch paper for best results!")
+            st.info("💡 Print on 8.5×8.5 inch paper for best results!")
         else:
             st.warning("PDF not available")
 
