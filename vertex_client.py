@@ -253,10 +253,16 @@ def call_gemini_image(
 
     def _build_parts(include_ref: bool) -> list:
         if include_ref and reference_image_b64:
-            return [
-                {"inlineData": {"mimeType": "image/jpeg", "data": reference_image_b64}},
-                {"text": f"{prompt}. Make the child look like the person in the reference photo."},
-            ]
+            refs = reference_image_b64 if isinstance(reference_image_b64, list) else [reference_image_b64]
+            n = len(refs)
+            parts = [{"inlineData": {"mimeType": "image/jpeg", "data": r}} for r in refs]
+            note = (
+                f"Use all {n} reference photos together to build a complete picture of the child's appearance."
+                if n > 1
+                else "Make the child look like the person in the reference photo."
+            )
+            parts.append({"text": f"{prompt}. {note} Keep the child's likeness consistent."})
+            return parts
         return [{"text": prompt}]
 
     # --- Vertex AI ---
