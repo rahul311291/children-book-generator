@@ -156,7 +156,7 @@ for _k, _v in [
     ("wiz_story_type", "Adventure"), ("wiz_problem", ""), ("wiz_language", "English"),
     ("wiz_image_style", "Cartoon/Animated (3D Pixar Style)"), ("wiz_format_id", "illo_opposite_text"),
     ("wiz_family_structure", ""), ("wiz_hero_trait", ""), ("wiz_character_choice", ""),
-    ("wiz_generate_trigger", False),
+    ("wiz_generate_trigger", False), ("wiz_include_images", True),
 ]:
     if _k not in st.session_state:
         st.session_state[_k] = _v
@@ -1401,14 +1401,35 @@ def _load_gallery_book(doc_id: str) -> None:
 
         # Restore images
         saved_imgs = row.get("images", [])
-        st.session_state.generated_images = decode_stored_images(saved_imgs) if saved_imgs else []
+        loaded_images = decode_stored_images(saved_imgs) if saved_imgs else []
+        st.session_state.generated_images = loaded_images
+        n_pages = len(story_data.get("pages", []))
 
-        # Restore journey state so the user lands on the right step
-        st.session_state.story_approved = journey_state.get("story_approved", False)
-        st.session_state.all_images_approved = journey_state.get("all_images_approved", False)
-        st.session_state.image_approvals = journey_state.get("image_approvals", {})
-        st.session_state.edited_story_pages = journey_state.get("edited_story_pages", {})
-        st.session_state.edited_image_prompts = journey_state.get("edited_image_prompts", {})
+        if journey_state:
+            st.session_state.story_approved = journey_state.get("story_approved", False)
+            st.session_state.all_images_approved = journey_state.get("all_images_approved", False)
+            st.session_state.image_approvals = journey_state.get("image_approvals", {})
+            st.session_state.edited_story_pages = journey_state.get("edited_story_pages", {})
+            st.session_state.edited_image_prompts = journey_state.get("edited_image_prompts", {})
+        else:
+            # Older book without saved journey state — infer from images
+            st.session_state.edited_story_pages = {}
+            st.session_state.edited_image_prompts = {}
+            if loaded_images:
+                st.session_state.story_approved = True
+                st.session_state.all_images_approved = True
+                st.session_state.image_approvals = {i: True for i in range(len(loaded_images))}
+            else:
+                st.session_state.story_approved = False
+                st.session_state.all_images_approved = False
+                st.session_state.image_approvals = {}
+
+        # If images are loaded but approvals dict is empty/incomplete, fill it in so Step 2 is skipped
+        if loaded_images and st.session_state.all_images_approved:
+            for i in range(len(loaded_images)):
+                if i not in st.session_state.image_approvals:
+                    st.session_state.image_approvals[i] = True
+
         st.session_state.pdf_path = None
         st.session_state.pdf_generation_key = None
         st.session_state.show_history = False
@@ -1644,17 +1665,8 @@ def render_custom_wizard():
             height=120
         )
 
-        col1, col2 = st.columns(2)
-        with col1:
-            image_styles = ["Cartoon/Animated (3D Pixar Style)", "Cartoon (2D Flat Style)", "Watercolor Illustration", "Storybook Classic", "Photorealistic"]
-            style_emojis = ["🎬", "🎨", "🖌️", "📚", "📷"]
-            cur_idx = image_styles.index(st.session_state.wiz_image_style) if st.session_state.wiz_image_style in image_styles else 0
-            sel_style = st.selectbox(
-                "Image Style *", image_styles, index=cur_idx,
-                format_func=lambda s: f"{style_emojis[image_styles.index(s)]} {s}"
-            )
-            st.session_state.wiz_image_style = sel_style
-        with col2:
+        lang_col, _ = st.columns(2)
+        with lang_col:
             lang_options = ["English", "Hindi"]
             lang_idx = lang_options.index(st.session_state.wiz_language) if st.session_state.wiz_language in lang_options else 0
             st.session_state.wiz_language = st.selectbox("Language *", lang_options, index=lang_idx)
@@ -1757,18 +1769,55 @@ def render_custom_wizard():
                 placeholder="e.g., Doraemon, Peppa Pig, Chhota Bheem"
             )
 
+        # Image generation toggle
+        st.markdown("---")
+        st.markdown("#### 🖼️ Images")
+        img_col1, img_col2 = st.columns([1, 2])
+        with img_col1:
+            include_images = st.toggle(
+                "Generate AI images for each page",
+                value=st.session_state.wiz_include_images,
+                key="wiz_include_images_toggle",
+                help="When ON, an AI image is generated for every page of the book. "
+                     "Turn OFF to get a text-only book faster (you can still download a PDF)."
+            )
+            st.session_state.wiz_include_images = include_images
+        with img_col2:
+            if include_images:
+                image_styles = [
+                    "Cartoon/Animated (3D Pixar Style)",
+                    "Cartoon (2D Flat Style)",
+                    "Watercolor Illustration",
+                    "Storybook Classic",
+                    "Photorealistic",
+                ]
+                style_emojis = ["🎬", "🎨", "🖌️", "📚", "📷"]
+                cur_idx = image_styles.index(st.session_state.wiz_image_style) if st.session_state.wiz_image_style in image_styles else 0
+                sel_style = st.selectbox(
+                    "Image Style",
+                    image_styles,
+                    index=cur_idx,
+                    format_func=lambda s: f"{style_emojis[image_styles.index(s)]} {s}",
+                    key="wiz_image_style_select_4",
+                )
+                st.session_state.wiz_image_style = sel_style
+            else:
+                st.info("Text-only mode — no images will be generated. You can still download a PDF with the story text.")
+
         # Story summary
         st.markdown("---")
         st.markdown("#### 📋 Story Summary")
         fmt = get_format_by_id(st.session_state.wiz_format_id)
 
-        summary_cols = st.columns(3)
+        summary_cols = st.columns(4)
         with summary_cols[0]:
             st.metric("Hero", f"{child}, {st.session_state.wiz_age}yo")
         with summary_cols[1]:
             st.metric("Story Type", st.session_state.wiz_story_type)
         with summary_cols[2]:
             st.metric("Length", f"{fmt.get('page_count', fmt.get('pages', 10))} pages")
+        with summary_cols[3]:
+            st.metric("Images", "Yes 🖼️" if st.session_state.wiz_include_images else "No (text only)")
 
         st.markdown("<br>", unsafe_allow_html=True)
         bcol1, bcol2 = st.columns(2)
@@ -2268,6 +2317,7 @@ def main():
                 "story_type": story_type,
                 "image_style": image_style,
                 "format_id": format_id,
+                "include_images": st.session_state.get("wiz_include_images", True),
             }
             save_story(story_data, child_name, metadata)
 
@@ -2545,6 +2595,13 @@ def main():
                         st.session_state.generated_story["pages"][i]["text"] = st.session_state.edited_story_pages[i]
                 st.session_state.story_approved = True
                 st.session_state.just_approved_story = True
+                # If user opted out of images, mark all approved with grey placeholders
+                if not st.session_state.get("wiz_include_images", True):
+                    n_pg = len(st.session_state.generated_story.get("pages", []))
+                    placeholder = Image.new("RGB", (512, 512), color=(240, 240, 240))
+                    st.session_state.generated_images = [placeholder] * n_pg
+                    st.session_state.image_approvals = {i: True for i in range(n_pg)}
+                    st.session_state.all_images_approved = True
                 # Auto-save story with updated journey state
                 if st.session_state.generated_story and st.session_state.current_child_name:
                     save_story(st.session_state.generated_story, st.session_state.current_child_name)
@@ -2556,7 +2613,12 @@ def main():
                 st.rerun()
     
     # Step 2: Image Generation with Review
-    if st.session_state.generated_story and st.session_state.story_approved:
+    # Skip entirely when all images are already present and approved (gallery load, no-images mode, etc.)
+    _step2_done = (
+        st.session_state.all_images_approved and
+        len(st.session_state.generated_images) > 0
+    )
+    if st.session_state.generated_story and st.session_state.story_approved and not _step2_done:
         # Add anchor for auto-scrolling
         st.markdown('<div id="image-generation-section"></div>', unsafe_allow_html=True)
 
