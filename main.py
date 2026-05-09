@@ -44,6 +44,21 @@ try:
 except ImportError:
     TEMPLATE_BOOKS_AVAILABLE = False
 
+# Import book formats
+try:
+    from book_formats import BOOK_FORMATS, DEFAULT_FORMAT, get_format_by_id, get_page_count
+except ImportError:
+    BOOK_FORMATS = [
+        {"id": "short", "name": "Short Story", "pages": 6, "emoji": "📗", "desc": "Perfect for bedtime", "detail": "6 pages · ~300 words"},
+        {"id": "standard", "name": "Standard Story", "pages": 10, "emoji": "📘", "desc": "Most popular", "detail": "10 pages · ~500 words"},
+        {"id": "full", "name": "Full Adventure", "pages": 14, "emoji": "📙", "desc": "Epic journey", "detail": "14 pages · ~700 words"},
+    ]
+    DEFAULT_FORMAT = BOOK_FORMATS[1]
+    def get_format_by_id(fmt_id: str) -> dict:
+        return next((f for f in BOOK_FORMATS if f["id"] == fmt_id), DEFAULT_FORMAT)
+    def get_page_count(fmt_id: str) -> int:
+        return get_format_by_id(fmt_id)["pages"]
+
 # Setup logging
 log_dir = Path("logs")
 log_dir.mkdir(exist_ok=True)
@@ -142,6 +157,21 @@ if 'pending_payment_link_id' not in st.session_state:
     st.session_state.pending_payment_link_id = None
 if 'pending_payment_url' not in st.session_state:
     st.session_state.pending_payment_url = None
+if 'book_mode' not in st.session_state:
+    st.session_state.book_mode = None  # None, "custom", "template"
+if 'wizard_step' not in st.session_state:
+    st.session_state.wizard_step = 0
+# Wizard form values (all default empty/None)
+for _k, _v in [
+    ("wiz_child_name", ""), ("wiz_age", 5), ("wiz_gender", "Boy"),
+    ("wiz_skin_tone", ""), ("wiz_hair_style", ""), ("wiz_eye_color", ""), ("wiz_outfit", ""),
+    ("wiz_story_type", "Adventure"), ("wiz_problem", ""), ("wiz_language", "English"),
+    ("wiz_image_style", "Cartoon/Animated (3D Pixar Style)"), ("wiz_format_id", "standard"),
+    ("wiz_family_structure", ""), ("wiz_hero_trait", ""), ("wiz_character_choice", ""),
+    ("wiz_generate_trigger", False),
+]:
+    if _k not in st.session_state:
+        st.session_state[_k] = _v
 
 def compress_pil_images_for_storage(images: list, max_size: int = 768, quality: int = 75) -> list:
     """Compress a list of PIL Images to base64 JPEG data URLs for Supabase storage."""
