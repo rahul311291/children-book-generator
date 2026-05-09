@@ -15,6 +15,8 @@ from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
 
+ADMIN_EMAILS = {"rahul.31.shah@gmail.com"}
+
 env_path = Path(__file__).parent / ".env"
 if env_path.exists():
     load_dotenv(env_path)
@@ -249,6 +251,7 @@ def sign_up(email: str, password: str) -> bool:
             return False
         pw_hash, salt = _hash_password(password)
         user_id = str(uuid.uuid4())
+        is_admin = email in ADMIN_EMAILS
         _users().insert_one({
             "_id": user_id,
             "email": email,
@@ -256,12 +259,17 @@ def sign_up(email: str, password: str) -> bool:
             "salt": salt,
             "gemini_api_key": "",
             "openrouter_api_key": "",
-            "email_verified": False,
+            "email_verified": is_admin,
             "credits": 0,
             "created_at": datetime.utcnow(),
         })
-        # Don't log in yet — require OTP verification
         st.session_state.auth_error = None
+        if is_admin:
+            user = _users().find_one({"_id": user_id})
+            _load_user_into_session(user_id, email, user)
+            st.session_state.auth_success = "Admin account created and logged in."
+            return True
+        # Non-admin: require OTP verification
         st.session_state.otp_pending_email = email
         st.session_state.otp_last_sent_at = datetime.utcnow()
         sent = send_otp(email)
@@ -285,7 +293,15 @@ def sign_in(email: str, password: str) -> bool:
         if not user or not _verify_password(password, user["password_hash"], user["salt"]):
             st.session_state.auth_error = "Invalid email or password."
             return False
-        # Block unverified accounts
+        # Admin bypasses OTP entirely
+        if email in ADMIN_EMAILS:
+            if not user.get("email_verified", False):
+                _users().update_one({"_id": user["_id"]}, {"$set": {"email_verified": True}})
+                user["email_verified"] = True
+            user_id = str(user["_id"])
+            _load_user_into_session(user_id, email, user)
+            return True
+        # Block unverified non-admin accounts
         if not user.get("email_verified", False):
             st.session_state.otp_pending_email = email
             st.session_state.otp_last_sent_at = datetime.utcnow()
@@ -422,6 +438,14 @@ def load_user_vertex_config(user_id: str) -> dict:
 def render_otp_page():
     """Show the OTP verification form. Returns True once verified and logged in."""
     email = st.session_state.get("otp_pending_email", "")
+    # Admin never needs OTP — auto-complete verification
+    if email in ADMIN_EMAILS:
+        user = _users().find_one({"email": email})
+        if user:
+            _users().update_one({"_id": user["_id"]}, {"$set": {"email_verified": True}})
+            _load_user_into_session(str(user["_id"]), email, user)
+            st.rerun()
+        return
     col_left, col_center, col_right = st.columns([1, 2, 1])
     with col_center:
         st.markdown(

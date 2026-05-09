@@ -518,6 +518,7 @@ def reset_story_state():
     keys_to_delete = []
     for key in st.session_state.keys():
         if (key.startswith("regen_from_page_") or
+            key.startswith("_regen_flag_") or
             key.startswith("regen_page_prompt_") or
             key.startswith("editing_prompt_") or
             key.startswith("regenerate_image_") or
@@ -1897,7 +1898,7 @@ def main():
             col_action1, col_action2, col_action3 = st.columns([1, 1, 1])
             with col_action1:
                 if st.button(f"🔄 Regenerate from Page {page_num}", key=f"regen_from_page_{i}", use_container_width=True):
-                    st.session_state[f"regen_from_page_{i}"] = True
+                    st.session_state[f"_regen_flag_{i}"] = True
                     st.session_state[f"regen_page_prompt_{i}"] = ""
                     st.rerun()
             with col_action2:
@@ -1932,7 +1933,7 @@ def main():
                         st.rerun()
             
             # Show regenerate prompt if requested
-            if st.session_state.get(f"regen_from_page_{i}", False):
+            if st.session_state.get(f"_regen_flag_{i}", False):
                 st.write("---")
                 st.write(f"**Regenerate Story from Page {page_num} onwards:**")
                 regen_prompt = st.text_area(
@@ -1968,7 +1969,7 @@ def main():
                                     st.session_state.pdf_path = None
                                     st.session_state.pdf_generation_key = None
                                     st.session_state.story_approved = False
-                                    st.session_state[f"regen_from_page_{i}"] = False
+                                    st.session_state[f"_regen_flag_{i}"] = False
                                     st.success(f"✅ Story regenerated from page {page_num} onwards! All images cleared - please regenerate them.")
                                     st.rerun()
                                 else:
@@ -1977,7 +1978,7 @@ def main():
                             st.warning("Please enter instructions for regeneration")
                 with col_cancel_regen:
                     if st.button("❌ Cancel", key=f"cancel_regen_{i}", use_container_width=True):
-                        st.session_state[f"regen_from_page_{i}"] = False
+                        st.session_state[f"_regen_flag_{i}"] = False
                         st.rerun()
             
             with col_action2:
@@ -2206,9 +2207,16 @@ def main():
                 create_payment_link, confirm_payment_and_credit,
                 is_cashfree_configured,
             )
+            from auth import ADMIN_EMAILS
             user_id_pay = get_current_user_id()
+            _current_user_email = (st.session_state.get("auth_user") or {}).get("email", "")
+            _is_admin_user = _current_user_email in ADMIN_EMAILS
             generated_count = len([img for img in st.session_state.generated_images if img is not None])
-            needs_payment = generated_count >= FREE_IMAGES_PER_BOOK and total_pages > FREE_IMAGES_PER_BOOK
+            needs_payment = (
+                not _is_admin_user
+                and generated_count >= FREE_IMAGES_PER_BOOK
+                and total_pages > FREE_IMAGES_PER_BOOK
+            )
 
             if needs_payment and not user_can_afford_book(user_id_pay, total_pages):
                 price_inr = book_price_inr(total_pages)
