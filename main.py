@@ -1035,14 +1035,16 @@ def generate_image_with_imagen(api_key: str, prompt: str, retry_count: int = 0, 
         no_text_instruction = "CRITICAL REQUIREMENT - ABSOLUTELY NO TEXT: This image must contain ZERO text, ZERO words, ZERO letters, ZERO numbers, ZERO speech bubbles, ZERO captions, ZERO signs, ZERO labels, ZERO writing of any kind. This is a pure illustration for a children's book - visual art only."
 
         # Detect scene/panorama prompts and add a scale instruction
-        scene_keywords = ("wide shot", "panorama", "aerial", "crowd scene", "stadium",
-                          "dozens", "hundreds", "grand", "epic scale", "all the animals",
-                          "across the globe", "spectacle", "olympics", "competition")
+        scene_keywords = ("wide shot", "panorama", "aerial", "crowd scene", "crowd of",
+                          "dozens of", "hundreds of", "grand scale", "epic scale",
+                          "spectacle", "many characters", "vast", "enormous crowd",
+                          "packed with", "filled with", "competition", "celebration",
+                          "gathering", "festival", "battle scene", "marketplace")
         is_scene = any(kw in prompt.lower() for kw in scene_keywords)
         scene_instruction = (
-            " IMPORTANT: This is a GRAND SCALE SCENE — show many characters and a rich environment. "
-            "Do NOT focus on a single character. Show the full scope: crowd, stadium, jungle arena, "
-            "diverse animals of many species. The scene is the subject, not one individual."
+            " IMPORTANT: This is a GRAND SCALE SCENE. Show a rich, wide environment with many "
+            "characters, depth, and atmosphere. The scene and event are the subject — do NOT zoom "
+            "in on a single character. Show the full scope and scale of what is described."
             if is_scene else ""
         )
 
