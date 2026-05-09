@@ -156,7 +156,7 @@ for _k, _v in [
     ("wiz_story_type", "Adventure"), ("wiz_problem", ""), ("wiz_language", "English"),
     ("wiz_image_style", "Cartoon/Animated (3D Pixar Style)"), ("wiz_format_id", "illo_opposite_text"),
     ("wiz_family_structure", ""), ("wiz_hero_trait", ""), ("wiz_character_choice", ""),
-    ("wiz_generate_trigger", False), ("wiz_include_images", True),
+    ("wiz_generate_trigger", False), ("wiz_reference_photo_b64", ""),
 ]:
     if _k not in st.session_state:
         st.session_state[_k] = _v
@@ -1079,7 +1079,14 @@ def generate_story_with_gemini(api_key: str, child_name: str, age: int, gender: 
             st.code(traceback.format_exc())
         return None
 
-def generate_image_with_imagen(api_key: str, prompt: str, retry_count: int = 0, image_style: str = None, image_index: int = None) -> Image.Image:
+def generate_image_with_imagen(
+    api_key: str,
+    prompt: str,
+    retry_count: int = 0,
+    image_style: str = None,
+    image_index: int = None,
+    reference_image_b64: str = None,
+) -> Image.Image:
     """Generate image via Vertex AI (primary) or Google AI API (fallback)."""
     try:
         if image_index is not None and image_index in st.session_state.image_generation_errors:
@@ -1088,6 +1095,10 @@ def generate_image_with_imagen(api_key: str, prompt: str, retry_count: int = 0, 
 
         if image_style is None:
             image_style = st.session_state.get("image_style", "Cartoon/Animated (3D Pixar Style)")
+
+        # Use reference photo from session state if not explicitly passed
+        if not reference_image_b64:
+            reference_image_b64 = st.session_state.get("wiz_reference_photo_b64", "") or None
 
         style_modifiers = get_image_style(image_style)
         no_text_instruction = "CRITICAL REQUIREMENT - ABSOLUTELY NO TEXT: This image must contain ZERO text, ZERO words, ZERO letters, ZERO numbers, ZERO speech bubbles, ZERO captions, ZERO signs, ZERO labels, ZERO writing of any kind. This is a pure illustration for a children's book - visual art only."
@@ -1106,10 +1117,18 @@ def generate_image_with_imagen(api_key: str, prompt: str, retry_count: int = 0, 
             if is_scene else ""
         )
 
-        style_prompt = f"{no_text_instruction}.{scene_instruction} {prompt}. {style_modifiers}. {no_text_instruction}"
+        # Add reference-photo instruction to prompt when a photo is provided
+        photo_instruction = (
+            " CHARACTER REFERENCE PHOTO PROVIDED: The child character in this illustration "
+            "MUST closely resemble the person in the reference photo — same facial features, "
+            "skin tone, hair, and expression style. Keep this likeness consistent across all pages."
+            if reference_image_b64 else ""
+        )
+
+        style_prompt = f"{no_text_instruction}.{scene_instruction}{photo_instruction} {prompt}. {style_modifiers}. {no_text_instruction}"
 
         from vertex_client import call_gemini_image
-        data_url = call_gemini_image(style_prompt, api_key=api_key)
+        data_url = call_gemini_image(style_prompt, api_key=api_key, reference_image_b64=reference_image_b64)
         if data_url:
             image_bytes = base64.b64decode(data_url.split(",", 1)[1])
             image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
@@ -1133,7 +1152,7 @@ def generate_image_with_imagen(api_key: str, prompt: str, retry_count: int = 0, 
             logger.info("Retrying image generation...")
             st.warning(f"⚠️ Image generation failed, retrying... ({str(e)[:100]})")
             time.sleep(2)
-            return generate_image_with_imagen(api_key, prompt, retry_count + 1, image_style, image_index)
+            return generate_image_with_imagen(api_key, prompt, retry_count + 1, image_style, image_index, reference_image_b64)
 
         # Try OpenRouter as final fallback
         openrouter_key = st.session_state.get("openrouter_api_key", "")
@@ -1604,7 +1623,71 @@ def render_custom_wizard():
     elif step == 2:
         child = st.session_state.wiz_child_name
         st.markdown(f"## 🎨 What does {child} look like?")
-        st.caption("These details help make the illustrations consistent and personal.")
+
+        # ── Photo upload ────────────────────────────────────────────────
+        st.markdown("#### 📸 Upload a Photo of " + child + " *(recommended)*")
+        st.caption(
+            "Upload a clear photo of your child's face. The AI will use it as a "
+            "character reference so every illustration looks like your real child. "
+            "A front-facing photo in good lighting works best."
+        )
+
+        photo_col, preview_col = st.columns([3, 1])
+        with photo_col:
+            uploaded_photo = st.file_uploader(
+                f"Upload {child}'s photo",
+                type=["jpg", "jpeg", "png", "webp"],
+                key="wiz_photo_uploader",
+                label_visibility="collapsed",
+            )
+            if uploaded_photo is not None:
+                try:
+                    photo_bytes = uploaded_photo.read()
+                    # Convert to JPEG base64 for the AI
+                    from PIL import Image as PILImage
+                    import io as _io
+                    import base64 as _b64
+                    photo_img = PILImage.open(_io.BytesIO(photo_bytes)).convert("RGB")
+                    # Resize to max 512px on longest side to keep payload small
+                    max_side = 512
+                    w, h = photo_img.size
+                    if max(w, h) > max_side:
+                        scale = max_side / max(w, h)
+                        photo_img = photo_img.resize((int(w * scale), int(h * scale)), PILImage.LANCZOS)
+                    buf = _io.BytesIO()
+                    photo_img.save(buf, format="JPEG", quality=85)
+                    st.session_state.wiz_reference_photo_b64 = _b64.b64encode(buf.getvalue()).decode()
+                    st.success(f"✅ Photo uploaded! {child}'s likeness will be used in all illustrations.")
+                except Exception as _pe:
+                    st.error(f"Could not process photo: {_pe}")
+            elif st.session_state.wiz_reference_photo_b64:
+                st.info("✅ Photo already uploaded from a previous step.")
+
+        with preview_col:
+            if st.session_state.wiz_reference_photo_b64:
+                try:
+                    import base64 as _b64
+                    st.markdown(
+                        f'<img src="data:image/jpeg;base64,{st.session_state.wiz_reference_photo_b64}" '
+                        f'style="width:100%;border-radius:8px;border:2px solid #667eea;" />',
+                        unsafe_allow_html=True
+                    )
+                except Exception:
+                    pass
+            if st.session_state.wiz_reference_photo_b64:
+                if st.button("🗑️ Remove photo", key="wiz_remove_photo"):
+                    st.session_state.wiz_reference_photo_b64 = ""
+                    st.rerun()
+
+        # ── Text description (optional if photo provided) ────────────────
+        st.markdown("---")
+        st.markdown(
+            "#### ✏️ Or describe " + child + "'s appearance"
+        )
+        st.caption(
+            "Fill these in for even more accuracy, or if you didn't upload a photo. "
+            "Skip fields you're not sure about."
+        )
 
         col1, col2 = st.columns(2)
         with col1:
@@ -1665,8 +1748,17 @@ def render_custom_wizard():
             height=120
         )
 
-        lang_col, _ = st.columns(2)
-        with lang_col:
+        col1, col2 = st.columns(2)
+        with col1:
+            image_styles = ["Cartoon/Animated (3D Pixar Style)", "Cartoon (2D Flat Style)", "Watercolor Illustration", "Storybook Classic", "Photorealistic"]
+            style_emojis = ["🎬", "🎨", "🖌️", "📚", "📷"]
+            cur_idx = image_styles.index(st.session_state.wiz_image_style) if st.session_state.wiz_image_style in image_styles else 0
+            sel_style = st.selectbox(
+                "Image Style *", image_styles, index=cur_idx,
+                format_func=lambda s: f"{style_emojis[image_styles.index(s)]} {s}"
+            )
+            st.session_state.wiz_image_style = sel_style
+        with col2:
             lang_options = ["English", "Hindi"]
             lang_idx = lang_options.index(st.session_state.wiz_language) if st.session_state.wiz_language in lang_options else 0
             st.session_state.wiz_language = st.selectbox("Language *", lang_options, index=lang_idx)
@@ -1769,46 +1861,12 @@ def render_custom_wizard():
                 placeholder="e.g., Doraemon, Peppa Pig, Chhota Bheem"
             )
 
-        # Image generation toggle
-        st.markdown("---")
-        st.markdown("#### 🖼️ Images")
-        img_col1, img_col2 = st.columns([1, 2])
-        with img_col1:
-            include_images = st.toggle(
-                "Generate AI images for each page",
-                value=st.session_state.wiz_include_images,
-                key="wiz_include_images_toggle",
-                help="When ON, an AI image is generated for every page of the book. "
-                     "Turn OFF to get a text-only book faster (you can still download a PDF)."
-            )
-            st.session_state.wiz_include_images = include_images
-        with img_col2:
-            if include_images:
-                image_styles = [
-                    "Cartoon/Animated (3D Pixar Style)",
-                    "Cartoon (2D Flat Style)",
-                    "Watercolor Illustration",
-                    "Storybook Classic",
-                    "Photorealistic",
-                ]
-                style_emojis = ["🎬", "🎨", "🖌️", "📚", "📷"]
-                cur_idx = image_styles.index(st.session_state.wiz_image_style) if st.session_state.wiz_image_style in image_styles else 0
-                sel_style = st.selectbox(
-                    "Image Style",
-                    image_styles,
-                    index=cur_idx,
-                    format_func=lambda s: f"{style_emojis[image_styles.index(s)]} {s}",
-                    key="wiz_image_style_select_4",
-                )
-                st.session_state.wiz_image_style = sel_style
-            else:
-                st.info("Text-only mode — no images will be generated. You can still download a PDF with the story text.")
-
         # Story summary
         st.markdown("---")
         st.markdown("#### 📋 Story Summary")
         fmt = get_format_by_id(st.session_state.wiz_format_id)
 
+        has_photo = bool(st.session_state.get("wiz_reference_photo_b64"))
         summary_cols = st.columns(4)
         with summary_cols[0]:
             st.metric("Hero", f"{child}, {st.session_state.wiz_age}yo")
@@ -1817,7 +1875,7 @@ def render_custom_wizard():
         with summary_cols[2]:
             st.metric("Length", f"{fmt.get('page_count', fmt.get('pages', 10))} pages")
         with summary_cols[3]:
-            st.metric("Images", "Yes 🖼️" if st.session_state.wiz_include_images else "No (text only)")
+            st.metric("Photo Ref", "📸 Yes" if has_photo else "Text only")
 
         st.markdown("<br>", unsafe_allow_html=True)
         bcol1, bcol2 = st.columns(2)
@@ -2317,7 +2375,7 @@ def main():
                 "story_type": story_type,
                 "image_style": image_style,
                 "format_id": format_id,
-                "include_images": st.session_state.get("wiz_include_images", True),
+                "has_reference_photo": bool(st.session_state.get("wiz_reference_photo_b64")),
             }
             save_story(story_data, child_name, metadata)
 
@@ -2595,13 +2653,6 @@ def main():
                         st.session_state.generated_story["pages"][i]["text"] = st.session_state.edited_story_pages[i]
                 st.session_state.story_approved = True
                 st.session_state.just_approved_story = True
-                # If user opted out of images, mark all approved with grey placeholders
-                if not st.session_state.get("wiz_include_images", True):
-                    n_pg = len(st.session_state.generated_story.get("pages", []))
-                    placeholder = Image.new("RGB", (512, 512), color=(240, 240, 240))
-                    st.session_state.generated_images = [placeholder] * n_pg
-                    st.session_state.image_approvals = {i: True for i in range(n_pg)}
-                    st.session_state.all_images_approved = True
                 # Auto-save story with updated journey state
                 if st.session_state.generated_story and st.session_state.current_child_name:
                     save_story(st.session_state.generated_story, st.session_state.current_child_name)
