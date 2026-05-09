@@ -656,7 +656,7 @@ CRITICAL: Output ONLY the JSON, no additional text before or after."""
                 page["image_prompt"] = page["visual_description"]
             image_prompt = page.get("image_prompt", "")
             if visual_anchor and visual_anchor not in image_prompt:
-                page["image_prompt"] = f"{visual_anchor}, {image_prompt}"
+                page["image_prompt"] = f"{image_prompt}. Character in scene: {visual_anchor}."
         
         # Verify we got a valid story structure
         if not story_data.get("pages") or len(story_data.get("pages", [])) == 0:
@@ -793,7 +793,7 @@ Return ONLY the modified JSON. Every page's "text" field should reflect the requ
                 page["image_prompt"] = page["visual_description"]
             image_prompt = page.get("image_prompt", "")
             if visual_anchor and visual_anchor not in image_prompt:
-                page["image_prompt"] = f"{visual_anchor}, {image_prompt}"
+                page["image_prompt"] = f"{image_prompt}. Character in scene: {visual_anchor}."
         
         # Verify we got a valid story structure
         if not story_data.get("pages") or len(story_data.get("pages", [])) == 0:
@@ -913,7 +913,7 @@ Output ONLY valid JSON, no markdown, no explanations."""
                 page["image_prompt"] = page["visual_description"]
             image_prompt = page.get("image_prompt", "")
             if visual_anchor and visual_anchor not in image_prompt:
-                page["image_prompt"] = f"{visual_anchor}, {image_prompt}"
+                page["image_prompt"] = f"{image_prompt}. Character in scene: {visual_anchor}."
         
         # Verify structure
         if not story_data.get("pages") or len(story_data.get("pages", [])) != len(existing_pages):
@@ -958,7 +958,8 @@ def generate_story_with_gemini(api_key: str, child_name: str, age: int, gender: 
             language=language,
             family_info=family_structure,
             hero_trait=hero_trait,
-            character_companion=character_choice
+            character_companion=character_choice,
+            story_type=story_type,
         )
         
         logger.info(f"Using age-specific prompt for age {age}")
@@ -990,7 +991,7 @@ def generate_story_with_gemini(api_key: str, child_name: str, age: int, gender: 
             # Ensure visual anchor is in image prompt
             image_prompt = page.get("image_prompt", "")
             if visual_anchor and visual_anchor not in image_prompt:
-                page["image_prompt"] = f"{visual_anchor}, {image_prompt}"
+                page["image_prompt"] = f"{image_prompt}. Character in scene: {visual_anchor}."
         
         return story_data
         
@@ -1292,6 +1293,335 @@ def create_pdf(story_data: Dict, images: List[Image.Image], child_name: str, out
     
     c.save()
 
+
+def render_gallery():
+    """Show recent books from all users as inspiration."""
+    try:
+        from mongo_client import book_history_col
+        books = list(book_history_col().find(
+            {},
+            {"child_name": 1, "story_data": 1, "metadata": 1, "created_at": 1}
+        ).sort("created_at", -1).limit(48))
+    except Exception:
+        books = []
+
+    if not books:
+        st.markdown(
+            "<p style='color:#999;text-align:center;padding:2rem;'>No books yet — be the first to create one! 🌟</p>",
+            unsafe_allow_html=True,
+        )
+        return
+
+    cols = st.columns(4)
+    for i, book in enumerate(books):
+        with cols[i % 4]:
+            title = (book.get("story_data") or {}).get("title", "Untitled Story")
+            child = book.get("child_name", "")
+            meta = book.get("metadata") or {}
+            age = meta.get("age", "")
+            lang = meta.get("language", "")
+            created = book.get("created_at")
+            date_str = created.strftime("%b %Y") if created else ""
+            emojis = ["📖", "🌟", "🦋", "🌈", "🚀", "🌙", "🦁", "🐬"]
+            emoji = emojis[i % len(emojis)]
+            st.markdown(f"""
+            <div style="background:#f8f9ff;border-radius:12px;padding:14px 12px;margin-bottom:10px;
+                 border:1px solid #e0e7ff;cursor:default;">
+              <div style="font-size:28px;text-align:center;margin-bottom:6px;">{emoji}</div>
+              <div style="font-weight:600;font-size:13px;color:#1a1a2e;line-height:1.3;
+                   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{title}</div>
+              <div style="color:#666;font-size:12px;margin-top:3px;">For {child}{", age "+str(age) if age else ""}</div>
+              <div style="color:#aaa;font-size:11px;margin-top:2px;">{lang+"  · " if lang else ""}{date_str}</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+
+def render_landing():
+    """Home landing page: mode selection cards + gallery."""
+    # Hero
+    st.markdown("""
+    <div style="text-align:center;padding:2rem 0 1.5rem;">
+      <h1 style="font-size:2.8rem;font-weight:900;
+           background:linear-gradient(135deg,#667eea,#f093fb);
+           -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+           background-clip:text;margin-bottom:0.3rem;">
+        Children's Book Generator
+      </h1>
+      <p style="font-size:1.15rem;color:#666;margin:0;">
+        Create magical personalized storybooks in minutes ✨
+      </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Mode cards
+    col1, spacer, col2 = st.columns([5, 1, 5])
+
+    with col1:
+        st.markdown("""
+        <div style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);
+             border-radius:20px;padding:36px 28px;text-align:center;color:white;
+             box-shadow:0 8px 32px rgba(102,126,234,0.3);min-height:200px;">
+          <div style="font-size:56px;margin-bottom:12px;">✨</div>
+          <h2 style="margin:0 0 8px;font-size:1.6rem;font-weight:800;">Custom Story</h2>
+          <p style="opacity:0.92;font-size:0.95rem;margin:0;line-height:1.5;">
+            Craft a unique story starring your child — choose their look,
+            personality, and the adventure they'll embark on.
+          </p>
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button("Start Custom Story →", key="pick_custom", use_container_width=True, type="primary"):
+            st.session_state.book_mode = "custom"
+            st.session_state.wizard_step = 1
+            st.rerun()
+
+    with col2:
+        st.markdown("""
+        <div style="background:linear-gradient(135deg,#f093fb 0%,#f5576c 100%);
+             border-radius:20px;padding:36px 28px;text-align:center;color:white;
+             box-shadow:0 8px 32px rgba(240,147,251,0.3);min-height:200px;">
+          <div style="font-size:56px;margin-bottom:12px;">📚</div>
+          <h2 style="margin:0 0 8px;font-size:1.6rem;font-weight:800;">Template Book</h2>
+          <p style="opacity:0.92;font-size:0.95rem;margin:0;line-height:1.5;">
+            Pick from beautifully designed profession templates —
+            doctor, astronaut, chef and more — tailored to your child.
+          </p>
+        </div>
+        """, unsafe_allow_html=True)
+        if TEMPLATE_BOOKS_AVAILABLE:
+            if st.button("Browse Templates →", key="pick_template", use_container_width=True):
+                st.session_state.book_mode = "template"
+                st.rerun()
+        else:
+            st.caption("Template books are not available in this deployment.")
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # Gallery
+    st.markdown("---")
+    st.markdown("### 🌟 Books Created by Our Community")
+    st.caption("Every book made with this app — a growing library of personalized stories.")
+    render_gallery()
+
+
+def render_custom_wizard():
+    """Multi-step wizard for custom story creation."""
+    step = st.session_state.wizard_step
+
+    # Safety: ensure step is within valid range
+    if step < 1 or step > 4:
+        st.session_state.wizard_step = 1
+        st.rerun()
+        return
+
+    # Back to home
+    if st.button("← Back", key="wizard_back_home"):
+        st.session_state.book_mode = None
+        st.session_state.wizard_step = 0
+        st.rerun()
+
+    # Progress
+    steps = ["Child Info", "Appearance", "Story Details", "Advanced"]
+    progress_val = (step - 1) / len(steps)
+    st.progress(progress_val)
+    st.caption(f"Step {step} of {len(steps)}: **{steps[step-1]}**")
+    st.markdown("---")
+
+    if step == 1:
+        st.markdown("## 👦 Who's this book for?")
+        col1, col2, col3 = st.columns([3, 1, 1])
+        with col1:
+            st.session_state.wiz_child_name = st.text_input(
+                "Child's Name *", value=st.session_state.wiz_child_name,
+                placeholder="e.g., Arjun, Priya, Zara",
+                help="The hero of the story!"
+            )
+        with col2:
+            st.session_state.wiz_age = st.number_input(
+                "Age *", min_value=2, max_value=16,
+                value=st.session_state.wiz_age, step=1
+            )
+        with col3:
+            st.session_state.wiz_gender = st.selectbox(
+                "Gender *", ["Boy", "Girl", "Non-binary"],
+                index=["Boy", "Girl", "Non-binary"].index(st.session_state.wiz_gender)
+            )
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("Next: Appearance →", type="primary", use_container_width=True, key="wiz_next_1"):
+            if not st.session_state.wiz_child_name.strip():
+                st.error("Please enter the child's name.")
+            else:
+                st.session_state.wizard_step = 2
+                st.rerun()
+
+    elif step == 2:
+        child = st.session_state.wiz_child_name
+        st.markdown(f"## 🎨 What does {child} look like?")
+        st.caption("These details help make the illustrations consistent and personal.")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            st.session_state.wiz_skin_tone = st.text_input(
+                "Skin Tone", value=st.session_state.wiz_skin_tone,
+                placeholder="e.g., light, wheatish, golden brown, dark"
+            )
+            st.session_state.wiz_hair_style = st.text_input(
+                "Hair Style & Color", value=st.session_state.wiz_hair_style,
+                placeholder="e.g., curly black hair, straight brown, two braids"
+            )
+        with col2:
+            st.session_state.wiz_eye_color = st.text_input(
+                "Eye Color", value=st.session_state.wiz_eye_color,
+                placeholder="e.g., big brown eyes, hazel"
+            )
+            st.session_state.wiz_outfit = st.text_input(
+                "Favorite Outfit", value=st.session_state.wiz_outfit,
+                placeholder="e.g., red kurta, blue jeans and a star t-shirt"
+            )
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        bcol1, bcol2 = st.columns(2)
+        with bcol1:
+            if st.button("← Back", key="wiz_back_2"):
+                st.session_state.wizard_step = 1
+                st.rerun()
+        with bcol2:
+            if st.button("Next: Story Details →", type="primary", use_container_width=True, key="wiz_next_2"):
+                st.session_state.wizard_step = 3
+                st.rerun()
+
+    elif step == 3:
+        child = st.session_state.wiz_child_name
+        st.markdown(f"## 📖 What's {child}'s story about?")
+
+        # Story type - visual buttons
+        story_types = ["Adventure", "Bedtime/Calm", "Behavioral/Problem-solving", "Educational", "Friendship", "Custom/Free-form"]
+        type_emojis = ["🚀", "🌙", "🧩", "🔬", "🤝", "✨"]
+
+        st.markdown("**Story Type:**")
+        type_cols = st.columns(3)
+        for ti, (stype, emoji) in enumerate(zip(story_types, type_emojis)):
+            with type_cols[ti % 3]:
+                selected = st.session_state.wiz_story_type == stype
+                if st.button(
+                    f"{emoji} {stype}", key=f"stype_{ti}", use_container_width=True,
+                    type="primary" if selected else "secondary"
+                ):
+                    st.session_state.wiz_story_type = stype
+                    st.rerun()
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.session_state.wiz_problem = st.text_area(
+            "Story Theme / Plot / Idea *",
+            value=st.session_state.wiz_problem,
+            placeholder="E.g., Arjun is scared of trying new foods. His friend Mini helps him discover that vegetables can taste amazing when cooked in fun ways!",
+            height=120
+        )
+
+        col1, col2 = st.columns(2)
+        with col1:
+            image_styles = ["Cartoon/Animated (3D Pixar Style)", "Cartoon (2D Flat Style)", "Watercolor Illustration", "Storybook Classic", "Photorealistic"]
+            style_emojis = ["🎬", "🎨", "🖌️", "📚", "📷"]
+            cur_idx = image_styles.index(st.session_state.wiz_image_style) if st.session_state.wiz_image_style in image_styles else 0
+            sel_style = st.selectbox(
+                "Image Style *", image_styles, index=cur_idx,
+                format_func=lambda s: f"{style_emojis[image_styles.index(s)]} {s}"
+            )
+            st.session_state.wiz_image_style = sel_style
+        with col2:
+            lang_options = ["English", "Hindi"]
+            lang_idx = lang_options.index(st.session_state.wiz_language) if st.session_state.wiz_language in lang_options else 0
+            st.session_state.wiz_language = st.selectbox("Language *", lang_options, index=lang_idx)
+
+        # Book format
+        st.markdown("**Book Length:**")
+        fmt_cols = st.columns(len(BOOK_FORMATS))
+        for fi, fmt in enumerate(BOOK_FORMATS):
+            with fmt_cols[fi]:
+                selected = st.session_state.wiz_format_id == fmt["id"]
+                bg = "#667eea" if selected else "#f0f2f6"
+                fg = "white" if selected else "#333"
+                st.markdown(f"""
+                <div style="background:{bg};color:{fg};border-radius:12px;padding:14px;
+                     text-align:center;border:2px solid {"#667eea" if selected else "#e0e0e0"};">
+                  <div style="font-size:28px;">{fmt['emoji']}</div>
+                  <div style="font-weight:700;font-size:14px;">{fmt['name']}</div>
+                  <div style="font-size:12px;opacity:0.85;">{fmt['desc']}</div>
+                  <div style="font-size:11px;opacity:0.7;">{fmt['detail']}</div>
+                </div>
+                """, unsafe_allow_html=True)
+                if st.button(
+                    ("✓ " if selected else "") + fmt["name"],
+                    key=f"fmt_{fi}",
+                    use_container_width=True,
+                    type="primary" if selected else "secondary"
+                ):
+                    st.session_state.wiz_format_id = fmt["id"]
+                    st.rerun()
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        bcol1, bcol2 = st.columns(2)
+        with bcol1:
+            if st.button("← Back", key="wiz_back_3"):
+                st.session_state.wizard_step = 2
+                st.rerun()
+        with bcol2:
+            if st.button("Next: Final Details →", type="primary", use_container_width=True, key="wiz_next_3"):
+                if not st.session_state.wiz_problem.strip():
+                    st.error("Please describe the story idea.")
+                else:
+                    st.session_state.wizard_step = 4
+                    st.rerun()
+
+    elif step == 4:
+        child = st.session_state.wiz_child_name
+        st.markdown(f"## 🌟 Final touches for {child}'s story")
+        st.caption("These are optional but help make the story more personal and meaningful.")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            st.session_state.wiz_family_structure = st.text_input(
+                "Family Structure",
+                value=st.session_state.wiz_family_structure,
+                placeholder="e.g., lives with parents and Dadi, has a baby sister"
+            )
+            st.session_state.wiz_hero_trait = st.text_input(
+                "Child's Superpower (Hero Trait)",
+                value=st.session_state.wiz_hero_trait,
+                placeholder="e.g., Brave, Creative, Kind, Curious, Funny"
+            )
+        with col2:
+            st.session_state.wiz_character_choice = st.text_input(
+                "Famous Character Companion (optional)",
+                value=st.session_state.wiz_character_choice,
+                placeholder="e.g., Doraemon, Peppa Pig, Chhota Bheem"
+            )
+
+        # Story summary
+        st.markdown("---")
+        st.markdown("#### 📋 Story Summary")
+        fmt = get_format_by_id(st.session_state.wiz_format_id)
+
+        summary_cols = st.columns(3)
+        with summary_cols[0]:
+            st.metric("Hero", f"{child}, {st.session_state.wiz_age}yo")
+        with summary_cols[1]:
+            st.metric("Story Type", st.session_state.wiz_story_type)
+        with summary_cols[2]:
+            st.metric("Length", f"{fmt['pages']} pages")
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        bcol1, bcol2 = st.columns(2)
+        with bcol1:
+            if st.button("← Back", key="wiz_back_4"):
+                st.session_state.wizard_step = 3
+                st.rerun()
+        with bcol2:
+            if st.button("✨ Generate Story!", type="primary", use_container_width=True, key="wiz_generate"):
+                st.session_state.wiz_generate_trigger = True
+                st.rerun()
+
+
 def main():
     # ------------------------------------------------------------------ #
     # Cookie-backed persistent sessions (7-day login)
@@ -1453,7 +1783,7 @@ def main():
                                                 st.rerun()
                                             else:
                                                 # Cache miss — pre-fill the template form so user can regenerate
-                                                st.session_state.book_mode = "Template Book"
+                                                st.session_state.book_mode = "template"
                                                 st.session_state.selected_template_id = tmpl_id
                                                 st.session_state.selected_template_name = tmpl_name_h
                                                 st.session_state.generated_story = None
@@ -1528,9 +1858,6 @@ def main():
             st.info("No saved stories yet. Generate a story to see it here!")
         
         return
-    
-    st.title("Print-on-Demand Children's Book Generator")
-    st.markdown("Create personalized storybooks for children in real-time!")
 
     # Sidebar
     with st.sidebar:
@@ -1546,6 +1873,9 @@ def main():
         # New Story Button
         if st.button("New Story", type="primary", use_container_width=True):
             reset_story_state()
+            st.session_state.book_mode = None
+            st.session_state.wizard_step = 0
+            st.session_state.wiz_generate_trigger = False
             st.rerun()
 
         st.divider()
@@ -1662,150 +1992,24 @@ def main():
 
         st.divider()
 
-        # Book Mode Selection
-        if 'book_mode' not in st.session_state:
-            st.session_state.book_mode = "Custom Story"
-
-        # Store previous mode to detect changes
-        previous_mode = st.session_state.get("previous_book_mode", st.session_state.book_mode)
-
-        st.header("📚 Book Mode")
-        book_mode_options = ["Custom Story", "Template Book"] if TEMPLATE_BOOKS_AVAILABLE else ["Custom Story"]
-        current_mode = st.radio(
-            "Choose creation mode:",
-            options=book_mode_options,
-            key="book_mode",
-            help="Custom Story: Create a unique personalized story | Template Book: Use pre-designed profession templates"
-        )
-
-        # Detect mode change and clear template form state (but NOT the generated book)
-        if current_mode != previous_mode:
-            for key in list(st.session_state.keys()):
-                if key in ("template_book_data", "generate_template_book",
-                          "selected_template_id", "selected_template_name", "scroll_to_details",
-                          "regenerate_template_page_idx") or key.startswith("template_page_text_") or key.startswith("template_text_area_"):
-                    del st.session_state[key]
-
-        st.session_state.previous_book_mode = current_mode
-
-        st.divider()
-
-        # Only show custom story form if in Custom Story mode
-        if st.session_state.book_mode == "Custom Story":
-            st.header("📝 Child Details")
-
-            child_name = st.text_input("Child's Name *", placeholder="Enter child's name")
-
-            age = st.number_input("Age *", min_value=2, max_value=16, value=5, step=1)
-
-            gender = st.selectbox("Gender *", ["Boy", "Girl", "Non-binary"])
-
-            st.subheader("Physical Description")
-            skin_tone = st.text_input("Skin Tone", placeholder="e.g., light, medium, dark")
-            hair_style = st.text_input("Hair Style/Color", placeholder="e.g., curly black hair")
-            eye_color = st.text_input("Eye Color", placeholder="e.g., brown eyes")
-            favorite_outfit = st.text_input("Favorite Outfit", placeholder="e.g., blue t-shirt and jeans")
-
-            # Build physical description from non-empty fields
-            desc_parts = []
-            if skin_tone:
-                desc_parts.append(f"{skin_tone} skin")
-            if hair_style:
-                desc_parts.append(hair_style)
-            if eye_color:
-                desc_parts.append(eye_color)
-            if favorite_outfit:
-                desc_parts.append(f"wearing {favorite_outfit}")
-            physical_desc = ", ".join(desc_parts) if desc_parts else "average appearance"
-
-            st.divider()
-
-            # Story Type Selection
-            story_type = st.selectbox(
-                "Story Type *",
-                ["Behavioral/Problem-solving", "Adventure", "Bedtime/Calm", "Educational", "Friendship", "Custom/Free-form"],
-                help="Choose the type of story you want to create"
-            )
-
-            # Image Style Selection
-            image_style = st.selectbox(
-                "Image Style *",
-                ["Cartoon/Animated (3D Pixar Style)", "Cartoon (2D Flat Style)", "Photorealistic", "Watercolor Illustration", "Storybook Classic"],
-                help="Choose the visual style for images"
-            )
-            st.session_state.image_style = image_style  # Save for image generation
-
-            problem = st.text_area(
-                "Story Theme / Plot / Idea *",
-                placeholder="Examples:\n• Scared of the dark (behavioral)\n• A magical adventure to find a lost teddy bear\n• Learning about planets and space\n• Making a new friend at school\n• Any story idea you have!",
-                height=120,
-                help="Describe your story idea - can be a problem to solve, an adventure, an educational theme, or any creative plot"
-            )
-
-            language = st.selectbox("Language *", ["English", "Hindi"])
-
-            st.divider()
-
-            st.subheader("Advanced Story Options (Optional)")
-            family_structure = st.text_input(
-                "Family Structure",
-                placeholder="e.g., Lives with parents and Nani, Has a big brother",
-                help="Describe the child's family context"
-            )
-            hero_trait = st.text_input(
-                "Hero Trait (Child's Strength)",
-                placeholder="e.g., Brave, Creative, Helpful, Curious",
-                help="The child's natural strength that helps solve the problem"
-            )
-            character_choice = st.text_input(
-                "Famous Character Companion",
-                placeholder="e.g., Max and Mini, Peppa Pig, Doraemon, Chhota Bheem",
-                help="Famous character to include as a friend in the story. They will appear in the story and images! (optional)"
-            )
-
-            st.divider()
-
-            generate_button = st.button("✨ Generate Story", type="primary", use_container_width=True)
-        else:
-            # Set default values for variables when in Template Book mode
-            child_name = ""
-            age = 5
-            gender = "Boy"
-            physical_desc = ""
-            story_type = ""
-            image_style = ""
-            problem = ""
-            language = "English"
-            family_structure = ""
-            hero_trait = ""
-            character_choice = ""
-            generate_button = False
-
     # Main content area
     # Get API key from session state (sidebar updates session state)
     api_key = st.session_state.api_key
 
-    # Template book loaded from history: display regardless of the mode radio selection
+    # Template book loaded from history: display regardless of the mode selection
     if st.session_state.get("template_generated_book") and TEMPLATE_BOOKS_AVAILABLE:
         display_template_book_preview(st.session_state.template_generated_book, api_key=api_key)
         return
 
-    # Handle Template Book Mode
-    if st.session_state.book_mode == "Template Book" and TEMPLATE_BOOKS_AVAILABLE:
-        from vertex_client import is_vertex_configured
-        if not api_key and not is_vertex_configured():
-            st.info("👈 Please enter a Google Gemini API key or configure Vertex AI in the sidebar to get started.")
-            return
-
+    # Template mode
+    if st.session_state.book_mode == "template" and TEMPLATE_BOOKS_AVAILABLE:
         if st.session_state.get("generate_template_book", False):
             st.session_state.generate_template_book = False
-
             with st.spinner("Generating your personalized template book..."):
                 generate_template_book(
                     api_key,
                     st.session_state.template_book_data
                 )
-            # Persist template book to history so it appears in Story History (same as custom stories)
             if st.session_state.get("template_generated_book"):
                 save_template_book_to_history(st.session_state.template_generated_book)
 
@@ -1816,34 +2020,72 @@ def main():
         render_template_book_form()
         return
 
-    # Allow viewing loaded stories even without API key (needed for generating new images)
-    from vertex_client import is_vertex_configured
-    if not api_key and not is_vertex_configured() and not st.session_state.generated_story:
-        st.info("👈 Please enter a Google Gemini API key or configure Vertex AI in the sidebar to get started.")
+    # No story in progress and not in custom wizard — show landing
+    if not st.session_state.generated_story and st.session_state.book_mode != "custom":
+        render_landing()
         return
-    
-    if generate_button:
+
+    # Custom wizard — form not yet submitted
+    if st.session_state.book_mode == "custom" and not st.session_state.wiz_generate_trigger and not st.session_state.generated_story:
+        render_custom_wizard()
+        return
+
+    # --- Generate story from wizard values ---
+    if st.session_state.wiz_generate_trigger:
+        st.session_state.wiz_generate_trigger = False
+
+        # Build values from wizard session state
+        child_name = st.session_state.wiz_child_name
+        age = st.session_state.wiz_age
+        gender = st.session_state.wiz_gender
+        story_type = st.session_state.wiz_story_type
+        image_style = st.session_state.wiz_image_style
+        problem = st.session_state.wiz_problem
+        language = st.session_state.wiz_language
+        family_structure = st.session_state.wiz_family_structure
+        hero_trait = st.session_state.wiz_hero_trait
+        character_choice = st.session_state.wiz_character_choice
+        format_id = st.session_state.wiz_format_id
+
+        # Build physical description from appearance wizard fields
+        desc_parts = []
+        if st.session_state.wiz_skin_tone:
+            desc_parts.append(f"{st.session_state.wiz_skin_tone} skin")
+        if st.session_state.wiz_hair_style:
+            desc_parts.append(st.session_state.wiz_hair_style)
+        if st.session_state.wiz_eye_color:
+            desc_parts.append(st.session_state.wiz_eye_color)
+        if st.session_state.wiz_outfit:
+            desc_parts.append(f"wearing {st.session_state.wiz_outfit}")
+        physical_desc = ", ".join(desc_parts) if desc_parts else "average appearance"
+
+        # Validate required fields
         if not child_name or not problem:
-            st.error("Please fill in all required fields (marked with *)")
+            st.error("Please fill in all required fields.")
+            st.session_state.wizard_step = 1 if not child_name else 3
+            st.session_state.book_mode = "custom"
+            st.rerun()
             return
-        
+
         # Reset approvals when generating new story
         st.session_state.story_approved = False
         st.session_state.image_approvals = {}
         st.session_state.all_images_approved = False
         st.session_state.generated_images = []
-        
+
         with st.spinner("🔄 Generating your personalized story..."):
             story_data = generate_story_with_gemini(
                 api_key, child_name, age, gender, physical_desc, problem, language,
                 family_structure, hero_trait, character_choice, story_type, image_style
             )
-            
+
             if not story_data:
                 st.error("Failed to generate story. Please try again.")
+                st.session_state.wiz_generate_trigger = False
                 return
-            
+
             st.session_state.generated_story = story_data
+            st.session_state.current_child_name = child_name
             # CRITICAL: Clear images when new story is generated to prevent mismatch
             st.session_state.current_book_history_id = None  # fresh INSERT on next save
             st.session_state.generated_images = []
@@ -1851,7 +2093,7 @@ def main():
             st.session_state.all_images_approved = False
             st.session_state.pdf_path = None
             st.session_state.pdf_generation_key = None
-            
+
             # Save story to history
             metadata = {
                 "age": age,
@@ -1863,11 +2105,17 @@ def main():
                 "hero_trait": hero_trait,
                 "character_choice": character_choice,
                 "story_type": story_type,
-                "image_style": image_style
+                "image_style": image_style,
+                "format_id": format_id,
             }
             save_story(story_data, child_name, metadata)
-            
+
             st.success("✅ Story generated! Please review below.")
+
+    # Resolve local variables from session state for downstream steps
+    child_name = st.session_state.current_child_name or st.session_state.wiz_child_name
+    age = st.session_state.wiz_age
+    language = st.session_state.wiz_language
     
     # Step 1: Story Review
     if st.session_state.generated_story and not st.session_state.story_approved:

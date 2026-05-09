@@ -440,17 +440,23 @@ OUTPUT_FORMAT = """
 OUTPUT FORMAT (Return as JSON only):
 
 {{
-  "title": "Creative Story Title",
-  "visual_anchor": "Complete description of {child_name} - age, gender, skin tone, hair (style + color), eyes, outfit. This EXACT description appears in every image.",
+  "title": "Creative Story Title that reflects the actual plot",
+  "visual_anchor": "Complete appearance of {child_name}: age, gender, skin tone, hair (exact style + color), eye color, SPECIFIC outfit. Use this word-for-word in every visual_description.",
   "pages": [
     {{
       "page_number": 1,
       "text": "Story text for this page...",
-      "visual_description": "MUST include the complete visual_anchor. Describe setting, action, emotion. Keep outfit IDENTICAL to visual_anchor."
-    }},
-    // ... continue for all pages ...
+      "visual_description": "SCENE FIRST — describe the specific setting and what is happening in the plot (WHERE: e.g. 'a sun-dappled forest clearing with tall oak trees', WHAT: e.g. '{child_name} discovers a glowing door in the tree trunk'). Then CHARACTER: include the complete visual_anchor with IDENTICAL outfit. Include mood/lighting/atmosphere. 2-3 rich sentences. The scene must directly reflect THIS PAGE'S story event — not a generic character portrait."
+    }}
   ]
 }}
+
+CRITICAL RULES FOR visual_description:
+- Lead with the SCENE and PLOT ACTION specific to this page, not the character
+- The background, environment, and what is happening must be specific and vivid
+- Character description (visual_anchor) comes AFTER the scene is established
+- Every page must show a DIFFERENT scene matching its story event
+- NO generic character-only portraits — every image must tell the story moment
 
 CRITICAL: Output ONLY valid JSON. No extra text before or after.
 """
@@ -475,19 +481,45 @@ def get_prompt_for_age(age: int) -> str:
     else:  # 9-10+
         return AGE_8_10_PROMPT
 
-def get_full_prompt(age: int, child_name: str, gender: str, story_theme: str, 
+def get_full_prompt(age: int, child_name: str, gender: str, story_theme: str,
                     language: str, family_info: str = "", hero_trait: str = "",
-                    character_companion: str = "") -> str:
+                    character_companion: str = "", story_type: str = "") -> str:
     """Build the complete prompt with all placeholders filled in."""
-    
+
+    # ── PLOT-FIRST BLOCK ────────────────────────────────────────────────────
+    # This is injected BEFORE the age-specific rules so the model sees it first
+    story_type_line = f"STORY TYPE: {story_type}" if story_type else ""
+    plot_anchor = f"""
+=== THE STORY YOU MUST TELL (HIGHEST PRIORITY) ===
+The parent has described exactly what they want. You MUST build the entire story around this:
+
+  "{story_theme}"
+
+{story_type_line}
+
+THIS IS NOT A SUGGESTION. Every page, every scene, every image description must
+serve this specific plot. Do not replace it with a generic story about the same topic.
+If the parent says "Arjun discovers a magic door in the park", the story is about that
+magic door — not a generic adventure. If they say "learning to ride a bike", every page
+must show specific moments from that journey.
+
+The age-appropriate rules below govern LANGUAGE and STRUCTURE only — they do not
+override or replace this story. Adapt the structure to fit the plot, not the other way around.
+=== END PLOT ANCHOR ===
+"""
+
     # Get age-appropriate prompt
     base_prompt = get_prompt_for_age(age)
-    
+
     # Format placeholders
-    family_text = f"FAMILY: {family_info}" if family_info else ""
-    hero_text = f"HERO TRAIT: {hero_trait}" if hero_trait else ""
-    character_text = f"FAMOUS CHARACTER COMPANION: Include {character_companion} as a friend in the story with dialogue." if character_companion else ""
-    
+    family_text = f"FAMILY CONTEXT: {family_info}" if family_info else ""
+    hero_text = f"HERO TRAIT (use to help solve the plot): {hero_trait}" if hero_trait else ""
+    character_text = (
+        f"FAMOUS CHARACTER COMPANION: Include {character_companion} as a friend in this story with dialogue. "
+        f"They appear in images too."
+        if character_companion else ""
+    )
+
     # Fill in placeholders
     prompt = base_prompt.format(
         child_name=child_name,
@@ -497,19 +529,20 @@ def get_full_prompt(age: int, child_name: str, gender: str, story_theme: str,
         language=language,
         family_info=family_text,
         hero_trait=hero_text,
-        character_companion=character_text
+        character_companion=character_text,
     )
-    
+
     # Add visual consistency rules
     visual_rules = VISUAL_CONSISTENCY_RULES.format(
         child_name=child_name,
-        character_companion=character_companion if character_companion else "N/A"
+        character_companion=character_companion if character_companion else "N/A",
     )
-    
+
     # Add output format
     output = OUTPUT_FORMAT.format(child_name=child_name)
-    
-    return prompt + "\n\n" + visual_rules + "\n\n" + output
+
+    # Plot anchor goes FIRST so the model sees it before age-specific rules
+    return plot_anchor + "\n\n" + prompt + "\n\n" + visual_rules + "\n\n" + output
 
 
 # ============================================================================
