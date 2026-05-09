@@ -28,6 +28,7 @@ from auth import (
     save_user_vertex_config,
     load_user_vertex_config,
     render_auth_page,
+    render_otp_page,
     restore_session_from_token,
 )
 
@@ -135,6 +136,12 @@ if 'stories_dir' not in st.session_state:
     st.session_state.stories_dir.mkdir(exist_ok=True)
 if 'current_child_name' not in st.session_state:
     st.session_state.current_child_name = ""  # Track current child name for auto-save
+if 'selected_book_format' not in st.session_state:
+    st.session_state.selected_book_format = None  # Selected book layout format
+if 'pending_payment_link_id' not in st.session_state:
+    st.session_state.pending_payment_link_id = None
+if 'pending_payment_url' not in st.session_state:
+    st.session_state.pending_payment_url = None
 
 def compress_pil_images_for_storage(images: list, max_size: int = 768, quality: int = 75) -> list:
     """Compress a list of PIL Images to base64 JPEG data URLs for Supabase storage."""
@@ -1290,6 +1297,11 @@ def main():
         except Exception:
             pass
 
+    # OTP gate: intercept if email verification is pending
+    if st.session_state.get("otp_pending_email"):
+        render_otp_page()
+        return
+
     # Auth gate: show login/signup if not authenticated
     if not is_authenticated():
         render_auth_page()
@@ -2187,9 +2199,89 @@ def main():
                     st.session_state.generated_images[regenerate_idx] = img
                     st.rerun()
             
+            # ── Paywall / free tier check ──────────────────────────────────────
+            from payments import (
+                FREE_IMAGES_PER_BOOK, book_price_inr, book_price_paise,
+                get_user_balance_inr, user_can_afford_book,
+                create_payment_link, confirm_payment_and_credit,
+                is_cashfree_configured,
+            )
+            user_id_pay = get_current_user_id()
+            generated_count = len([img for img in st.session_state.generated_images if img is not None])
+            needs_payment = generated_count >= FREE_IMAGES_PER_BOOK and total_pages > FREE_IMAGES_PER_BOOK
+
+            if needs_payment and not user_can_afford_book(user_id_pay, total_pages):
+                price_inr = book_price_inr(total_pages)
+                balance_inr = get_user_balance_inr(user_id_pay)
+                st.divider()
+                st.markdown(
+                    f"### 🔒 {FREE_IMAGES_PER_BOOK} free images used"
+                )
+                st.info(
+                    f"You've used your **{FREE_IMAGES_PER_BOOK} free images**. "
+                    f"Generate the full {total_pages}-page book for **₹{price_inr}** "
+                    f"({total_pages} pages × ₹15)."
+                )
+                if balance_inr > 0:
+                    st.caption(f"Your current balance: ₹{balance_inr:.2f}")
+
+                if is_cashfree_configured():
+                    # Check if there's a pending payment link already
+                    pending_link_id = st.session_state.get("pending_payment_link_id")
+                    if pending_link_id:
+                        col_check, col_new = st.columns(2)
+                        with col_check:
+                            if st.button("✅ I've paid — check status", type="primary", use_container_width=True):
+                                if confirm_payment_and_credit(pending_link_id, user_id_pay):
+                                    st.session_state.pending_payment_link_id = None
+                                    st.success("Payment confirmed! Generating remaining images...")
+                                    st.rerun()
+                                else:
+                                    st.error("Payment not confirmed yet. Please complete payment and try again.")
+                        with col_new:
+                            if st.button("🔄 New payment link", use_container_width=True):
+                                st.session_state.pending_payment_link_id = None
+                                st.rerun()
+                        pending_url = st.session_state.get("pending_payment_url", "")
+                        if pending_url:
+                            st.markdown(f"[Open payment page]({pending_url})", unsafe_allow_html=False)
+                    else:
+                        user_email = (st.session_state.get("auth_user") or {}).get("email", "user@example.com")
+                        if st.button(f"💳 Pay ₹{price_inr} to unlock all images", type="primary", use_container_width=True):
+                            with st.spinner("Creating payment link..."):
+                                result = create_payment_link(
+                                    user_id_pay, user_email, price_inr,
+                                    f"{total_pages}-page children's book"
+                                )
+                            if result:
+                                st.session_state.pending_payment_link_id = result["link_id"]
+                                st.session_state.pending_payment_url = result["link_url"]
+                                st.rerun()
+                            else:
+                                st.error("Could not create payment link. Check Cashfree credentials.")
+                else:
+                    st.warning("Payment gateway not configured (CASHFREE_APP_ID / CASHFREE_SECRET_KEY missing).")
+                    if st.button("🔓 Unlock anyway (admin override)", help="Only works when Cashfree is not configured"):
+                        from payments import add_credits
+                        add_credits(user_id_pay, book_price_paise(total_pages))
+                        st.rerun()
+
+                # Show the 3 free images that were already generated, locked icons for the rest
+                st.divider()
+                for i, page in enumerate(pages):
+                    if i >= len(st.session_state.generated_images) or st.session_state.generated_images[i] is None:
+                        st.subheader(f"Page {i+1}")
+                        st.markdown(
+                            "<div style='background:#f0f0f0;border-radius:8px;padding:60px;text-align:center;"
+                            "font-size:48px;'>🔒</div><p style='text-align:center;color:#888;margin-top:8px;'>"
+                            "Pay to unlock this image</p>",
+                            unsafe_allow_html=True,
+                        )
+                    # already-generated free images are shown in the normal loop below
+
             # Generate images that haven't been generated yet (only if no regeneration is happening)
             # Also regenerate any None entries (images marked for regeneration)
-            if regenerate_idx is None:
+            if regenerate_idx is None and not (needs_payment and not user_can_afford_book(user_id_pay, total_pages)):
                 # Find first missing or None image
                 missing_idx = None
                 for idx in range(total_pages):
@@ -2199,15 +2291,12 @@ def main():
                     elif st.session_state.generated_images[idx] is None:
                         missing_idx = idx
                         break
-                
+
                 if missing_idx is not None:
                     with st.spinner(f"Generating image {missing_idx + 1}/{total_pages}..."):
                         page = pages[missing_idx]
-                        # Use edited prompt if available, otherwise use original
-                        # NOTE: Visual anchor is already included in the image_prompt during story generation
-                        # DO NOT add it again to avoid duplicate character descriptions
                         image_prompt = st.session_state.edited_image_prompts.get(
-                            missing_idx, 
+                            missing_idx,
                             page.get("image_prompt", "")
                         )
                         logger.info(f"Generating image for page {missing_idx + 1} with prompt: {image_prompt[:150]}...")
