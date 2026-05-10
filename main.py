@@ -324,6 +324,35 @@ def create_visual_anchor(child_name: str, age: int, gender: str, physical_desc: 
     
     return base_anchor
 
+def _save_images_now() -> None:
+    """Persist current generated_images to MongoDB immediately (called after each image generates)."""
+    user_id = get_current_user_id()
+    existing_id = st.session_state.get("current_book_history_id")
+    if not user_id or not existing_id:
+        return
+    imgs = st.session_state.get("generated_images", [])
+    if not imgs:
+        return
+    try:
+        from mongo_client import book_history_col
+        images_for_db = compress_pil_images_for_storage(imgs)
+        journey_state = {
+            "story_approved": st.session_state.get("story_approved", False),
+            "all_images_approved": st.session_state.get("all_images_approved", False),
+            "image_approvals": st.session_state.get("image_approvals", {}),
+            "edited_story_pages": st.session_state.get("edited_story_pages", {}),
+            "edited_image_prompts": st.session_state.get("edited_image_prompts", {}),
+            "current_step": "step3" if st.session_state.get("all_images_approved") else "step2",
+        }
+        book_history_col().update_one(
+            {"_id": existing_id, "user_id": user_id},
+            {"$set": {"images": images_for_db, "metadata.journey_state": journey_state}},
+        )
+        logger.info(f"Images saved incrementally: {len(images_for_db)} entries")
+    except Exception as _e:
+        logger.warning(f"Incremental image save failed: {_e}")
+
+
 def save_story(story_data: Dict, child_name: str, metadata: Dict = None):
     """Save story to Supabase history and local file fallback."""
     try:
@@ -359,16 +388,26 @@ def save_story(story_data: Dict, child_name: str, metadata: Dict = None):
 
                 existing_id = st.session_state.get("current_book_history_id")
                 if existing_id:
-                    col.update_one(
-                        {"_id": existing_id, "user_id": user_id},
-                        {"$set": {
-                            "story_data": story_for_db,
-                            "images": images_for_db,
-                            "metadata": {**(metadata or {}), "timestamp": timestamp, "journey_state": journey_state},
-                        }}
-                    )
-                    logger.info(f"Story updated in MongoDB doc {existing_id}")
-                else:
+                    # Use only _id in filter — user_id mismatch would cause silent no-op.
+                    # Use dot-notation $set so we don't wipe existing metadata fields.
+                    fields_to_set = {
+                        "user_id": user_id,
+                        "story_data": story_for_db,
+                        "images": images_for_db,
+                        "metadata.timestamp": timestamp,
+                        "metadata.journey_state": journey_state,
+                    }
+                    if metadata:
+                        for k, v in metadata.items():
+                            fields_to_set[f"metadata.{k}"] = v
+                    result = col.update_one({"_id": existing_id}, {"$set": fields_to_set})
+                    if result.matched_count == 0:
+                        # Document missing — insert it fresh
+                        logger.warning(f"Update matched 0 docs for id={existing_id}, inserting new")
+                        existing_id = None  # fall through to insert below
+                    else:
+                        logger.info(f"Story updated in MongoDB doc {existing_id}, images={len(images_for_db)}")
+                if not existing_id:
                     doc_id = str(_uuid.uuid4())
                     col.insert_one({
                         "_id": doc_id,
@@ -382,9 +421,10 @@ def save_story(story_data: Dict, child_name: str, metadata: Dict = None):
                         "created_at": datetime.utcnow(),
                     })
                     st.session_state.current_book_history_id = doc_id
-                    logger.info(f"Story inserted to MongoDB, id={doc_id}")
+                    logger.info(f"Story inserted to MongoDB, id={doc_id}, images={len(images_for_db)}")
             except Exception as db_err:
-                logger.warning(f"MongoDB save failed, falling back to local file: {db_err}")
+                logger.warning(f"MongoDB save failed: {db_err}")
+                st.toast(f"⚠️ Cloud save failed: {str(db_err)[:80]}", icon="⚠️")
 
         # --- Local file fallback ---
         filename = f"{child_name}_{timestamp}.json"
@@ -1422,37 +1462,29 @@ def _load_gallery_book(doc_id: str) -> None:
         st.session_state.book_mode = "custom"
         st.session_state.wiz_generate_trigger = False
 
-        # Restore images
+        # Restore images — only keep valid (non-None) ones
         saved_imgs = row.get("images", [])
-        loaded_images = decode_stored_images(saved_imgs) if saved_imgs else []
-        st.session_state.generated_images = loaded_images
-        n_pages = len(story_data.get("pages", []))
+        decoded = decode_stored_images(saved_imgs) if saved_imgs else []
+        valid_images = [img for img in decoded if img is not None]
+        st.session_state.generated_images = valid_images
 
-        if journey_state:
+        if valid_images:
+            # We have real images — mark everything approved and jump to Step 3
+            st.session_state.story_approved = True
+            st.session_state.all_images_approved = True
+            st.session_state.image_approvals = {i: True for i in range(len(valid_images))}
+            st.session_state.edited_story_pages = journey_state.get("edited_story_pages", {})
+            st.session_state.edited_image_prompts = journey_state.get("edited_image_prompts", {})
+        else:
+            # No valid images — restore journey state but block auto-generation
             st.session_state.story_approved = journey_state.get("story_approved", False)
             st.session_state.all_images_approved = journey_state.get("all_images_approved", False)
             st.session_state.image_approvals = journey_state.get("image_approvals", {})
             st.session_state.edited_story_pages = journey_state.get("edited_story_pages", {})
             st.session_state.edited_image_prompts = journey_state.get("edited_image_prompts", {})
-        else:
-            # Older book without saved journey state — infer from images
-            st.session_state.edited_story_pages = {}
-            st.session_state.edited_image_prompts = {}
-            if loaded_images:
-                st.session_state.story_approved = True
-                st.session_state.all_images_approved = True
-                st.session_state.image_approvals = {i: True for i in range(len(loaded_images))}
-            else:
-                st.session_state.story_approved = False
-                st.session_state.all_images_approved = False
-                st.session_state.image_approvals = {}
 
-        # If images are loaded but approvals dict is empty/incomplete, fill it in so Step 2 is skipped
-        if loaded_images and st.session_state.all_images_approved:
-            for i in range(len(loaded_images)):
-                if i not in st.session_state.image_approvals:
-                    st.session_state.image_approvals[i] = True
-
+        # Prevent Step 2 from auto-generating immediately after load
+        st.session_state._loaded_from_history = True
         st.session_state.pdf_path = None
         st.session_state.pdf_generation_key = None
         st.session_state.show_history = False
@@ -1467,8 +1499,9 @@ def render_gallery():
         col = book_history_col()
         # {"images.0": {"$exists": True}} checks that the images array has at least
         # one element without loading any image data — projection excludes images entirely.
+        # Match only docs where the first image is a valid base64 string (not null/missing)
         books = list(col.find(
-            {"images.0": {"$exists": True}},
+            {"images": {"$elemMatch": {"$type": "string", "$regex": "^data:image"}}},
             {"_id": 1, "child_name": 1, "story_data": 1, "metadata": 1, "created_at": 1}
         ).sort("created_at", -1).limit(48))
     except Exception as _ge:
@@ -2072,60 +2105,42 @@ def main():
                                                 st.session_state.show_history = False
                                                 st.warning(f"Images for **{child_name_h}**'s book weren't found in cache. Fill in the details below and click Generate to rebuild it.")
                                                 st.rerun()
-                                        # Restore journey state if available
+                                        # ── Restore journey state ────────────────────────
                                         journey_state = loaded_data.get("journey_state", {})
-                                        child_name_from_file = loaded_data.get("child_name", story_info.get('child_name', 'Story'))
-                                        
-                                        if journey_state:
-                                            # Restore where user was in the journey
-                                            st.session_state.story_approved = journey_state.get("story_approved", False)
-                                            st.session_state.all_images_approved = journey_state.get("all_images_approved", False)
-                                            st.session_state.image_approvals = journey_state.get("image_approvals", {})
-                                            st.session_state.edited_story_pages = journey_state.get("edited_story_pages", {})
-                                            st.session_state.edited_image_prompts = journey_state.get("edited_image_prompts", {})
-                                            current_step = journey_state.get("current_step", "step1")
-                                            
-                                            # Restore saved images for custom stories if available
-                                            if not story_data.get("template_id"):
-                                                saved_imgs = loaded_data.get("images", [])
-                                                if saved_imgs:
-                                                    st.session_state.generated_images = decode_stored_images(saved_imgs)
-                                                else:
-                                                    st.session_state.generated_images = []
-                                            st.session_state.pdf_path = None
-                                            st.session_state.pdf_generation_key = None
+                                        current_step = journey_state.get("current_step", "step1")
 
-                                            # Show message based on where they were
-                                            has_images = bool(st.session_state.generated_images)
-                                            if current_step == "step3":
-                                                img_note = "" if has_images else " Images need to be regenerated."
-                                                st.success(f"✅ Loaded story: {display_name}. You were at **Step 3 (PDF ready)**.{img_note}")
-                                            elif current_step == "step2":
-                                                img_note = "" if has_images else " Images need to be regenerated."
-                                                st.success(f"✅ Loaded story: {display_name}. You were at **Step 2 (Image Review)**.{img_note}")
-                                            else:
-                                                st.success(f"✅ Loaded story: {display_name}. You were at **Step 1 (Story Review)**.")
-                                            
-                                            logger.info(f"Restored journey state: {current_step}, story_approved={st.session_state.story_approved}, images_approved={st.session_state.all_images_approved}")
-                                        else:
-                                            # No journey state saved - start fresh (keep template images if already restored)
-                                            st.session_state.story_approved = False
-                                            st.session_state.all_images_approved = False
-                                            st.session_state.edited_story_pages = {}
-                                            st.session_state.edited_image_prompts = {}
-                                            st.session_state.image_approvals = {}
-                                            if not story_data.get("template_id"):
-                                                saved_imgs = loaded_data.get("images", [])
-                                                if saved_imgs:
-                                                    st.session_state.generated_images = decode_stored_images(saved_imgs)
-                                                else:
-                                                    st.session_state.generated_images = []
-                                            st.session_state.pdf_path = None
-                                            st.session_state.pdf_generation_key = None
-                                            st.success(f"✅ Loaded story: {display_name} ({len(story_data.get('pages', []))} pages). Please review the story below.")
-                                        
+                                        st.session_state.story_approved = journey_state.get("story_approved", False)
+                                        st.session_state.all_images_approved = journey_state.get("all_images_approved", False)
+                                        st.session_state.image_approvals = journey_state.get("image_approvals", {})
+                                        st.session_state.edited_story_pages = journey_state.get("edited_story_pages", {})
+                                        st.session_state.edited_image_prompts = journey_state.get("edited_image_prompts", {})
+
+                                        # ── Restore saved images ─────────────────────────
+                                        if not story_data.get("template_id"):
+                                            saved_imgs = loaded_data.get("images", [])
+                                            decoded = decode_stored_images(saved_imgs) if saved_imgs else []
+                                            # Only keep valid (non-None) images
+                                            valid_decoded = [img for img in decoded if img is not None]
+                                            st.session_state.generated_images = valid_decoded if valid_decoded else []
+
+                                            # If we loaded valid images, mark all as approved regardless of saved state
+                                            if valid_decoded:
+                                                n_pages = len(story_data.get("pages", []))
+                                                st.session_state.story_approved = True
+                                                st.session_state.all_images_approved = True
+                                                st.session_state.image_approvals = {i: True for i in range(len(valid_decoded))}
+                                            elif current_step in ("step2", "step3"):
+                                                # Had images before but couldn't load — don't auto-generate
+                                                st.session_state.story_approved = True
+                                                st.session_state.all_images_approved = journey_state.get("all_images_approved", False)
+
+                                        # ── Set flag so Step 2 won't auto-generate on load ──
+                                        st.session_state._loaded_from_history = True
+
+                                        st.session_state.pdf_path = None
+                                        st.session_state.pdf_generation_key = None
                                         st.session_state.show_history = False
-                                        logger.info(f"Successfully loaded story with {len(story_data.get('pages', []))} pages")
+                                        logger.info(f"Loaded story: step={current_step}, valid_images={len(st.session_state.generated_images)}")
                                         st.rerun()
                                     else:
                                         st.error(f"Story loaded but has no pages. File may be incomplete.")
@@ -2354,6 +2369,7 @@ def main():
         st.session_state.image_approvals = {}
         st.session_state.all_images_approved = False
         st.session_state.generated_images = []
+        st.session_state._loaded_from_history = False  # allow auto-generation for fresh stories
 
         with st.spinner("🔄 Generating your personalized story..."):
             story_data = generate_story_with_gemini(
@@ -2679,10 +2695,11 @@ def main():
                 st.rerun()
     
     # Step 2: Image Generation with Review
-    # Skip entirely when all images are already present and approved (gallery load, no-images mode, etc.)
+    # Skip Step 2 only when all images approved AND we have real (non-None) images loaded
+    _valid_image_count = sum(1 for img in st.session_state.generated_images if img is not None)
     _step2_done = (
         st.session_state.all_images_approved and
-        len(st.session_state.generated_images) > 0
+        _valid_image_count > 0
     )
     if st.session_state.generated_story and st.session_state.story_approved and not _step2_done:
         # Add anchor for auto-scrolling
@@ -2768,8 +2785,9 @@ def main():
                     while len(st.session_state.generated_images) <= regenerate_idx:
                         st.session_state.generated_images.append(None)
                     st.session_state.generated_images[regenerate_idx] = img
+                    _save_images_now()
                     st.rerun()
-            
+
             # ── Paywall / free tier check ──────────────────────────────────────
             from payments import (
                 FREE_IMAGES_PER_BOOK, book_price_inr, book_price_paise,
@@ -2871,19 +2889,28 @@ def main():
                         break
 
                 if missing_idx is not None:
-                    with st.spinner(f"Generating image {missing_idx + 1}/{total_pages}..."):
-                        page = pages[missing_idx]
-                        image_prompt = st.session_state.edited_image_prompts.get(
-                            missing_idx,
-                            page.get("image_prompt", "")
-                        )
-                        logger.info(f"Generating image for page {missing_idx + 1} with prompt: {image_prompt[:150]}...")
-                        img = generate_image_with_imagen(api_key, image_prompt, image_index=missing_idx)
-                        # Ensure list is large enough
-                        while len(st.session_state.generated_images) <= missing_idx:
-                            st.session_state.generated_images.append(None)
-                        st.session_state.generated_images[missing_idx] = img
-                        st.rerun()
+                    # If this story was just loaded from history, don't auto-generate —
+                    # show a button so the user explicitly triggers generation.
+                    if st.session_state.get("_loaded_from_history"):
+                        st.info(f"ℹ️ {total_pages - len([i for i in st.session_state.generated_images if i is not None])} image(s) need to be generated for this story.")
+                        if st.button("🎨 Generate Missing Images", type="primary", key="gen_missing_after_load"):
+                            st.session_state._loaded_from_history = False
+                            st.rerun()
+                    else:
+                        with st.spinner(f"Generating image {missing_idx + 1}/{total_pages}..."):
+                            page = pages[missing_idx]
+                            image_prompt = st.session_state.edited_image_prompts.get(
+                                missing_idx,
+                                page.get("image_prompt", "")
+                            )
+                            logger.info(f"Generating image for page {missing_idx + 1} with prompt: {image_prompt[:150]}...")
+                            img = generate_image_with_imagen(api_key, image_prompt, image_index=missing_idx)
+                            # Ensure list is large enough
+                            while len(st.session_state.generated_images) <= missing_idx:
+                                st.session_state.generated_images.append(None)
+                            st.session_state.generated_images[missing_idx] = img
+                            _save_images_now()
+                            st.rerun()
         
         # Show images for review
         for i, page in enumerate(pages):
