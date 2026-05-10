@@ -1464,19 +1464,24 @@ def render_gallery():
     """Show recent books from all users as inspiration."""
     try:
         from mongo_client import book_history_col
-        # Fetch recent books; filter for those with saved images in Python
-        # (avoids MongoDB version quirks with $not/$size operators)
-        candidates = list(book_history_col().find(
-            {},
-            {"_id": 1, "child_name": 1, "story_data": 1, "metadata": 1, "created_at": 1, "images": 1}
-        ).sort("created_at", -1).limit(200))
-        books = [b for b in candidates if b.get("images")][:48]
-    except Exception:
+        col = book_history_col()
+        # {"images.0": {"$exists": True}} checks that the images array has at least
+        # one element without loading any image data — projection excludes images entirely.
+        books = list(col.find(
+            {"images.0": {"$exists": True}},
+            {"_id": 1, "child_name": 1, "story_data": 1, "metadata": 1, "created_at": 1}
+        ).sort("created_at", -1).limit(48))
+    except Exception as _ge:
+        import logging as _log
+        _log.getLogger(__name__).warning(f"Gallery query failed: {_ge}")
         books = []
 
     if not books:
         st.markdown(
-            "<p style='color:#999;text-align:center;padding:2rem;'>No books yet — be the first to create one! 🌟</p>",
+            "<p style='color:#999;text-align:center;padding:2rem;'>"
+            "No completed books in the gallery yet — finish generating images for your story "
+            "to see it appear here! 🌟"
+            "</p>",
             unsafe_allow_html=True,
         )
         return
