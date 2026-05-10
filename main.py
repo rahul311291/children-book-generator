@@ -65,7 +65,8 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.platypus import Paragraph, Spacer
-from reportlab.lib.enums import TA_CENTER
+from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+from reportlab.lib.colors import HexColor, black, white
 from PIL import Image
 import io
 import time
@@ -1134,7 +1135,11 @@ def generate_image_with_imagen(
         logger.info(f"Generating image (attempt {retry_count + 1}), prompt: {prompt[:100]}...")
 
         if image_style is None:
-            image_style = st.session_state.get("image_style", "Cartoon/Animated (3D Pixar Style)")
+            # wiz_image_style is the primary key set by the wizard; image_style is legacy fallback
+            image_style = (
+                st.session_state.get("wiz_image_style")
+                or st.session_state.get("image_style", "Cartoon/Animated (3D Pixar Style)")
+            )
 
         # Use reference photos from session state if not explicitly passed
         if not reference_image_b64:
@@ -1286,156 +1291,208 @@ def generate_image_with_openrouter(openrouter_key: str, prompt: str, image_style
     return None
 
 
-def create_pdf(story_data: Dict, images: List[Image.Image], child_name: str, output_path: str):
-    """Create PDF using reportlab."""
-    # Page size: 8.5 x 8.5 inches
-    page_width = 8.5 * inch
-    page_height = 8.5 * inch
-    
-    c = canvas.Canvas(output_path, pagesize=(page_width, page_height))
-    
-    # Styles
+def create_pdf(
+    story_data: Dict,
+    images: List[Image.Image],
+    child_name: str,
+    output_path: str,
+    book_format: dict = None,
+):
+    """Create a PDF using a layout matched to the chosen book format."""
+    if book_format is None:
+        from book_formats import DEFAULT_FORMAT
+        book_format = DEFAULT_FORMAT
+
+    fmt_id = book_format.get("id", "minimal_top_bottom")
+    font_size_pt = float(book_format.get("font_size_pt", 18))
+
+    # Physical page dimensions per format (width × height in points)
+    PAGE_SIZES = {
+        "minimal_top_bottom":  (8.0 * inch,  8.0 * inch),
+        "full_bleed_double":   (11.0 * inch,  8.5 * inch),
+        "illo_opposite_text":  (8.5 * inch, 11.0 * inch),
+        "rhyming_spread":      (10.0 * inch,  8.0 * inch),
+        "speech_bubble":       (8.5 * inch,  9.0 * inch),
+        "spot_illustration":   (8.5 * inch, 11.0 * inch),
+        "comic_panels":        (7.0 * inch, 10.0 * inch),
+        "bold_board_book":     (6.0 * inch,  6.0 * inch),
+    }
+    pw, ph = PAGE_SIZES.get(fmt_id, (8.5 * inch, 8.5 * inch))
+
+    c = canvas.Canvas(output_path, pagesize=(pw, ph))
     styles = getSampleStyleSheet()
-    title_style = ParagraphStyle(
-        'CustomTitle',
-        parent=styles['Heading1'],
-        fontSize=24,
-        textColor='black',
-        alignment=TA_CENTER,
-        spaceAfter=30
-    )
-    
-    text_style = ParagraphStyle(
-        'CustomText',
-        parent=styles['BodyText'],
-        fontSize=18,
-        textColor='black',
-        alignment=TA_CENTER,
-        leading=24
-    )
-    
-    # Dedication Page
-    c.setFont("Helvetica-Bold", 28)
-    c.drawCentredString(page_width / 2, page_height / 2 + 50, "This book belongs to")
-    c.setFont("Helvetica-Bold", 36)
-    c.drawCentredString(page_width / 2, page_height / 2 - 20, child_name)
+
+    def _draw_image(img, x, y, w, h):
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        buf.seek(0)
+        c.drawImage(ImageReader(buf), x, y, width=w, height=h, preserveAspectRatio=True)
+
+    def _fit(img, box_w, box_h):
+        iw, ih = img.size
+        ar = iw / ih
+        if ar > box_w / box_h:
+            w = box_w; h = w / ar
+        else:
+            h = box_h; w = h * ar
+        return w, h
+
+    def _draw_text(text, x, y, w, h, fs, align=TA_CENTER, font="Helvetica"):
+        min_fs = max(8, fs * 0.5)
+        for attempt_fs in [fs, fs * 0.85, fs * 0.70, min_fs]:
+            sty = ParagraphStyle("_pt", parent=styles["BodyText"],
+                fontSize=attempt_fs, textColor=black, alignment=align,
+                leading=attempt_fs * 1.35, fontName=font)
+            para = Paragraph(text, sty)
+            _pw, _ph = para.wrap(w, h * 2)
+            if _ph <= h or attempt_fs <= min_fs:
+                para.wrap(w, h)
+                vy = y + max(0, (h - _ph) / 2)
+                para.drawOn(c, x, vy)
+                return
+
+    # ── Dedication page ────────────────────────────────────────────────
+    title_fs = min(28, int(pw / inch * 3.3))
+    name_fs  = min(36, int(pw / inch * 4.2))
+    c.setFont("Helvetica-Bold", title_fs)
+    c.drawCentredString(pw / 2, ph / 2 + 40, "This book belongs to")
+    c.setFont("Helvetica-Bold", name_fs)
+    c.drawCentredString(pw / 2, ph / 2 - 20, child_name)
     c.showPage()
-    
-    # Story Pages
+
     pages = story_data.get("pages", [])
+
     for idx, page in enumerate(pages):
         if idx >= len(images):
             break
-        
-        # Layout: 5% top margin, 85% image, 10% text at bottom
-        top_margin = page_height * 0.05
-        image_area_height = page_height * 0.85
-        text_area_height = page_height * 0.10
-        
-        # Common width for both image and text (aligned)
-        content_width = page_width - 40  # 20px margin on each side
-        content_x_offset = 20  # Left margin
-        
-        # ===== IMAGE AREA (85% - after 5% top margin) =====
-        image_y_start = page_height - top_margin - image_area_height  # Start after top margin
-        image_available_height = image_area_height
-        
-        # Resize and place image
         img = images[idx]
-        img_width, img_height = img.size
-        aspect_ratio = img_width / img_height
-        
-        # Calculate image dimensions to fit in 85% area, using common width
-        if aspect_ratio > 1:
-            # Landscape image - use common width
-            display_width = content_width
-            display_height = display_width / aspect_ratio
-            if display_height > image_available_height:
-                display_height = image_available_height
-                display_width = display_height * aspect_ratio
-        else:
-            # Portrait/square image - fit to height, but respect max width
-            display_height = image_available_height
-            display_width = display_height * aspect_ratio
-            if display_width > content_width:
-                display_width = content_width
-                display_height = display_width / aspect_ratio
-        
-        # Center image horizontally
-        image_x_offset = (page_width - display_width) / 2
-        # Position image in the 85% area, centered vertically
-        image_y_offset = image_y_start + (image_available_height - display_height) / 2
-
-        # Embed the original full-resolution image; let ReportLab handle display scaling.
-        # Previously the image was resized to display_width×display_height (points = 72 DPI
-        # equivalent), which destroyed quality. Now we keep the original pixels and only
-        # tell ReportLab the target display size.
-        img_io = io.BytesIO()
-        img.save(img_io, format='PNG')
-        img_io.seek(0)
-
-        c.drawImage(ImageReader(img_io), image_x_offset, image_y_offset,
-                   width=display_width, height=display_height, preserveAspectRatio=True)
-        
-        # ===== TEXT AREA (Bottom 10%) =====
-        # Make text width match image width (or slightly less) and center-align with image
-        text_width = display_width * 0.95  # Slightly less than image width (5% smaller)
-        text_x_offset = image_x_offset + (display_width - text_width) / 2  # Center with image
-        
         text = page.get("text", "")
-        
-        # Dynamic font size adjustment based on text length
-        # Start with base font size
-        base_font_size = 18
-        min_font_size = 12
-        max_font_size = 20
-        
-        # Estimate text length (rough calculation)
-        text_length = len(text)
-        char_per_line_estimate = int(text_width / (base_font_size * 0.6))  # Rough chars per line
-        estimated_lines = max(1, text_length / char_per_line_estimate)
-        
-        # Adjust font size based on estimated lines needed
-        if estimated_lines > 3:
-            # Text is long, reduce font size
-            font_size = max(min_font_size, base_font_size - (estimated_lines - 3) * 1.5)
+
+        if fmt_id == "minimal_top_bottom":
+            # 8×8 sq — image top 70 %, white band bottom 30 %
+            band = ph * 0.30
+            iw, ih = _fit(img, pw, ph - band)
+            ix = (pw - iw) / 2
+            iy = band + ((ph - band) - ih) / 2
+            _draw_image(img, ix, iy, iw, ih)
+            c.setFillColor(white)
+            c.rect(0, 0, pw, band, fill=1, stroke=0)
+            _draw_text(text, 18, 4, pw - 36, band - 8, font_size_pt, TA_CENTER, "Helvetica-Bold")
+
+        elif fmt_id == "full_bleed_double":
+            # 11×8.5 landscape — full-bleed image, solid white box bottom-left for text
+            iw, ih = _fit(img, pw, ph)
+            ix = (pw - iw) / 2; iy = (ph - ih) / 2
+            _draw_image(img, ix, iy, iw, ih)
+            box_w = pw * 0.50; box_h = ph * 0.32
+            box_x = 20; box_y = 15
+            c.setFillColor(HexColor("#FFFFFFEE"))
+            c.setStrokeColor(HexColor("#CCCCCC"))
+            c.setLineWidth(0.5)
+            c.roundRect(box_x, box_y, box_w, box_h, 10, fill=1, stroke=1)
+            _draw_text(text, box_x + 12, box_y + 6, box_w - 24, box_h - 12,
+                       font_size_pt, TA_LEFT, "Helvetica")
+
+        elif fmt_id == "illo_opposite_text":
+            # 8.5×11 portrait — image page then text page per story page
+            iw, ih = _fit(img, pw, ph)
+            ix = (pw - iw) / 2; iy = (ph - ih) / 2
+            _draw_image(img, ix, iy, iw, ih)
+            c.showPage()
+            # Text page: generous margins, left-aligned serif
+            mg = 54
+            _draw_text(text, mg, mg, pw - 2 * mg, ph - 2 * mg,
+                       font_size_pt, TA_LEFT, "Times-Roman")
+
+        elif fmt_id == "rhyming_spread":
+            # 10×8 landscape — image fills left half, verse on right half
+            half = pw / 2
+            iw, ih = _fit(img, half - 10, ph - 20)
+            ix = (half - iw) / 2; iy = (ph - ih) / 2
+            _draw_image(img, ix, iy, iw, ih)
+            c.setStrokeColor(HexColor("#DDDDDD"))
+            c.setLineWidth(1)
+            c.line(half, 20, half, ph - 20)
+            _draw_text(text, half + 24, 20, half - 48, ph - 40,
+                       font_size_pt, TA_CENTER, "Helvetica-Bold")
+
+        elif fmt_id == "speech_bubble":
+            # 8.5×9 portrait — image bottom 70 %, rounded speech-bubble box top 30 %
+            bubble_h = ph * 0.30
+            img_zone = ph - bubble_h
+            iw, ih = _fit(img, pw, img_zone)
+            ix = (pw - iw) / 2; iy = 0
+            _draw_image(img, ix, iy, iw, ih)
+            bx = 15; by = img_zone + 8
+            bw = pw - 30; bh = bubble_h - 14
+            c.setFillColor(white)
+            c.setStrokeColor(HexColor("#333333"))
+            c.setLineWidth(2)
+            c.roundRect(bx, by, bw, bh, 14, fill=1, stroke=1)
+            # Small tail triangle pointing down
+            c.setFillColor(white)
+            tail_x = pw * 0.35
+            c.setStrokeColor(HexColor("#333333"))
+            _draw_text(text, bx + 14, by + 4, bw - 28, bh - 8,
+                       font_size_pt, TA_CENTER, "Helvetica-Bold")
+
+        elif fmt_id == "spot_illustration":
+            # 8.5×11 portrait — small vignette image centred at top, text flows below
+            vig_w = pw * 0.58; vig_h = ph * 0.36
+            iw, ih = _fit(img, vig_w, vig_h)
+            ix = (pw - iw) / 2
+            iy = ph - vig_h - 24 + (vig_h - ih) / 2
+            _draw_image(img, ix, iy, iw, ih)
+            sep_y = ph - vig_h - 30
+            c.setStrokeColor(HexColor("#BBBBBB"))
+            c.setLineWidth(0.75)
+            c.line(50, sep_y, pw - 50, sep_y)
+            text_h = sep_y - 24
+            _draw_text(text, 50, 12, pw - 100, text_h,
+                       font_size_pt, TA_LEFT, "Times-Roman")
+
+        elif fmt_id == "comic_panels":
+            # 7×10 portrait — black-bordered panel top 65 %, yellow caption box below
+            mg = 10
+            panel_h = ph * 0.63
+            cap_h   = ph * 0.26
+            panel_y = ph - panel_h - mg
+            c.setStrokeColor(black); c.setLineWidth(3)
+            c.rect(mg, panel_y, pw - 2 * mg, panel_h, stroke=1, fill=0)
+            iw, ih = _fit(img, pw - 2 * mg - 6, panel_h - 6)
+            ix = mg + 3 + (pw - 2 * mg - 6 - iw) / 2
+            iy = panel_y + 3 + (panel_h - 6 - ih) / 2
+            _draw_image(img, ix, iy, iw, ih)
+            cap_y = panel_y - cap_h - 6
+            c.setFillColor(HexColor("#FFFDE7"))
+            c.setStrokeColor(black); c.setLineWidth(2)
+            c.rect(mg, cap_y, pw - 2 * mg, cap_h, fill=1, stroke=1)
+            _draw_text(text, mg + 10, cap_y + 4, pw - 2 * mg - 20, cap_h - 8,
+                       font_size_pt, TA_LEFT, "Helvetica-Bold")
+
+        elif fmt_id == "bold_board_book":
+            # 6×6 sq — full-bleed image, thick white strip bottom 22 %, ultra-bold text
+            band = ph * 0.22
+            iw, ih = _fit(img, pw, ph - band + 10)
+            ix = (pw - iw) / 2; iy = band - 10 + ((ph - band + 10) - ih) / 2
+            _draw_image(img, ix, iy, iw, ih)
+            c.setFillColor(white)
+            c.rect(0, 0, pw, band, fill=1, stroke=0)
+            _draw_text(text, 8, 4, pw - 16, band - 8,
+                       font_size_pt, TA_CENTER, "Helvetica-Bold")
+
         else:
-            font_size = min(max_font_size, base_font_size + (3 - estimated_lines) * 0.5)
-        
-        # Create text style with dynamic font size
-        dynamic_text_style = ParagraphStyle(
-            'DynamicText',
-            parent=text_style,
-            fontSize=font_size,
-            textColor='black',
-            alignment=TA_CENTER,
-            leading=font_size * 1.3  # Line spacing proportional to font size
-        )
-        
-        para = Paragraph(text, dynamic_text_style)
-        para_height = para.wrap(text_width, text_area_height)[1]
-        
-        # If text still doesn't fit, reduce font size further
-        if para_height > text_area_height * 0.95:  # 95% of available space
-            # Reduce font size more aggressively
-            font_size = max(min_font_size, font_size * 0.85)
-            dynamic_text_style = ParagraphStyle(
-                'DynamicText',
-                parent=text_style,
-                fontSize=font_size,
-                textColor='black',
-                alignment=TA_CENTER,
-                leading=font_size * 1.3
-            )
-            para = Paragraph(text, dynamic_text_style)
-            para_height = para.wrap(text_width, text_area_height)[1]
-        
-        # Position text at bottom 10%, centered vertically in text area, aligned with image center
-        text_y = (text_area_height - para_height) / 2
-        para.drawOn(c, text_x_offset, text_y)
-        
+            # Fallback: image top 75 %, text bottom 25 %
+            band = ph * 0.25
+            iw, ih = _fit(img, pw, ph - band)
+            ix = (pw - iw) / 2; iy = band + ((ph - band) - ih) / 2
+            _draw_image(img, ix, iy, iw, ih)
+            c.setFillColor(white)
+            c.rect(0, 0, pw, band, fill=1, stroke=0)
+            _draw_text(text, 20, 4, pw - 40, band - 8, 18, TA_CENTER)
+
         c.showPage()
-    
+
     c.save()
 
 
@@ -3130,10 +3187,11 @@ def main():
                 with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
                     pdf_path = tmp_file.name
                     create_pdf(
-                        st.session_state.generated_story, 
-                        st.session_state.generated_images, 
-                        child_name, 
-                        pdf_path
+                        st.session_state.generated_story,
+                        st.session_state.generated_images,
+                        child_name,
+                        pdf_path,
+                        book_format=_resolve_book_format(),
                     )
                     st.session_state.pdf_path = pdf_path
                     st.session_state.pdf_generation_key = current_pdf_key
