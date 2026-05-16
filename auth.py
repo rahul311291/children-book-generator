@@ -206,6 +206,22 @@ def restore_session_from_token(token: str) -> bool:
             st.session_state.vertex_location = user["vertex_location"]
         if user.get("vertex_sa_json"):
             st.session_state.vertex_sa_json = user["vertex_sa_json"]
+
+        # Fall back to admin Vertex credentials for non-admin users with no config
+        if user["email"] not in ADMIN_EMAILS and not user.get("vertex_sa_json"):
+            admin_cfg = get_admin_vertex_config()
+            if admin_cfg:
+                if not st.session_state.get("vertex_project_id") and admin_cfg.get("project_id"):
+                    st.session_state.vertex_project_id = admin_cfg["project_id"]
+                if not st.session_state.get("vertex_location"):
+                    st.session_state.vertex_location = admin_cfg.get("location", "us-central1")
+                if not st.session_state.get("vertex_sa_json") and admin_cfg.get("sa_json"):
+                    st.session_state.vertex_sa_json = admin_cfg["sa_json"]
+                if not st.session_state.get("api_key") and admin_cfg.get("gemini_api_key"):
+                    st.session_state.api_key = admin_cfg["gemini_api_key"]
+                if not st.session_state.get("openrouter_api_key") and admin_cfg.get("openrouter_api_key"):
+                    st.session_state.openrouter_api_key = admin_cfg["openrouter_api_key"]
+
         return True
     except Exception as e:
         logger.error(f"Session restore failed: {e}")

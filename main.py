@@ -148,6 +148,9 @@ if 'pending_payment_link_id' not in st.session_state:
     st.session_state.pending_payment_link_id = None
 if 'pending_payment_url' not in st.session_state:
     st.session_state.pending_payment_url = None
+if 'current_book_payment_status' not in st.session_state:
+    # None = unpaid; "pending" = link created; "paid" = confirmed for this book
+    st.session_state.current_book_payment_status = None
 if 'book_mode' not in st.session_state:
     st.session_state.book_mode = None  # None, "custom", "template"
 if 'wizard_step' not in st.session_state:
@@ -640,6 +643,9 @@ def reset_story_state():
     st.session_state.edited_image_prompts = {}
     st.session_state.pdf_generation_key = None
     st.session_state.current_child_name = ""
+    st.session_state.current_book_payment_status = None
+    st.session_state.pending_payment_link_id = None
+    st.session_state.pending_payment_url = None
     # Clear template-related states
     if "template_generated_book" in st.session_state:
         del st.session_state.template_generated_book
@@ -2171,6 +2177,19 @@ def main():
         render_auth_page()
         return
 
+    # Ensure non-admin users always have Vertex credentials (admin's credentials as shared backend)
+    _session_email = (st.session_state.get("auth_user") or {}).get("email", "")
+    if _session_email not in ADMIN_EMAILS and not st.session_state.get("vertex_sa_json"):
+        _admin_cfg = get_admin_vertex_config()
+        if _admin_cfg:
+            st.session_state.vertex_project_id = _admin_cfg.get("project_id", "")
+            st.session_state.vertex_location = _admin_cfg.get("location", "us-central1")
+            st.session_state.vertex_sa_json = _admin_cfg.get("sa_json", "")
+            if not st.session_state.get("api_key") and _admin_cfg.get("gemini_api_key"):
+                st.session_state.api_key = _admin_cfg["gemini_api_key"]
+            if not st.session_state.get("openrouter_api_key") and _admin_cfg.get("openrouter_api_key"):
+                st.session_state.openrouter_api_key = _admin_cfg["openrouter_api_key"]
+
     # Templates are now seeded via SQL migration, no app-level seeding needed
 
     # Initialize show_history state
@@ -3011,9 +3030,8 @@ def main():
 
             # ── Paywall / free tier check ──────────────────────────────────────
             from payments import (
-                FREE_IMAGES_PER_BOOK, book_price_inr, book_price_paise,
-                custom_book_price_inr, template_book_price_inr,
-                get_user_balance_inr, user_can_afford_book,
+                FREE_IMAGES_PER_BOOK,
+                custom_book_price_inr,
                 create_payment_link, confirm_payment_and_credit,
                 is_cashfree_configured,
             )
@@ -3021,111 +3039,102 @@ def main():
             _current_user_email = (st.session_state.get("auth_user") or {}).get("email", "")
             _is_admin_user = _current_user_email in ADMIN_EMAILS
             generated_count = len([img for img in st.session_state.generated_images if img is not None])
+            # A book is "paid" when the user confirmed payment for THIS book in this session
+            book_already_paid = st.session_state.get("current_book_payment_status") == "paid"
             needs_payment = (
                 not _is_admin_user
-                and generated_count >= FREE_IMAGES_PER_BOOK
                 and total_pages > FREE_IMAGES_PER_BOOK
+                and not book_already_paid
+                and generated_count >= FREE_IMAGES_PER_BOOK
             )
 
-            if needs_payment and not user_can_afford_book(user_id_pay, total_pages):
+            if needs_payment:
                 price_inr = custom_book_price_inr()
-                balance_inr = get_user_balance_inr(user_id_pay)
                 st.divider()
-                st.markdown(
-                    f"### 🔒 {FREE_IMAGES_PER_BOOK} free images used"
-                )
+                st.markdown(f"### 🔒 {FREE_IMAGES_PER_BOOK} free previews ready")
                 st.info(
-                    f"You've used your **{FREE_IMAGES_PER_BOOK} free images**. "
-                    f"Generate the full {total_pages}-page personalized storybook for **₹1,100**."
+                    f"Unlock your full **{total_pages}-page** personalised storybook for **₹{price_inr:,}**. "
+                    f"One-time payment — yours forever as a PDF."
                 )
-                if balance_inr > 0:
-                    st.caption(f"Your current balance: ₹{balance_inr:.2f}")
 
                 if is_cashfree_configured():
-                    # Check if there's a pending payment link already
                     pending_link_id = st.session_state.get("pending_payment_link_id")
                     if pending_link_id:
                         col_check, col_new = st.columns(2)
                         with col_check:
-                            if st.button("✅ I've paid — check status", type="primary", use_container_width=True):
+                            if st.button("✅ I've paid — continue", type="primary", use_container_width=True):
                                 if confirm_payment_and_credit(pending_link_id, user_id_pay):
+                                    st.session_state.current_book_payment_status = "paid"
                                     st.session_state.pending_payment_link_id = None
+                                    st.session_state.pending_payment_url = None
                                     st.success("Payment confirmed! Generating remaining images...")
                                     st.rerun()
                                 else:
-                                    st.error("Payment not confirmed yet. Please complete payment and try again.")
+                                    st.error("Payment not confirmed yet. Complete the payment and try again.")
                         with col_new:
                             if st.button("🔄 New payment link", use_container_width=True):
                                 st.session_state.pending_payment_link_id = None
+                                st.session_state.pending_payment_url = None
                                 st.rerun()
                         pending_url = st.session_state.get("pending_payment_url", "")
                         if pending_url:
-                            st.markdown(f"[Open payment page]({pending_url})", unsafe_allow_html=False)
+                            st.markdown(
+                                f'<a href="{pending_url}" target="_blank" style="display:inline-block;'
+                                f'background:#FF6B6B;color:white;padding:10px 24px;border-radius:8px;'
+                                f'font-weight:700;text-decoration:none;">Open payment page ↗</a>',
+                                unsafe_allow_html=True,
+                            )
                     else:
-                        user_email = (st.session_state.get("auth_user") or {}).get("email", "user@example.com")
-                        if st.button(f"💳 Pay ₹1,100 to unlock all images", type="primary", use_container_width=True):
+                        user_email_pay = (st.session_state.get("auth_user") or {}).get("email", "user@example.com")
+                        if st.button(f"💳 Pay ₹{price_inr:,} to unlock all images", type="primary", use_container_width=True):
                             with st.spinner("Creating payment link..."):
                                 result = create_payment_link(
-                                    user_id_pay, user_email, price_inr,
-                                    f"{total_pages}-page personalized storybook"
+                                    user_id_pay, user_email_pay, price_inr,
+                                    f"Children's storybook – {total_pages} pages"
                                 )
                             if result:
                                 st.session_state.pending_payment_link_id = result["link_id"]
                                 st.session_state.pending_payment_url = result["link_url"]
+                                st.session_state.current_book_payment_status = "pending"
                                 st.rerun()
                             else:
                                 st.error("Could not create payment link. Check Cashfree credentials.")
                 else:
-                    st.warning("Payment gateway not configured (CASHFREE_APP_ID / CASHFREE_SECRET_KEY missing).")
-                    if st.button("🔓 Unlock anyway (admin override)", help="Only works when Cashfree is not configured"):
-                        from payments import add_credits
-                        add_credits(user_id_pay, book_price_paise(total_pages))
+                    # Cashfree not configured — admin bypass button
+                    st.warning("Payment gateway not configured. Admin override available.")
+                    if st.button("🔓 Unlock (no payment gateway)", help="Only when Cashfree is not configured"):
+                        st.session_state.current_book_payment_status = "paid"
                         st.rerun()
 
-                # Show generated preview pages + paywall/locked cards
+                # Show the free preview cards + blurred/locked remaining pages
                 st.divider()
-                if not _is_admin_user:
-                    # Non-admin: Diffrun-style cards for free pages, then paywall overlay
-                    for i, page in enumerate(pages):
-                        page_num = page.get('page_number', i + 1)
-                        text = st.session_state.edited_story_pages.get(i, page.get("text", ""))
-                        has_img = (i < len(st.session_state.generated_images)
-                                   and st.session_state.generated_images[i] is not None)
-                        if has_img and i < FREE_IMAGES_PER_BOOK - 1:
-                            _render_page_card(st.session_state.generated_images[i], text, page_num, total_pages)
-                        elif has_img and i == FREE_IMAGES_PER_BOOK - 1:
-                            remaining = total_pages - FREE_IMAGES_PER_BOOK
-                            cta = _render_paywall_card(
-                                st.session_state.generated_images[i], page_num, total_pages,
-                                remaining, price_inr, f"paywall_cta_{i}"
-                            )
-                            if cta:
-                                # Scroll user to payment UI (no JS needed — it's already above)
-                                st.rerun()
-                            # Show locked cards for remaining pages
-                            for j in range(i + 1, total_pages):
-                                _render_locked_card(pages[j].get('page_number', j + 1), total_pages)
-                            break
-                        # (pages beyond FREE that have no image are not shown here)
-                else:
-                    # Admin: old-style lock icons
-                    for i, page in enumerate(pages):
-                        if i >= len(st.session_state.generated_images) or st.session_state.generated_images[i] is None:
-                            st.subheader(f"Page {i+1}")
-                            st.markdown(
-                                "<div style='background:#f0f0f0;border-radius:8px;padding:60px;text-align:center;"
-                                "font-size:48px;'>🔒</div><p style='text-align:center;color:#888;margin-top:8px;'>"
-                                "Pay to unlock this image</p>",
-                                unsafe_allow_html=True,
-                            )
-                    # generated free images shown in the main loop below
+                for i, page in enumerate(pages):
+                    page_num = page.get('page_number', i + 1)
+                    text = st.session_state.edited_story_pages.get(i, page.get("text", ""))
+                    has_img = (i < len(st.session_state.generated_images)
+                               and st.session_state.generated_images[i] is not None)
+                    if i < FREE_IMAGES_PER_BOOK - 1 and has_img:
+                        _render_page_card(st.session_state.generated_images[i], text, page_num, total_pages)
+                    elif i == FREE_IMAGES_PER_BOOK - 1 and has_img:
+                        remaining = total_pages - FREE_IMAGES_PER_BOOK
+                        cta = _render_paywall_card(
+                            st.session_state.generated_images[i], page_num, total_pages,
+                            remaining, price_inr, f"paywall_cta_{i}"
+                        )
+                        if cta:
+                            st.rerun()
+                        for j in range(i + 1, total_pages):
+                            _render_locked_card(pages[j].get('page_number', j + 1), total_pages)
+                        break
 
-            # Generate images that haven't been generated yet (only if no regeneration is happening)
-            # Also regenerate any None entries (images marked for regeneration)
-            if regenerate_idx is None and not (needs_payment and not user_can_afford_book(user_id_pay, total_pages)):
+            # Generate images that haven't been generated yet (stop at FREE_IMAGES_PER_BOOK when unpaid)
+            if regenerate_idx is None and not needs_payment:
                 # Find first missing or None image
+                # Determine generation limit: FREE_IMAGES_PER_BOOK until paid, then all pages
+                gen_limit = total_pages if book_already_paid or _is_admin_user else FREE_IMAGES_PER_BOOK
+
                 missing_idx = None
-                for idx in range(total_pages):
+                for idx in range(gen_limit):
                     if idx >= len(st.session_state.generated_images):
                         missing_idx = idx
                         break
@@ -3283,14 +3292,14 @@ def main():
                     st.rerun()
 
         else:
-            # Non-admin: show Diffrun-style preview cards for generated images
-            # Auto-approve each image so the flow continues without manual clicks
+            # Non-admin: Diffrun-style preview cards
+            # Auto-approve every image that has been generated
             for i, img in enumerate(st.session_state.generated_images):
                 if img is not None:
                     st.session_state.image_approvals[i] = True
 
-            # If not paywalled, show all generated pages as cards
-            if not needs_payment or user_can_afford_book(user_id_pay, total_pages):
+            # Show cards only when paid (or no paywall needed)
+            if not needs_payment:
                 for i, page in enumerate(pages):
                     if i >= len(st.session_state.generated_images):
                         break
@@ -3301,7 +3310,7 @@ def main():
                     page_num = page.get('page_number', i + 1)
                     _render_page_card(img, text, page_num, total_pages)
 
-                # If all pages generated, auto-mark as fully approved
+                # All images done → offer the big CTA to move to PDF
                 n_valid = len([im for im in st.session_state.generated_images if im is not None])
                 if n_valid == total_pages and total_pages > 0:
                     if st.button("📚 View & Download My Complete Storybook",
