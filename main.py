@@ -1980,8 +1980,8 @@ def render_custom_wizard():
 
         col1, col2 = st.columns(2)
         with col1:
-            image_styles = ["Cartoon/Animated (3D Pixar Style)", "Cartoon (2D Flat Style)", "Watercolor Illustration", "Storybook Classic", "Photorealistic", "Photo Reference Portrait"]
-            style_emojis = ["🎬", "🎨", "🖌️", "📚", "📷", "🧒"]
+            image_styles = ["Cartoon/Animated (3D Pixar Style)", "Cartoon (2D Flat Style)", "Watercolor Illustration", "Storybook Classic", "Photorealistic", "Photo Reference Portrait", "Storybook Spread"]
+            style_emojis = ["🎬", "🎨", "🖌️", "📚", "📷", "🧒", "📖"]
             cur_idx = image_styles.index(st.session_state.wiz_image_style) if st.session_state.wiz_image_style in image_styles else 0
             sel_style = st.selectbox(
                 "Image Style *", image_styles, index=cur_idx,

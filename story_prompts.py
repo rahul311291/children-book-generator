@@ -679,6 +679,15 @@ IMAGE_STYLES = {
         "Professional portrait quality. Warm studio lighting. Soft painterly background. "
         "The child is recognisable to their own parents in every illustration."
     ),
+    "Storybook Spread": (
+        "Semi-realistic watercolor portrait storybook illustration in the style of premium personalised children's books. "
+        "Clean white or very soft off-white background with delicate watercolor paint splash accents in the corners. "
+        "The child character is the single hero subject, painted with photographic-quality facial accuracy — "
+        "real face structure, skin tone, hair colour and texture preserved. "
+        "Child positioned slightly off-centre leaving clear breathing room on the opposite side for text overlay. "
+        "Profession-appropriate attire and props are richly detailed. "
+        "Painterly soft edges, warm light, professional children's book illustration quality."
+    ),
 }
 
 def get_image_style(style_name: str) -> str:
