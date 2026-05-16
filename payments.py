@@ -31,7 +31,7 @@ PRICE_PER_PAGE_INR = 15  # kept for legacy per-page calc
 
 # Flat pricing
 CUSTOM_BOOK_PRICE_INR = 1100   # wizard-generated custom book with AI images
-TEMPLATE_BOOK_PRICE_INR = 300  # template book (pre-designed)
+TEMPLATE_BOOK_PRICE_INR = 500  # template book (pre-designed)
 
 CF_API_VERSION = "2023-08-01"
 

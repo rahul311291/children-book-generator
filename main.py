@@ -30,6 +30,8 @@ from auth import (
     render_auth_page,
     render_otp_page,
     restore_session_from_token,
+    ADMIN_EMAILS,
+    get_admin_vertex_config,
 )
 
 # Import template book functionality
@@ -76,7 +78,7 @@ st.set_page_config(
     page_title="Children's Book Generator",
     page_icon="📚",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="auto"
 )
 
 # Custom CSS for mobile-friendly design
@@ -2339,138 +2341,174 @@ def main():
         
         return
 
-    # Sidebar
-    with st.sidebar:
-        # User info and logout
-        user_email = st.session_state.auth_user.get("email", "")
-        st.markdown(f"Logged in as **{user_email}**")
-        if st.button("Log Out", use_container_width=True, type="secondary"):
-            sign_out()
-            st.rerun()
+    # Determine admin status
+    _current_user_email_nav = st.session_state.auth_user.get("email", "")
+    _is_admin_nav = _current_user_email_nav in ADMIN_EMAILS
 
-        st.divider()
-
-        # New Story Button
-        if st.button("New Story", type="primary", use_container_width=True):
-            reset_story_state()
-            st.session_state.book_mode = None
-            st.session_state.wizard_step = 0
-            st.session_state.wiz_generate_trigger = False
-            st.rerun()
-
-        st.divider()
-
-        # Story History
-        if st.button("Story History", use_container_width=True, type="secondary"):
-            st.session_state.show_history = True
-            st.rerun()
-
-        st.divider()
-
-        # API Key Input - persisted per user
-        st.subheader("API Keys")
-
-        # Gemini API Key
-        current_key = st.session_state.api_key
-        api_key = st.text_input(
-            "Google Gemini API Key",
-            type="password",
-            value=current_key,
-            help="Primary key for story and image generation via Google Gemini.",
+    if not _is_admin_nav:
+        # Non-admin: hide sidebar entirely, show compact top bar
+        st.markdown(
+            """
+            <style>
+            [data-testid="stSidebar"] { display: none !important; }
+            [data-testid="collapsedControl"] { display: none !important; }
+            </style>
+            """,
+            unsafe_allow_html=True,
         )
-        if api_key != current_key:
-            st.session_state.api_key = api_key
-            user_id = get_current_user_id()
-            if user_id and api_key:
-                save_user_api_key(user_id, api_key)
-
-        if api_key:
-            st.caption(f"Gemini key saved ({len(api_key)} chars)")
-        else:
-            st.caption("No Gemini key set.")
-
-        # OpenRouter API Key (backup for image generation)
-        current_or_key = st.session_state.openrouter_api_key
-        openrouter_key_input = st.text_input(
-            "OpenRouter API Key (backup)",
-            type="password",
-            value=current_or_key,
-            help="Backup key for image generation via OpenRouter (uses Gemini models). Used automatically when Gemini fails.",
-        )
-        if openrouter_key_input != current_or_key:
-            st.session_state.openrouter_api_key = openrouter_key_input
-            user_id = get_current_user_id()
-            if user_id and openrouter_key_input:
-                save_user_openrouter_key(user_id, openrouter_key_input)
-
-        if openrouter_key_input:
-            st.caption(f"OpenRouter key saved ({len(openrouter_key_input)} chars)")
-        else:
-            st.caption("No OpenRouter key — Gemini only.")
-
-        # Vertex AI (Google Cloud) credentials
-        with st.expander("Vertex AI (Google Cloud)", expanded=bool(st.session_state.vertex_project_id)):
-            user_id_v = get_current_user_id()
-
-            current_vproject = st.session_state.vertex_project_id
-            vproject_input = st.text_input(
-                "GCP Project ID",
-                value=current_vproject,
-                placeholder="my-gcp-project-id",
-                key="sidebar_vertex_project",
-                help="Your Google Cloud project ID (from GCP Console).",
+        # Compact top navigation bar
+        nav_left, nav_mid, nav_right = st.columns([1, 4, 1])
+        with nav_left:
+            if st.button("🏠 Home", use_container_width=True):
+                reset_story_state()
+                st.session_state.book_mode = None
+                st.session_state.wizard_step = 0
+                st.session_state.wiz_generate_trigger = False
+                st.rerun()
+        with nav_mid:
+            st.markdown(
+                f"<p style='text-align:center;color:#888;margin:0;padding-top:6px;font-size:13px;'>"
+                f"Logged in as <strong>{_current_user_email_nav}</strong></p>",
+                unsafe_allow_html=True,
             )
+        with nav_right:
+            if st.button("Log Out", use_container_width=True, type="secondary"):
+                sign_out()
+                st.rerun()
+        st.divider()
+    else:
+        # Admin: full sidebar
+        with st.sidebar:
+            # User info and logout
+            user_email = st.session_state.auth_user.get("email", "")
+            st.markdown(f"Logged in as **{user_email}**")
+            if st.button("Log Out", use_container_width=True, type="secondary"):
+                sign_out()
+                st.rerun()
 
-            current_vloc = st.session_state.vertex_location or "us-central1"
-            vloc_input = st.text_input(
-                "Location",
-                value=current_vloc,
-                placeholder="us-central1",
-                key="sidebar_vertex_location",
-                help="Vertex AI region, e.g. us-central1.",
+            st.divider()
+
+            # New Story Button
+            if st.button("New Story", type="primary", use_container_width=True):
+                reset_story_state()
+                st.session_state.book_mode = None
+                st.session_state.wizard_step = 0
+                st.session_state.wiz_generate_trigger = False
+                st.rerun()
+
+            st.divider()
+
+            # Story History
+            if st.button("Story History", use_container_width=True, type="secondary"):
+                st.session_state.show_history = True
+                st.rerun()
+
+            st.divider()
+
+            # API Key Input - persisted per user
+            st.subheader("API Keys")
+
+            # Gemini API Key
+            current_key = st.session_state.api_key
+            api_key_sidebar = st.text_input(
+                "Google Gemini API Key",
+                type="password",
+                value=current_key,
+                help="Primary key for story and image generation via Google Gemini.",
             )
+            if api_key_sidebar != current_key:
+                st.session_state.api_key = api_key_sidebar
+                user_id = get_current_user_id()
+                if user_id and api_key_sidebar:
+                    save_user_api_key(user_id, api_key_sidebar)
 
-            current_vsa = st.session_state.vertex_sa_json
-            vsa_input = st.text_area(
-                "Service Account JSON",
-                value=current_vsa,
-                placeholder='{"type":"service_account","project_id":"..."}',
-                height=120,
-                key="sidebar_vertex_sa",
-                help="Paste the full contents of your GCP service account key JSON file.",
-            )
-
-            if vproject_input != current_vproject or vloc_input != current_vloc or vsa_input != current_vsa:
-                st.session_state.vertex_project_id = vproject_input
-                st.session_state.vertex_location = vloc_input or "us-central1"
-                st.session_state.vertex_sa_json = vsa_input
-                if user_id_v and (vproject_input or vsa_input):
-                    save_user_vertex_config(user_id_v, vproject_input, vloc_input or "us-central1", vsa_input)
-
-            from vertex_client import is_vertex_configured, _token, _cfg
-            if is_vertex_configured():
-                st.caption(f"Vertex AI ready · project: {st.session_state.vertex_project_id}")
-                if st.button("Test Vertex AI connection", key="test_vertex_btn", use_container_width=True):
-                    with st.spinner("Testing Vertex AI..."):
-                        try:
-                            tok = _token(raise_on_error=True)
-                            if tok:
-                                st.success(f"Auth OK — token acquired ({len(tok)} chars)")
-                                from vertex_client import call_gemini_text
-                                result = call_gemini_text("Say 'Vertex OK' and nothing else.", api_key="")
-                                if result:
-                                    st.success(f"Text generation OK: {result[:80]}")
-                                else:
-                                    cfg = _cfg()
-                                    st.error(f"Auth succeeded but text call returned nothing. Project: {cfg['project']}, Location: {cfg['location']}")
-                            else:
-                                st.error("Could not obtain auth token. Check your Service Account JSON.")
-                        except Exception as ex:
-                            st.error(f"Vertex error: {ex}")
+            if api_key_sidebar:
+                st.caption(f"Gemini key saved ({len(api_key_sidebar)} chars)")
             else:
-                st.caption("Vertex AI not configured — Gemini API only.")
+                st.caption("No Gemini key set.")
 
-        st.divider()
+            # OpenRouter API Key (backup for image generation)
+            current_or_key = st.session_state.openrouter_api_key
+            openrouter_key_input = st.text_input(
+                "OpenRouter API Key (backup)",
+                type="password",
+                value=current_or_key,
+                help="Backup key for image generation via OpenRouter (uses Gemini models). Used automatically when Gemini fails.",
+            )
+            if openrouter_key_input != current_or_key:
+                st.session_state.openrouter_api_key = openrouter_key_input
+                user_id = get_current_user_id()
+                if user_id and openrouter_key_input:
+                    save_user_openrouter_key(user_id, openrouter_key_input)
+
+            if openrouter_key_input:
+                st.caption(f"OpenRouter key saved ({len(openrouter_key_input)} chars)")
+            else:
+                st.caption("No OpenRouter key — Gemini only.")
+
+            # Vertex AI (Google Cloud) credentials
+            with st.expander("Vertex AI (Google Cloud)", expanded=bool(st.session_state.vertex_project_id)):
+                user_id_v = get_current_user_id()
+
+                current_vproject = st.session_state.vertex_project_id
+                vproject_input = st.text_input(
+                    "GCP Project ID",
+                    value=current_vproject,
+                    placeholder="my-gcp-project-id",
+                    key="sidebar_vertex_project",
+                    help="Your Google Cloud project ID (from GCP Console).",
+                )
+
+                current_vloc = st.session_state.vertex_location or "us-central1"
+                vloc_input = st.text_input(
+                    "Location",
+                    value=current_vloc,
+                    placeholder="us-central1",
+                    key="sidebar_vertex_location",
+                    help="Vertex AI region, e.g. us-central1.",
+                )
+
+                current_vsa = st.session_state.vertex_sa_json
+                vsa_input = st.text_area(
+                    "Service Account JSON",
+                    value=current_vsa,
+                    placeholder='{"type":"service_account","project_id":"..."}',
+                    height=120,
+                    key="sidebar_vertex_sa",
+                    help="Paste the full contents of your GCP service account key JSON file.",
+                )
+
+                if vproject_input != current_vproject or vloc_input != current_vloc or vsa_input != current_vsa:
+                    st.session_state.vertex_project_id = vproject_input
+                    st.session_state.vertex_location = vloc_input or "us-central1"
+                    st.session_state.vertex_sa_json = vsa_input
+                    if user_id_v and (vproject_input or vsa_input):
+                        save_user_vertex_config(user_id_v, vproject_input, vloc_input or "us-central1", vsa_input)
+
+                from vertex_client import is_vertex_configured, _token, _cfg
+                if is_vertex_configured():
+                    st.caption(f"Vertex AI ready · project: {st.session_state.vertex_project_id}")
+                    if st.button("Test Vertex AI connection", key="test_vertex_btn", use_container_width=True):
+                        with st.spinner("Testing Vertex AI..."):
+                            try:
+                                tok = _token(raise_on_error=True)
+                                if tok:
+                                    st.success(f"Auth OK — token acquired ({len(tok)} chars)")
+                                    from vertex_client import call_gemini_text
+                                    result = call_gemini_text("Say 'Vertex OK' and nothing else.", api_key="")
+                                    if result:
+                                        st.success(f"Text generation OK: {result[:80]}")
+                                    else:
+                                        cfg = _cfg()
+                                        st.error(f"Auth succeeded but text call returned nothing. Project: {cfg['project']}, Location: {cfg['location']}")
+                                else:
+                                    st.error("Could not obtain auth token. Check your Service Account JSON.")
+                            except Exception as ex:
+                                st.error(f"Vertex error: {ex}")
+                else:
+                    st.caption("Vertex AI not configured — Gemini API only.")
+
+            st.divider()
 
     # Main content area
     # Get API key from session state (sidebar updates session state)

@@ -327,6 +327,28 @@ def sign_in(email: str, password: str) -> bool:
         return False
 
 
+def get_admin_vertex_config() -> dict:
+    """Return the Vertex AI credentials stored for the admin account (used as shared fallback)."""
+    try:
+        for admin_email in ADMIN_EMAILS:
+            admin = _users().find_one(
+                {"email": admin_email},
+                {"vertex_project_id": 1, "vertex_location": 1, "vertex_sa_json": 1,
+                 "gemini_api_key": 1, "openrouter_api_key": 1},
+            )
+            if admin and admin.get("vertex_sa_json"):
+                return {
+                    "project_id": admin.get("vertex_project_id", ""),
+                    "location": admin.get("vertex_location", "us-central1"),
+                    "sa_json": admin.get("vertex_sa_json", ""),
+                    "gemini_api_key": admin.get("gemini_api_key", ""),
+                    "openrouter_api_key": admin.get("openrouter_api_key", ""),
+                }
+    except Exception as e:
+        logger.warning(f"Could not load admin Vertex config: {e}")
+    return {}
+
+
 def _load_user_into_session(user_id: str, email: str, user: dict):
     """Set all session state fields after successful auth."""
     st.session_state.auth_user = {"id": user_id, "email": email}
@@ -343,6 +365,22 @@ def _load_user_into_session(user_id: str, email: str, user: dict):
         st.session_state.vertex_location = user["vertex_location"]
     if user.get("vertex_sa_json"):
         st.session_state.vertex_sa_json = user["vertex_sa_json"]
+
+    # For non-admin users with no Vertex config, fall back to admin's shared credentials
+    if email not in ADMIN_EMAILS and not user.get("vertex_sa_json"):
+        admin_cfg = get_admin_vertex_config()
+        if admin_cfg:
+            if not st.session_state.get("vertex_project_id") and admin_cfg.get("project_id"):
+                st.session_state.vertex_project_id = admin_cfg["project_id"]
+            if not st.session_state.get("vertex_location"):
+                st.session_state.vertex_location = admin_cfg.get("location", "us-central1")
+            if not st.session_state.get("vertex_sa_json") and admin_cfg.get("sa_json"):
+                st.session_state.vertex_sa_json = admin_cfg["sa_json"]
+            if not st.session_state.get("api_key") and admin_cfg.get("gemini_api_key"):
+                st.session_state.api_key = admin_cfg["gemini_api_key"]
+            if not st.session_state.get("openrouter_api_key") and admin_cfg.get("openrouter_api_key"):
+                st.session_state.openrouter_api_key = admin_cfg["openrouter_api_key"]
+
     st.session_state._pending_session_token = _create_session_token(user_id)
 
 
