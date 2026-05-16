@@ -1147,6 +1147,16 @@ def generate_image_with_imagen(
             if photos:
                 reference_image_b64 = photos  # list of base64 strings
 
+        # When reference photos are present, upgrade cartoon styles to face-preserving portrait mode
+        has_ref_photos = bool(
+            (isinstance(reference_image_b64, list) and reference_image_b64)
+            or (reference_image_b64 and not isinstance(reference_image_b64, list))
+        )
+        if has_ref_photos and image_style in (
+            "Cartoon/Animated (3D Pixar Style)", "Cartoon (2D Flat Style)"
+        ):
+            image_style = "Photo Reference Portrait"
+
         style_modifiers = get_image_style(image_style)
         no_text_instruction = "CRITICAL REQUIREMENT - ABSOLUTELY NO TEXT: This image must contain ZERO text, ZERO words, ZERO letters, ZERO numbers, ZERO speech bubbles, ZERO captions, ZERO signs, ZERO labels, ZERO writing of any kind. This is a pure illustration for a children's book - visual art only."
 
@@ -1164,17 +1174,33 @@ def generate_image_with_imagen(
             if is_scene else ""
         )
 
-        # Add reference-photo instruction to prompt when photos are provided
+        # When reference photos are provided, add a strong face-matching instruction at the
+        # FRONT of the prompt so the model prioritises likeness above all else.
         n_photos = len(reference_image_b64) if isinstance(reference_image_b64, list) else (1 if reference_image_b64 else 0)
-        photo_instruction = (
-            f" CHARACTER REFERENCE: {n_photos} reference photo(s) of the child are provided. "
-            "The child character in this illustration MUST closely resemble the person in these "
-            "photos — same facial features, skin tone, hair, and expression style. "
-            "Keep this likeness consistent across all pages."
-            if n_photos > 0 else ""
-        )
+        if n_photos > 0:
+            face_match_prefix = (
+                f"HIGHEST PRIORITY — EXACT CHILD LIKENESS REQUIRED: {n_photos} reference photo(s) of "
+                "the real child are attached. Every illustration MUST be an accurate portrait of THIS "
+                "specific child. Match precisely: face shape, eye color, eye shape, nose, lips, "
+                "smile, skin tone, hair color, hair texture, hair style. "
+                "This is a personalised storybook — the child's parents must instantly recognise "
+                "their child in every single page. Do NOT use a generic child face. "
+                "Use the attached reference photo face exactly. "
+            )
+            photo_instruction = ""  # already in prefix
+        else:
+            face_match_prefix = ""
+            photo_instruction = ""
 
-        style_prompt = f"{no_text_instruction}.{scene_instruction}{photo_instruction} {prompt}. {style_modifiers}. {no_text_instruction}"
+        style_prompt = (
+            f"{face_match_prefix}"
+            f"{no_text_instruction}. "
+            f"{scene_instruction} "
+            f"{photo_instruction} "
+            f"{prompt}. "
+            f"{style_modifiers}. "
+            f"{no_text_instruction}"
+        )
 
         from vertex_client import call_gemini_image
         data_url = call_gemini_image(style_prompt, api_key=api_key, reference_image_b64=reference_image_b64)
@@ -1494,6 +1520,105 @@ def create_pdf(
         c.showPage()
 
     c.save()
+
+
+# ---------------------------------------------------------------------------
+# Diffrun-style book preview helpers
+# ---------------------------------------------------------------------------
+
+def _pil_to_data_url(img: Image.Image, max_w: int = 900) -> str:
+    """Return a JPEG base64 data-URL suitable for embedding in HTML."""
+    buf = io.BytesIO()
+    copy = img.copy()
+    if copy.width > max_w:
+        ratio = max_w / copy.width
+        copy = copy.resize((max_w, int(copy.height * ratio)), Image.LANCZOS)
+    copy.save(buf, format="JPEG", quality=85, optimize=True)
+    return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
+
+
+def _render_page_card(img: Image.Image, text: str, page_num: int, total_pages: int) -> None:
+    """Render one story page in Diffrun-style horizontal card (image left, text right)."""
+    data_url = _pil_to_data_url(img)
+    st.markdown(f"""
+    <div style="display:flex;background:#fff;border-radius:16px;
+                box-shadow:0 4px 24px rgba(0,0,0,0.09);overflow:hidden;
+                margin:0 0 28px;">
+      <div style="flex:0 0 58%;max-width:58%;overflow:hidden;">
+        <img src="{data_url}"
+             style="width:100%;height:100%;object-fit:cover;display:block;">
+      </div>
+      <div style="flex:1;padding:32px 28px;display:flex;flex-direction:column;
+                  justify-content:center;background:#fff;">
+        <p style="font-family:'Georgia',serif;font-size:1.05rem;line-height:1.75;
+                  color:#2c3e50;margin:0 0 20px 0;">{text}</p>
+        <span style="color:#bbb;font-size:0.78rem;display:block;text-align:right;">
+          Page {page_num} / {total_pages}
+        </span>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+def _render_paywall_card(
+    img: Image.Image, page_num: int, total_pages: int, remaining: int,
+    price_inr: int, payment_callback_key: str
+) -> bool:
+    """Render a paywall card showing the last free image with a purchase overlay.
+    Returns True if the user clicked 'Continue to Purchase'."""
+    data_url = _pil_to_data_url(img)
+    st.markdown(f"""
+    <div style="background:#fff;border-radius:16px;
+                box-shadow:0 4px 24px rgba(0,0,0,0.09);overflow:hidden;
+                margin:0 0 8px;">
+      <div style="position:relative;">
+        <img src="{data_url}" style="width:100%;display:block;max-height:420px;object-fit:cover;">
+        <div style="position:absolute;inset:0;
+                    background:linear-gradient(to bottom,transparent 40%,rgba(0,0,0,0.75) 100%);
+                    display:flex;align-items:flex-end;justify-content:center;padding:28px;">
+          <div style="text-align:center;color:white;">
+            <p style="font-size:1.1rem;font-weight:600;margin:0 0 4px;">
+              Full Preview is available on Purchase
+            </p>
+            <p style="font-size:0.85rem;opacity:0.85;margin:0;">
+              {remaining} more page(s) unlock after payment
+            </p>
+          </div>
+        </div>
+      </div>
+      <div style="padding:4px 20px 4px;text-align:right;">
+        <span style="color:#bbb;font-size:0.78rem;">Page {page_num} / {total_pages}</span>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+    clicked = st.button(
+        f"🛒 Continue to Purchase — ₹{price_inr}",
+        key=payment_callback_key,
+        type="primary",
+        use_container_width=True,
+    )
+    st.markdown("<div style='margin-bottom:28px;'></div>", unsafe_allow_html=True)
+    return clicked
+
+
+def _render_locked_card(page_num: int, total_pages: int) -> None:
+    """Render a locked placeholder card for pages not yet generated."""
+    st.markdown(f"""
+    <div style="display:flex;background:#f8f8f8;border-radius:16px;
+                box-shadow:0 2px 12px rgba(0,0,0,0.05);overflow:hidden;
+                margin:0 0 28px;min-height:180px;align-items:center;">
+      <div style="flex:0 0 58%;max-width:58%;display:flex;align-items:center;
+                  justify-content:center;background:#ececec;min-height:180px;">
+        <span style="font-size:52px;opacity:0.4;">🔒</span>
+      </div>
+      <div style="flex:1;padding:32px 28px;">
+        <p style="color:#999;font-size:0.95rem;margin:0 0 8px;">
+          This page is locked. Purchase the book to unlock all illustrations.
+        </p>
+        <span style="color:#bbb;font-size:0.78rem;">Page {page_num} / {total_pages}</span>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
 
 
 def _load_gallery_book(doc_id: str) -> None:
@@ -1855,12 +1980,13 @@ def render_custom_wizard():
 
         col1, col2 = st.columns(2)
         with col1:
-            image_styles = ["Cartoon/Animated (3D Pixar Style)", "Cartoon (2D Flat Style)", "Watercolor Illustration", "Storybook Classic", "Photorealistic"]
-            style_emojis = ["🎬", "🎨", "🖌️", "📚", "📷"]
+            image_styles = ["Cartoon/Animated (3D Pixar Style)", "Cartoon (2D Flat Style)", "Watercolor Illustration", "Storybook Classic", "Photorealistic", "Photo Reference Portrait"]
+            style_emojis = ["🎬", "🎨", "🖌️", "📚", "📷", "🧒"]
             cur_idx = image_styles.index(st.session_state.wiz_image_style) if st.session_state.wiz_image_style in image_styles else 0
             sel_style = st.selectbox(
                 "Image Style *", image_styles, index=cur_idx,
-                format_func=lambda s: f"{style_emojis[image_styles.index(s)]} {s}"
+                format_func=lambda s: f"{style_emojis[image_styles.index(s)]} {s}",
+                help="When a child photo is uploaded, cartoon styles auto-upgrade to 'Photo Reference Portrait' for accurate face likeness.",
             )
             st.session_state.wiz_image_style = sel_style
         with col2:
@@ -2919,18 +3045,43 @@ def main():
                         add_credits(user_id_pay, book_price_paise(total_pages))
                         st.rerun()
 
-                # Show the 3 free images that were already generated, locked icons for the rest
+                # Show generated preview pages + paywall/locked cards
                 st.divider()
-                for i, page in enumerate(pages):
-                    if i >= len(st.session_state.generated_images) or st.session_state.generated_images[i] is None:
-                        st.subheader(f"Page {i+1}")
-                        st.markdown(
-                            "<div style='background:#f0f0f0;border-radius:8px;padding:60px;text-align:center;"
-                            "font-size:48px;'>🔒</div><p style='text-align:center;color:#888;margin-top:8px;'>"
-                            "Pay to unlock this image</p>",
-                            unsafe_allow_html=True,
-                        )
-                    # already-generated free images are shown in the normal loop below
+                if not _is_admin_user:
+                    # Non-admin: Diffrun-style cards for free pages, then paywall overlay
+                    for i, page in enumerate(pages):
+                        page_num = page.get('page_number', i + 1)
+                        text = st.session_state.edited_story_pages.get(i, page.get("text", ""))
+                        has_img = (i < len(st.session_state.generated_images)
+                                   and st.session_state.generated_images[i] is not None)
+                        if has_img and i < FREE_IMAGES_PER_BOOK - 1:
+                            _render_page_card(st.session_state.generated_images[i], text, page_num, total_pages)
+                        elif has_img and i == FREE_IMAGES_PER_BOOK - 1:
+                            remaining = total_pages - FREE_IMAGES_PER_BOOK
+                            cta = _render_paywall_card(
+                                st.session_state.generated_images[i], page_num, total_pages,
+                                remaining, price_inr, f"paywall_cta_{i}"
+                            )
+                            if cta:
+                                # Scroll user to payment UI (no JS needed — it's already above)
+                                st.rerun()
+                            # Show locked cards for remaining pages
+                            for j in range(i + 1, total_pages):
+                                _render_locked_card(pages[j].get('page_number', j + 1), total_pages)
+                            break
+                        # (pages beyond FREE that have no image are not shown here)
+                else:
+                    # Admin: old-style lock icons
+                    for i, page in enumerate(pages):
+                        if i >= len(st.session_state.generated_images) or st.session_state.generated_images[i] is None:
+                            st.subheader(f"Page {i+1}")
+                            st.markdown(
+                                "<div style='background:#f0f0f0;border-radius:8px;padding:60px;text-align:center;"
+                                "font-size:48px;'>🔒</div><p style='text-align:center;color:#888;margin-top:8px;'>"
+                                "Pay to unlock this image</p>",
+                                unsafe_allow_html=True,
+                            )
+                    # generated free images shown in the main loop below
 
             # Generate images that haven't been generated yet (only if no regeneration is happening)
             # Also regenerate any None entries (images marked for regeneration)
@@ -2969,201 +3120,164 @@ def main():
                             _save_images_now()
                             st.rerun()
         
-        # Show images for review
-        for i, page in enumerate(pages):
-            if i >= len(st.session_state.generated_images):
-                break
-            
-            # Skip if image is None (pending regeneration)
-            if st.session_state.generated_images[i] is None:
-                st.info(f"⏳ Page {page.get('page_number', i+1)} - Image pending regeneration...")
-                continue
-                
-            is_approved = st.session_state.image_approvals.get(i, False)
-            page_num = page.get('page_number', i+1)
-            
-            with st.container():
-                st.subheader(f"Page {page_num}")
-                
-                col1, col2 = st.columns([2, 1])
-                
-                with col1:
-                    # Editable story text
-                    st.write("**Story Text:**")
-                    # Get edited text or use original
-                    edited_text = st.session_state.edited_story_pages.get(i, page.get("text", ""))
-                    new_text = st.text_area(
-                        f"Edit Story Text (Page {page_num})",
-                        value=edited_text,
-                        key=f"story_text_edit_{i}",
-                        height=80,
-                        help="Edit the story text for this page",
-                        label_visibility="collapsed"
-                    )
-                    
-                    # Save edited text
-                    if new_text != page.get("text", ""):
-                        st.session_state.edited_story_pages[i] = new_text
-                        # Update the story data
-                        st.session_state.generated_story["pages"][i]["text"] = new_text
-                    
-                    st.image(st.session_state.generated_images[i], use_container_width=True)
+        # ── Image display: admin full review vs non-admin preview cards ────────
+        if _is_admin_user:
+            # Full review with approve/reject, prompt editing, and page reordering
+            for i, page in enumerate(pages):
+                if i >= len(st.session_state.generated_images):
+                    break
+                if st.session_state.generated_images[i] is None:
+                    st.info(f"⏳ Page {page.get('page_number', i+1)} - Image pending regeneration...")
+                    continue
 
-                    # Display error message if image generation failed
-                    if i in st.session_state.image_generation_errors:
-                        error_info = st.session_state.image_generation_errors[i]
-                        st.error(f"⚠️ **Image Generation Failed**")
-                        with st.expander("Error Details", expanded=False):
-                            st.write(f"**Error:** {error_info.get('error', 'Unknown error')}")
-                            st.write(f"**Time:** {error_info.get('timestamp', 'N/A')}")
-                            st.write(f"**Attempts:** {error_info.get('attempt', 'N/A')}")
-                            st.info("💡 **Common Reasons:**\n"
-                                   "- Invalid or expired API key\n"
-                                   "- API quota exceeded\n"
-                                   "- Network connection issues\n"
-                                   "- API service temporarily unavailable\n\n"
-                                   "Click '🔄 Regenerate' to try again")
+                is_approved = st.session_state.image_approvals.get(i, False)
+                page_num = page.get('page_number', i + 1)
+                current_prompt = st.session_state.edited_image_prompts.get(i, page.get("image_prompt", ""))
 
-                    # Show current prompt
-                    current_prompt = st.session_state.edited_image_prompts.get(i, page.get("image_prompt", ""))
-                    st.write("**Current Image Prompt:**")
-                    st.caption(current_prompt)
-                
-                with col2:
-                    st.write("")  # Spacing
-                    if is_approved:
-                        st.success("✅ Approved")
-                        if st.button(f"🔄 Regenerate Image {i+1}", key=f"regen_{i}"):
-                            # Remove approval and show prompt editor
-                            if i in st.session_state.image_approvals:
-                                del st.session_state.image_approvals[i]
-                            st.session_state[f"editing_prompt_{i}"] = True
-                            st.rerun()
-                    else:
-                        if st.button("🔄 Regenerate", key=f"regenerate_{i}"):
-                            # Show prompt editor
-                            st.session_state[f"editing_prompt_{i}"] = True
-                            st.rerun()
-                    
-                    # Page reordering buttons
-                    st.write("**Reorder:**")
-                    col_up_img, col_down_img = st.columns(2)
-                    with col_up_img:
-                        if i > 0:
-                            if st.button("⬆️", key=f"move_img_up_{i}", use_container_width=True):
-                                # Swap pages in story
-                                pages = st.session_state.generated_story["pages"]
-                                pages[i], pages[i-1] = pages[i-1], pages[i]
-                                # Swap images
+                with st.container():
+                    st.subheader(f"Page {page_num}")
+                    col1, col2 = st.columns([2, 1])
+                    with col1:
+                        edited_text = st.session_state.edited_story_pages.get(i, page.get("text", ""))
+                        new_text = st.text_area(
+                            f"Edit Story Text (Page {page_num})",
+                            value=edited_text, key=f"story_text_edit_{i}",
+                            height=80, label_visibility="collapsed",
+                        )
+                        if new_text != page.get("text", ""):
+                            st.session_state.edited_story_pages[i] = new_text
+                            st.session_state.generated_story["pages"][i]["text"] = new_text
+                        st.image(st.session_state.generated_images[i], use_container_width=True)
+                        if i in st.session_state.image_generation_errors:
+                            err = st.session_state.image_generation_errors[i]
+                            st.error("⚠️ Image Generation Failed")
+                            with st.expander("Error Details", expanded=False):
+                                st.write(f"**Error:** {err.get('error', 'Unknown')}")
+                                st.write(f"**Attempts:** {err.get('attempt', 'N/A')}")
+                        st.write("**Current Image Prompt:**")
+                        st.caption(current_prompt)
+                    with col2:
+                        if is_approved:
+                            st.success("✅ Approved")
+                            if st.button(f"🔄 Regenerate Image {i+1}", key=f"regen_{i}"):
+                                if i in st.session_state.image_approvals:
+                                    del st.session_state.image_approvals[i]
+                                st.session_state[f"editing_prompt_{i}"] = True
+                                st.rerun()
+                        else:
+                            if st.button(f"✅ Approve", key=f"approve_{i}", type="primary"):
+                                st.session_state.image_approvals[i] = True
+                                st.rerun()
+                            if st.button("🔄 Regenerate", key=f"regenerate_{i}"):
+                                st.session_state[f"editing_prompt_{i}"] = True
+                                st.rerun()
+                        st.write("**Reorder:**")
+                        col_up_img, col_down_img = st.columns(2)
+                        with col_up_img:
+                            if i > 0 and st.button("⬆️", key=f"move_img_up_{i}", use_container_width=True):
+                                _pg = st.session_state.generated_story["pages"]
+                                _pg[i], _pg[i-1] = _pg[i-1], _pg[i]
                                 if i < len(st.session_state.generated_images) and (i-1) < len(st.session_state.generated_images):
                                     st.session_state.generated_images[i], st.session_state.generated_images[i-1] = \
                                         st.session_state.generated_images[i-1], st.session_state.generated_images[i]
-                                # Swap approvals
-                                temp_approval = st.session_state.image_approvals.get(i, False)
+                                _ta = st.session_state.image_approvals.get(i, False)
                                 st.session_state.image_approvals[i] = st.session_state.image_approvals.get(i-1, False)
-                                st.session_state.image_approvals[i-1] = temp_approval
-                                # Update page numbers
-                                for idx, p in enumerate(pages):
-                                    p["page_number"] = idx + 1
-                                st.session_state.generated_story["pages"] = pages
+                                st.session_state.image_approvals[i-1] = _ta
+                                for _idx, _p in enumerate(_pg):
+                                    _p["page_number"] = _idx + 1
                                 st.rerun()
-                    with col_down_img:
-                        if i < len(pages) - 1:
-                            if st.button("⬇️", key=f"move_img_down_{i}", use_container_width=True):
-                                # Swap pages in story
-                                pages = st.session_state.generated_story["pages"]
-                                pages[i], pages[i+1] = pages[i+1], pages[i]
-                                # Swap images
+                        with col_down_img:
+                            if i < len(pages) - 1 and st.button("⬇️", key=f"move_img_down_{i}", use_container_width=True):
+                                _pg = st.session_state.generated_story["pages"]
+                                _pg[i], _pg[i+1] = _pg[i+1], _pg[i]
                                 if i < len(st.session_state.generated_images) and (i+1) < len(st.session_state.generated_images):
                                     st.session_state.generated_images[i], st.session_state.generated_images[i+1] = \
                                         st.session_state.generated_images[i+1], st.session_state.generated_images[i]
-                                # Swap approvals
-                                temp_approval = st.session_state.image_approvals.get(i, False)
+                                _ta = st.session_state.image_approvals.get(i, False)
                                 st.session_state.image_approvals[i] = st.session_state.image_approvals.get(i+1, False)
-                                st.session_state.image_approvals[i+1] = temp_approval
-                                # Update page numbers
-                                for idx, p in enumerate(pages):
-                                    p["page_number"] = idx + 1
-                                st.session_state.generated_story["pages"] = pages
+                                st.session_state.image_approvals[i+1] = _ta
+                                for _idx, _p in enumerate(_pg):
+                                    _p["page_number"] = _idx + 1
                                 st.rerun()
-                
-                # Prompt and text editor (shown when regenerating)
-                if st.session_state.get(f"editing_prompt_{i}", False):
-                    st.write("---")
-                    st.write(f"**Edit Content for Page {page_num}:**")
-                    
-                    # Editable story text in regeneration mode
-                    edited_text_for_regen = st.session_state.edited_story_pages.get(i, page.get("text", ""))
-                    new_text_regen = st.text_area(
-                        f"Story Text (Page {page_num})",
-                        value=edited_text_for_regen,
-                        key=f"story_text_regen_{i}",
-                        height=100,
-                        help="Edit the story text for this page"
-                    )
-                    
-                    # Save edited text immediately
-                    if new_text_regen != page.get("text", ""):
-                        st.session_state.edited_story_pages[i] = new_text_regen
-                        st.session_state.generated_story["pages"][i]["text"] = new_text_regen
-                    
-                    # Editable image prompt
-                    edited_prompt = st.text_area(
-                        "Image Prompt",
-                        value=current_prompt,
-                        key=f"prompt_edit_{i}",
-                        height=100,
-                        help="Edit the prompt to change how the image is generated"
-                    )
-                    
-                    col_gen, col_cancel = st.columns(2)
-                    with col_gen:
-                        if st.button(f"✨ Generate with New Prompt", key=f"gen_new_{i}", type="primary"):
-                            # NOTE: Visual anchor is already included in the original prompt from story generation
-                            # DO NOT add it again to avoid duplicate character descriptions
-                            # The user can see and edit the full prompt including visual anchor
-                            
-                            # Save edited prompt (already has visual anchor from original)
-                            st.session_state.edited_image_prompts[i] = edited_prompt
-                            # Save edited text if changed
-                            if new_text_regen != edited_text_for_regen:
-                                st.session_state.edited_story_pages[i] = new_text_regen
-                                st.session_state.generated_story["pages"][i]["text"] = new_text_regen
-                            
-                            # Remove approval for this specific image
-                            if i in st.session_state.image_approvals:
-                                del st.session_state.image_approvals[i]
-                            # Clear any error for this image since we're regenerating
-                            if i in st.session_state.image_generation_errors:
-                                del st.session_state.image_generation_errors[i]
-                            # Mark this slot for regeneration - don't pop, just set to None
-                            # This prevents index shifting which causes text/image mismatch
-                            if i < len(st.session_state.generated_images):
-                                st.session_state.generated_images[i] = None
-                            # Set flag to regenerate only this image
-                            st.session_state[f"regenerate_image_{i}"] = True
-                            st.session_state[f"editing_prompt_{i}"] = False
-                            # Update page prompt
-                            st.session_state.generated_story["pages"][i]["image_prompt"] = edited_prompt
-                            st.rerun()
-                    with col_cancel:
-                        if st.button("❌ Cancel", key=f"cancel_edit_{i}"):
-                            st.session_state[f"editing_prompt_{i}"] = False
-                            st.rerun()
-                
-                st.divider()
-        
-        # Batch approve all images button
-        if approved_count < total_pages:
-            if st.button("✅ Approve All Images", type="primary", use_container_width=True):
-                for i in range(total_pages):
+
+                    if st.session_state.get(f"editing_prompt_{i}", False):
+                        st.write("---")
+                        edited_text_for_regen = st.session_state.edited_story_pages.get(i, page.get("text", ""))
+                        new_text_regen = st.text_area(
+                            f"Story Text (Page {page_num})",
+                            value=edited_text_for_regen, key=f"story_text_regen_{i}", height=100,
+                        )
+                        if new_text_regen != page.get("text", ""):
+                            st.session_state.edited_story_pages[i] = new_text_regen
+                            st.session_state.generated_story["pages"][i]["text"] = new_text_regen
+                        edited_prompt = st.text_area(
+                            "Image Prompt", value=current_prompt,
+                            key=f"prompt_edit_{i}", height=100,
+                        )
+                        col_gen, col_cancel = st.columns(2)
+                        with col_gen:
+                            if st.button("✨ Generate with New Prompt", key=f"gen_new_{i}", type="primary"):
+                                st.session_state.edited_image_prompts[i] = edited_prompt
+                                if new_text_regen != edited_text_for_regen:
+                                    st.session_state.edited_story_pages[i] = new_text_regen
+                                    st.session_state.generated_story["pages"][i]["text"] = new_text_regen
+                                if i in st.session_state.image_approvals:
+                                    del st.session_state.image_approvals[i]
+                                if i in st.session_state.image_generation_errors:
+                                    del st.session_state.image_generation_errors[i]
+                                if i < len(st.session_state.generated_images):
+                                    st.session_state.generated_images[i] = None
+                                st.session_state[f"regenerate_image_{i}"] = True
+                                st.session_state[f"editing_prompt_{i}"] = False
+                                st.session_state.generated_story["pages"][i]["image_prompt"] = edited_prompt
+                                st.rerun()
+                        with col_cancel:
+                            if st.button("❌ Cancel", key=f"cancel_edit_{i}"):
+                                st.session_state[f"editing_prompt_{i}"] = False
+                                st.rerun()
+                    st.divider()
+
+            # Admin batch approve
+            approved_count = len([k for k, v in st.session_state.image_approvals.items() if v])
+            if approved_count < total_pages:
+                if st.button("✅ Approve All Images", type="primary", use_container_width=True):
+                    for i in range(total_pages):
+                        st.session_state.image_approvals[i] = True
+                    st.rerun()
+
+        else:
+            # Non-admin: show Diffrun-style preview cards for generated images
+            # Auto-approve each image so the flow continues without manual clicks
+            for i, img in enumerate(st.session_state.generated_images):
+                if img is not None:
                     st.session_state.image_approvals[i] = True
-                st.rerun()
-        
-        # Check if all images are approved
+
+            # If not paywalled, show all generated pages as cards
+            if not needs_payment or user_can_afford_book(user_id_pay, total_pages):
+                for i, page in enumerate(pages):
+                    if i >= len(st.session_state.generated_images):
+                        break
+                    img = st.session_state.generated_images[i]
+                    if img is None:
+                        continue
+                    text = st.session_state.edited_story_pages.get(i, page.get("text", ""))
+                    page_num = page.get('page_number', i + 1)
+                    _render_page_card(img, text, page_num, total_pages)
+
+                # If all pages generated, auto-mark as fully approved
+                n_valid = len([im for im in st.session_state.generated_images if im is not None])
+                if n_valid == total_pages and total_pages > 0:
+                    if st.button("📚 View & Download My Complete Storybook",
+                                 type="primary", use_container_width=True, key="customer_approve_all"):
+                        for i in range(total_pages):
+                            st.session_state.image_approvals[i] = True
+                        st.session_state.all_images_approved = True
+                        st.rerun()
+
+        # ── Check if all images approved (applies to both admin and non-admin) ──
+        approved_count = len([k for k, v in st.session_state.image_approvals.items() if v])
         if approved_count == total_pages and total_pages > 0:
             st.session_state.all_images_approved = True
-            # Auto-save story with updated journey state (all images approved)
             if st.session_state.generated_story and st.session_state.current_child_name:
                 save_story(st.session_state.generated_story, st.session_state.current_child_name)
     

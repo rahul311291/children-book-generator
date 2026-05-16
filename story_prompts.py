@@ -671,7 +671,14 @@ IMAGE_STYLES = {
     "Cartoon (2D Flat Style)": "2D flat cartoon style, bold outlines, bright colors, simple shapes, children's book illustration, clean vector art style",
     "Photorealistic": "Photorealistic photograph, highly detailed, natural lighting, realistic textures, professional photography, lifelike human figures, real-world setting",
     "Watercolor Illustration": "Watercolor painting style, soft edges, gentle colors, artistic brushstrokes, traditional illustration, dreamy aesthetic",
-    "Storybook Classic": "Classic storybook illustration, warm colors, nostalgic feel, traditional children's book art, hand-drawn style, detailed backgrounds"
+    "Storybook Classic": "Classic storybook illustration, warm colors, nostalgic feel, traditional children's book art, hand-drawn style, detailed backgrounds",
+    "Photo Reference Portrait": (
+        "Semi-realistic children's storybook portrait illustration. Painterly watercolor-meets-photography style. "
+        "The child's face is rendered with photographic accuracy: exact facial structure, eye shape and color, "
+        "skin tone, hair color and texture, nose, lips — all precisely matching the reference photo. "
+        "Professional portrait quality. Warm studio lighting. Soft painterly background. "
+        "The child is recognisable to their own parents in every illustration."
+    ),
 }
 
 def get_image_style(style_name: str) -> str:
