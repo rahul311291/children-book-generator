@@ -785,6 +785,1083 @@ DEFAULT_TEMPLATES: List[Dict] = [
             },
         ],
     },
+    # ── Template 6: Space Adventure ──────────────────────────────────────────
+    {
+        "id": "a6666666-6666-6666-6666-666666666666",
+        "name": "{name}'s Space Adventure",
+        "description": "Blast off on an intergalactic journey! {name} explores the Moon, Mars, Saturn's rings, meets alien friends, and returns home a hero.",
+        "cover_image": "https://images.pexels.com/photos/2166/flight-sky-earth-space.jpg?auto=compress&cs=tinysrgb&w=800",
+        "total_pages": 12,
+        "tags": ["Adventure", "Sci-Fi"],
+        "age_range": "4 - 10",
+        "pages": [
+            {
+                "page_number": 1,
+                "profession_title": "Launch Day",
+                "text_template": (
+                    "{name} straps in tight and counts to three,\n"
+                    "{He_She} rockets off to find what{he_she} can see.\n"
+                    "The engines roar, the Earth falls away,\n"
+                    "{name}'s grand space adventure starts today!"
+                ),
+                "image_prompt_template": (
+                    "Semi-realistic watercolor portrait storybook illustration. "
+                    "White background with soft watercolor paint splashes at the corners. "
+                    "The child is the single hero subject, rendered with photographic facial accuracy "
+                    "(real face shape, skin tone, hair colour and texture). "
+                    "Child positioned slightly to the left of the frame, clear white space on the right side for text. "
+                    "A {age}-year-old {gender} child named {name} wearing a gleaming white astronaut suit with a clear helmet visor, "
+                    "sitting inside a rocket cockpit, hand on launch controls, wide-eyed with excitement. "
+                    "Flames and stars visible through the porthole. Soft brush strokes, warm pastel palette. "
+                    "Professional premium children's book illustration quality. No text, no watermarks."
+                ),
+            },
+            {
+                "page_number": 2,
+                "profession_title": "Walking on the Moon",
+                "text_template": (
+                    "{name} bounces lightly on the Moon so grey,\n"
+                    "{He_She} floats with each and every step {he_she} takes today.\n"
+                    "The craters shine beneath {his_her} boots so bright,\n"
+                    "With Earth above and stars that fill the night!"
+                ),
+                "image_prompt_template": (
+                    "Semi-realistic watercolor portrait storybook illustration. "
+                    "White background with soft watercolor paint splashes at the corners. "
+                    "The child is the single hero subject, rendered with photographic facial accuracy "
+                    "(real face shape, skin tone, hair colour and texture). "
+                    "Child positioned slightly to the right of the frame, clear white space on the left side for text. "
+                    "A {age}-year-old {gender} child named {name} in an astronaut suit bounding across the moon's grey cratered surface, "
+                    "Earth glowing blue in the dark sky above. Footprints trail behind. Soft brush strokes, cool silver-blue palette. "
+                    "Professional premium children's book illustration quality. No text, no watermarks."
+                ),
+            },
+            {
+                "page_number": 3,
+                "profession_title": "Red Planet Mars",
+                "text_template": (
+                    "Next {name} lands on Mars so red and vast,\n"
+                    "{He_She} plants a flag that flies against the blast.\n"
+                    "Red dust swirls around {his_her} boots and toes,\n"
+                    "{name} explores wherever {he_she} wants to go!"
+                ),
+                "image_prompt_template": (
+                    "Semi-realistic watercolor portrait storybook illustration. "
+                    "White background with soft watercolor paint splashes at the corners. "
+                    "The child is the single hero subject, rendered with photographic facial accuracy "
+                    "(real face shape, skin tone, hair colour and texture). "
+                    "Child positioned slightly to the left of the frame, clear white space on the right side for text. "
+                    "A {age}-year-old {gender} child named {name} in a white astronaut suit planting a small flag on the dusty red surface of Mars, "
+                    "rust-red rocky landscape with pink sky and distant mountains. Soft brush strokes, warm terracotta palette. "
+                    "Professional premium children's book illustration quality. No text, no watermarks."
+                ),
+            },
+            {
+                "page_number": 4,
+                "profession_title": "Jupiter's Storms",
+                "text_template": (
+                    "Jupiter looms large with swirling bands of cloud,\n"
+                    "{name} watches storms that rumble fierce and loud.\n"
+                    "{He_She} steers {his_her} ship through orange and cream,\n"
+                    "It's more amazing than the grandest dream!"
+                ),
+                "image_prompt_template": (
+                    "Semi-realistic watercolor portrait storybook illustration. "
+                    "White background with soft watercolor paint splashes at the corners. "
+                    "The child is the single hero subject, rendered with photographic facial accuracy "
+                    "(real face shape, skin tone, hair colour and texture). "
+                    "Child positioned slightly to the right of the frame, clear white space on the left side for text. "
+                    "A {age}-year-old {gender} child named {name} piloting a small round spaceship past Jupiter, the giant striped planet filling the background with its Great Red Spot. "
+                    "Orange and cream swirling cloud bands, sense of awe and wonder. Soft brush strokes, warm amber palette. "
+                    "Professional premium children's book illustration quality. No text, no watermarks."
+                ),
+            },
+            {
+                "page_number": 5,
+                "profession_title": "Saturn's Rings",
+                "text_template": (
+                    "Saturn's rings glow gold like sparkly bands,\n"
+                    "{name} reaches out as if to hold them in {his_her} hands.\n"
+                    "{He_She} glides between the ice and dust and light,\n"
+                    "Oh what a glittering, magnificent sight!"
+                ),
+                "image_prompt_template": (
+                    "Semi-realistic watercolor portrait storybook illustration. "
+                    "White background with soft watercolor paint splashes at the corners. "
+                    "The child is the single hero subject, rendered with photographic facial accuracy "
+                    "(real face shape, skin tone, hair colour and texture). "
+                    "Child positioned slightly to the left of the frame, clear white space on the right side for text. "
+                    "A {age}-year-old {gender} child named {name} in an astronaut suit floating beside Saturn, its golden rings sweeping across the scene, glittering ice particles catching the sunlight. "
+                    "Magical sparkling atmosphere. Soft brush strokes, golden pastel palette. "
+                    "Professional premium children's book illustration quality. No text, no watermarks."
+                ),
+            },
+            {
+                "page_number": 6,
+                "profession_title": "Alien Friends",
+                "text_template": (
+                    "{name} meets some aliens green and small,\n"
+                    "{He_She} greets them kindly, sharing smiles with all.\n"
+                    "They laugh and dance and teach {him_her} games to play,\n"
+                    "New friends from galaxies so far away!"
+                ),
+                "image_prompt_template": (
+                    "Semi-realistic watercolor portrait storybook illustration. "
+                    "White background with soft watercolor paint splashes at the corners. "
+                    "The child is the single hero subject, rendered with photographic facial accuracy "
+                    "(real face shape, skin tone, hair colour and texture). "
+                    "Child positioned slightly to the right of the frame, clear white space on the left side for text. "
+                    "A {age}-year-old {gender} child named {name} in an astronaut suit shaking hands with two small friendly green aliens with big eyes and wide smiles, on an alien planet with purple foliage and pink sky. "
+                    "Warm, joyful and welcoming scene. Soft brush strokes, vibrant playful palette. "
+                    "Professional premium children's book illustration quality. No text, no watermarks."
+                ),
+            },
+            {
+                "page_number": 7,
+                "profession_title": "Asteroid Belt",
+                "text_template": (
+                    "Through the asteroid belt {name} carefully weaves,\n"
+                    "{He_She} dodges boulders tumbling past like leaves.\n"
+                    "{His_Her} quick hands steer the ship with steady care,\n"
+                    "{name} is the bravest pilot anywhere!"
+                ),
+                "image_prompt_template": (
+                    "Semi-realistic watercolor portrait storybook illustration. "
+                    "White background with soft watercolor paint splashes at the corners. "
+                    "The child is the single hero subject, rendered with photographic facial accuracy "
+                    "(real face shape, skin tone, hair colour and texture). "
+                    "Child positioned slightly to the left of the frame, clear white space on the right side for text. "
+                    "A {age}-year-old {gender} child named {name} focused and determined at the controls of a spaceship weaving through a field of tumbling grey asteroids, determined expression, starfield background. "
+                    "Sense of action and bravery. Soft brush strokes, deep blue-charcoal palette. "
+                    "Professional premium children's book illustration quality. No text, no watermarks."
+                ),
+            },
+            {
+                "page_number": 8,
+                "profession_title": "Black Hole (Safe!)",
+                "text_template": (
+                    "A swirling black hole glows with violet light,\n"
+                    "{name} watches safely — what a curious sight!\n"
+                    "{He_She} sketches notes and marvels at its spin,\n"
+                    "How much the universe has tucked within!"
+                ),
+                "image_prompt_template": (
+                    "Semi-realistic watercolor portrait storybook illustration. "
+                    "White background with soft watercolor paint splashes at the corners. "
+                    "The child is the single hero subject, rendered with photographic facial accuracy "
+                    "(real face shape, skin tone, hair colour and texture). "
+                    "Child positioned slightly to the right of the frame, clear white space on the left side for text. "
+                    "A {age}-year-old {gender} child named {name} in an astronaut suit floating at a safe distance, gazing with wonder at a swirling violet and gold black hole, a small notebook in hand, completely safe and curious. "
+                    "Magical cosmic atmosphere. Soft brush strokes, deep violet and gold palette. "
+                    "Professional premium children's book illustration quality. No text, no watermarks."
+                ),
+            },
+            {
+                "page_number": 9,
+                "profession_title": "Nebula Dreams",
+                "text_template": (
+                    "Pink and purple nebula clouds drift by,\n"
+                    "Like cotton candy smeared across the sky.\n"
+                    "{name} floats through colours soft and bright,\n"
+                    "Wrapped in the universe's glowing light!"
+                ),
+                "image_prompt_template": (
+                    "Semi-realistic watercolor portrait storybook illustration. "
+                    "White background with soft watercolor paint splashes at the corners. "
+                    "The child is the single hero subject, rendered with photographic facial accuracy "
+                    "(real face shape, skin tone, hair colour and texture). "
+                    "Child positioned slightly to the left of the frame, clear white space on the right side for text. "
+                    "A {age}-year-old {gender} child named {name} floating freely in a spacesuit through a beautiful pink and purple nebula, soft glowing clouds of stardust surrounding {name}, serene dreamy expression. "
+                    "Ethereal soft light, watercolor cloud washes. Soft brush strokes, rose and lavender palette. "
+                    "Professional premium children's book illustration quality. No text, no watermarks."
+                ),
+            },
+            {
+                "page_number": 10,
+                "profession_title": "Space Station",
+                "text_template": (
+                    "The space station spins like a silver wheel,\n"
+                    "{name} docks {his_her} ship with skilled, sure zeal.\n"
+                    "{He_She} meets the crew and shares {his_her} tales with pride,\n"
+                    "Of every wonder {he_she} has seen outside!"
+                ),
+                "image_prompt_template": (
+                    "Semi-realistic watercolor portrait storybook illustration. "
+                    "White background with soft watercolor paint splashes at the corners. "
+                    "The child is the single hero subject, rendered with photographic facial accuracy "
+                    "(real face shape, skin tone, hair colour and texture). "
+                    "Child positioned slightly to the right of the frame, clear white space on the left side for text. "
+                    "A {age}-year-old {gender} child named {name} in an astronaut suit floating inside a bright space station, waving cheerfully to a diverse crew of adult astronauts, large circular portholes showing stars outside. "
+                    "Warm welcoming community feeling. Soft brush strokes, clean white and silver palette with accent colours. "
+                    "Professional premium children's book illustration quality. No text, no watermarks."
+                ),
+            },
+            {
+                "page_number": 11,
+                "profession_title": "Return Home",
+                "text_template": (
+                    "{name} points the ship back home through starry space,\n"
+                    "Earth grows bigger — blue and green with grace.\n"
+                    "{He_She} smiles wide, {his_her} heart so full and warm,\n"
+                    "Home is the best discovery of all!"
+                ),
+                "image_prompt_template": (
+                    "Semi-realistic watercolor portrait storybook illustration. "
+                    "White background with soft watercolor paint splashes at the corners. "
+                    "The child is the single hero subject, rendered with photographic facial accuracy "
+                    "(real face shape, skin tone, hair colour and texture). "
+                    "Child positioned slightly to the left of the frame, clear white space on the right side for text. "
+                    "A {age}-year-old {gender} child named {name} in a spacesuit sitting in the capsule window, gazing at a beautiful blue and green Earth growing larger ahead, warm smile of homecoming. "
+                    "Soft emotional warmth, watercolor Earth tones. Soft brush strokes, blue-green palette. "
+                    "Professional premium children's book illustration quality. No text, no watermarks."
+                ),
+            },
+            {
+                "page_number": 12,
+                "profession_title": "Hero's Welcome",
+                "text_template": (
+                    "Back on Earth with stories grand to tell,\n"
+                    "{name} shares each planet, moon, and wishing well.\n"
+                    "{He_She} proves that every child can touch the stars,\n"
+                    "From here to Saturn, Jupiter, and Mars!"
+                ),
+                "image_prompt_template": (
+                    "Semi-realistic watercolor portrait storybook illustration. "
+                    "White background with soft watercolor paint splashes at the corners. "
+                    "The child is the single hero subject, rendered with photographic facial accuracy "
+                    "(real face shape, skin tone, hair colour and texture). "
+                    "Child positioned slightly to the right of the frame, clear white space on the left side for text. "
+                    "A {age}-year-old {gender} child named {name} in a spacesuit with helmet off, arms raised in triumph, surrounded by cheering family and friends holding welcome-home banners, confetti falling. "
+                    "Joyful celebratory homecoming scene. Soft brush strokes, warm bright festive palette. "
+                    "Professional premium children's book illustration quality. No text, no watermarks."
+                ),
+            },
+        ],
+    },
+    # ── Template 7: World of Friends ─────────────────────────────────────────
+    {
+        "id": "a7777777-7777-7777-7777-777777777777",
+        "name": "{name}'s World of Friends",
+        "description": "A heartwarming journey where {name} travels the globe meeting friends from different cultures, learning about sharing, kindness, bravery, and gratitude.",
+        "cover_image": "https://images.pexels.com/photos/1648387/pexels-photo-1648387.jpeg?auto=compress&cs=tinysrgb&w=800",
+        "total_pages": 12,
+        "tags": ["Friendship", "Emotions"],
+        "age_range": "3 - 7",
+        "pages": [
+            {
+                "page_number": 1,
+                "profession_title": "The Big Wide World",
+                "text_template": (
+                    "{name} looks at a map with wondering eyes,\n"
+                    "{He_She} sees every country under sunny skies.\n"
+                    "So many places, so many friends to meet,\n"
+                    "{name}'s world adventure can't be beat!"
+                ),
+                "image_prompt_template": (
+                    "Semi-realistic watercolor portrait storybook illustration. "
+                    "White background with soft watercolor paint splashes at the corners. "
+                    "The child is the single hero subject, rendered with photographic facial accuracy "
+                    "(real face shape, skin tone, hair colour and texture). "
+                    "Child positioned slightly to the left of the frame, clear white space on the right side for text. "
+                    "A {age}-year-old {gender} child named {name} sitting cross-legged on the floor, holding a big colourful world map open wide, eyes sparkling with curiosity and excitement. "
+                    "Warm cosy home setting. Soft brush strokes, warm golden palette. "
+                    "Professional premium children's book illustration quality. No text, no watermarks."
+                ),
+            },
+            {
+                "page_number": 2,
+                "profession_title": "A Friend from Japan",
+                "text_template": (
+                    "In Japan {name} meets Hana dressed in pink,\n"
+                    "They fold paper cranes as quick as you can think.\n"
+                    "{He_She} learns that sharing makes a friendship grow,\n"
+                    "Like cherry blossoms dancing in the snow!"
+                ),
+                "image_prompt_template": (
+                    "Semi-realistic watercolor portrait storybook illustration. "
+                    "White background with soft watercolor paint splashes at the corners. "
+                    "The child is the single hero subject, rendered with photographic facial accuracy "
+                    "(real face shape, skin tone, hair colour and texture). "
+                    "Child positioned slightly to the right of the frame, clear white space on the left side for text. "
+                    "A {age}-year-old {gender} child named {name} sitting at a low Japanese table with a smiling Japanese girl friend, both folding origami paper cranes together, cherry blossom petals floating around them. "
+                    "Soft pink and white palette, gentle joy. Soft brush strokes, pastel sakura palette. "
+                    "Professional premium children's book illustration quality. No text, no watermarks."
+                ),
+            },
+            {
+                "page_number": 3,
+                "profession_title": "Kindness in Kenya",
+                "text_template": (
+                    "On the Kenyan savanna wide and free,\n"
+                    "{name} and Amara climb a baobab tree.\n"
+                    "{He_She} shares {his_her} lunch and Amara shares {his_her} song,\n"
+                    "Kindness makes them feel they both belong!"
+                ),
+                "image_prompt_template": (
+                    "Semi-realistic watercolor portrait storybook illustration. "
+                    "White background with soft watercolor paint splashes at the corners. "
+                    "The child is the single hero subject, rendered with photographic facial accuracy "
+                    "(real face shape, skin tone, hair colour and texture). "
+                    "Child positioned slightly to the left of the frame, clear white space on the right side for text. "
+                    "A {age}-year-old {gender} child named {name} sitting under a giant baobab tree on the African savanna sharing food with a smiling African boy friend, a giraffe visible in the golden distance. "
+                    "Warm earthy tones, joyful sharing scene. Soft brush strokes, ochre and terracotta palette. "
+                    "Professional premium children's book illustration quality. No text, no watermarks."
+                ),
+            },
+            {
+                "page_number": 4,
+                "profession_title": "Bravery in Brazil",
+                "text_template": (
+                    "In Brazil the rainforest hums and sings,\n"
+                    "{name} and Lucas explore on colourful wings.\n"
+                    "{He_She} feels a little scared but takes a step,\n"
+                    "Being brave means trying — that's the best!"
+                ),
+                "image_prompt_template": (
+                    "Semi-realistic watercolor portrait storybook illustration. "
+                    "White background with soft watercolor paint splashes at the corners. "
+                    "The child is the single hero subject, rendered with photographic facial accuracy "
+                    "(real face shape, skin tone, hair colour and texture). "
+                    "Child positioned slightly to the right of the frame, clear white space on the left side for text. "
+                    "A {age}-year-old {gender} child named {name} stepping bravely across a hanging rope bridge in a lush Amazon rainforest, a cheerful Brazilian boy friend encouraging from the other side, colourful toucans and butterflies around them. "
+                    "Lush tropical greens and bright parrots. Soft brush strokes, vibrant jungle palette. "
+                    "Professional premium children's book illustration quality. No text, no watermarks."
+                ),
+            },
+            {
+                "page_number": 5,
+                "profession_title": "Curiosity in India",
+                "text_template": (
+                    "{name} visits a market bright and loud,\n"
+                    "{He_She} walks with Priya through the colourful crowd.\n"
+                    "Every smell and colour sparks a question new,\n"
+                    "Curiosity leads to adventures true!"
+                ),
+                "image_prompt_template": (
+                    "Semi-realistic watercolor portrait storybook illustration. "
+                    "White background with soft watercolor paint splashes at the corners. "
+                    "The child is the single hero subject, rendered with photographic facial accuracy "
+                    "(real face shape, skin tone, hair colour and texture). "
+                    "Child positioned slightly to the left of the frame, clear white space on the right side for text. "
+                    "A {age}-year-old {gender} child named {name} wide-eyed with wonder at a vibrant Indian market bazaar, walking alongside an Indian girl friend Priya, surrounded by colourful fabrics, spices, marigold garlands, and lanterns. "
+                    "Festive warm tones, curious joyful expression. Soft brush strokes, saffron and jewel-tone palette. "
+                    "Professional premium children's book illustration quality. No text, no watermarks."
+                ),
+            },
+            {
+                "page_number": 6,
+                "profession_title": "Creativity in Italy",
+                "text_template": (
+                    "In Italy {name} paints with Giulia's brush,\n"
+                    "{He_She} splashes colour in a creative rush.\n"
+                    "There's no right or wrong in art, they agree,\n"
+                    "Creativity sets both their spirits free!"
+                ),
+                "image_prompt_template": (
+                    "Semi-realistic watercolor portrait storybook illustration. "
+                    "White background with soft watercolor paint splashes at the corners. "
+                    "The child is the single hero subject, rendered with photographic facial accuracy "
+                    "(real face shape, skin tone, hair colour and texture). "
+                    "Child positioned slightly to the right of the frame, clear white space on the left side for text. "
+                    "A {age}-year-old {gender} child named {name} painting on a large canvas in an Italian piazza, alongside an Italian girl friend Giulia, both covered in happy paint splatters, a fountain and terracotta buildings behind them. "
+                    "Cheerful artistic mess, Mediterranean warmth. Soft brush strokes, bright artistic palette. "
+                    "Professional premium children's book illustration quality. No text, no watermarks."
+                ),
+            },
+            {
+                "page_number": 7,
+                "profession_title": "Gratitude in Australia",
+                "text_template": (
+                    "Down in Australia {name} meets Lily Mae,\n"
+                    "They watch the kangaroos leap and play all day.\n"
+                    "{He_She} feels so thankful for each wondrous sight,\n"
+                    "Gratitude fills {his_her} heart with golden light!"
+                ),
+                "image_prompt_template": (
+                    "Semi-realistic watercolor portrait storybook illustration. "
+                    "White background with soft watercolor paint splashes at the corners. "
+                    "The child is the single hero subject, rendered with photographic facial accuracy "
+                    "(real face shape, skin tone, hair colour and texture). "
+                    "Child positioned slightly to the left of the frame, clear white space on the right side for text. "
+                    "A {age}-year-old {gender} child named {name} sitting on red Australian outback earth beside an Australian girl friend, both watching a family of kangaroos with joeys in the warm golden sunset light, serene grateful expressions. "
+                    "Warm golden hour tones, peaceful atmosphere. Soft brush strokes, amber and rust palette. "
+                    "Professional premium children's book illustration quality. No text, no watermarks."
+                ),
+            },
+            {
+                "page_number": 8,
+                "profession_title": "Listening in Canada",
+                "text_template": (
+                    "In snowy Canada {name} meets Lena bright,\n"
+                    "They build a snowman in the fading light.\n"
+                    "{He_She} listens to her stories, quiet and still,\n"
+                    "A good friend listens — that's the greatest skill!"
+                ),
+                "image_prompt_template": (
+                    "Semi-realistic watercolor portrait storybook illustration. "
+                    "White background with soft watercolor paint splashes at the corners. "
+                    "The child is the single hero subject, rendered with photographic facial accuracy "
+                    "(real face shape, skin tone, hair colour and texture). "
+                    "Child positioned slightly to the right of the frame, clear white space on the left side for text. "
+                    "A {age}-year-old {gender} child named {name} in a red winter coat building a snowman with a Canadian girl friend Lena in a snowy Canadian forest, both laughing, tall pine trees dusted with snow behind them. "
+                    "Cosy winter wonderland warmth. Soft brush strokes, white and icy blue palette with red accents. "
+                    "Professional premium children's book illustration quality. No text, no watermarks."
+                ),
+            },
+            {
+                "page_number": 9,
+                "profession_title": "Patience in China",
+                "text_template": (
+                    "{name} tries to learn a brush stroke slow and true,\n"
+                    "{His_Her} friend Wei shows {him_her} what patience can do.\n"
+                    "{He_She} breathes and tries again with steady care,\n"
+                    "Patience blooms like lotus in the air!"
+                ),
+                "image_prompt_template": (
+                    "Semi-realistic watercolor portrait storybook illustration. "
+                    "White background with soft watercolor paint splashes at the corners. "
+                    "The child is the single hero subject, rendered with photographic facial accuracy "
+                    "(real face shape, skin tone, hair colour and texture). "
+                    "Child positioned slightly to the left of the frame, clear white space on the right side for text. "
+                    "A {age}-year-old {gender} child named {name} carefully painting Chinese calligraphy with a brush, guided by a patient Chinese boy friend Wei, in a peaceful garden pavilion with lotus pond and red lanterns. "
+                    "Calm serene beauty, ink wash accents. Soft brush strokes, jade and crimson palette. "
+                    "Professional premium children's book illustration quality. No text, no watermarks."
+                ),
+            },
+            {
+                "page_number": 10,
+                "profession_title": "Helpfulness in Egypt",
+                "text_template": (
+                    "By the pyramids tall {name} helps young Omar,\n"
+                    "{He_She} carries water jars from near and far.\n"
+                    "Together they laugh and share the heavy load,\n"
+                    "Helping hands make lighter every road!"
+                ),
+                "image_prompt_template": (
+                    "Semi-realistic watercolor portrait storybook illustration. "
+                    "White background with soft watercolor paint splashes at the corners. "
+                    "The child is the single hero subject, rendered with photographic facial accuracy "
+                    "(real face shape, skin tone, hair colour and texture). "
+                    "Child positioned slightly to the right of the frame, clear white space on the left side for text. "
+                    "A {age}-year-old {gender} child named {name} helping carry a clay water jar alongside an Egyptian boy friend Omar near the majestic pyramids and golden desert sands under a warm blue sky. "
+                    "Sun-baked golden warmth, archaeological wonder. Soft brush strokes, gold and sand palette. "
+                    "Professional premium children's book illustration quality. No text, no watermarks."
+                ),
+            },
+            {
+                "page_number": 11,
+                "profession_title": "All Friends Together",
+                "text_template": (
+                    "{name} calls all {his_her} friends across the miles,\n"
+                    "{He_She} sees their faces bright with laughing smiles.\n"
+                    "Though oceans wide and mountains tall divide,\n"
+                    "True friendship reaches every place worldwide!"
+                ),
+                "image_prompt_template": (
+                    "Semi-realistic watercolor portrait storybook illustration. "
+                    "White background with soft watercolor paint splashes at the corners. "
+                    "The child is the single hero subject, rendered with photographic facial accuracy "
+                    "(real face shape, skin tone, hair colour and texture). "
+                    "Child positioned slightly to the left of the frame, clear white space on the right side for text. "
+                    "A {age}-year-old {gender} child named {name} video-calling on a tablet, showing a screen with small portraits of diverse international friends all waving and smiling together, world map decorating the bedroom wall. "
+                    "Warm connected joy, global community. Soft brush strokes, cheerful multi-colour palette. "
+                    "Professional premium children's book illustration quality. No text, no watermarks."
+                ),
+            },
+            {
+                "page_number": 12,
+                "profession_title": "A Friend to the World",
+                "text_template": (
+                    "{name} has learned that kindness is the key,\n"
+                    "That every friend is special as can be.\n"
+                    "{He_She} opens {his_her} heart wherever {he_she} may roam,\n"
+                    "The whole wide world can feel just like a home!"
+                ),
+                "image_prompt_template": (
+                    "Semi-realistic watercolor portrait storybook illustration. "
+                    "White background with soft watercolor paint splashes at the corners. "
+                    "The child is the single hero subject, rendered with photographic facial accuracy "
+                    "(real face shape, skin tone, hair colour and texture). "
+                    "Child positioned slightly to the right of the frame, clear white space on the left side for text. "
+                    "A {age}-year-old {gender} child named {name} standing on top of a gently glowing globe, arms spread wide with joy, surrounded by small illustrated friends from different countries waving up from around the world. "
+                    "Uplifting, hopeful, globally united. Soft brush strokes, warm rainbow-accented palette. "
+                    "Professional premium children's book illustration quality. No text, no watermarks."
+                ),
+            },
+        ],
+    },
+    # ── Template 8: ABC Adventure ─────────────────────────────────────────────
+    {
+        "id": "a8888888-8888-8888-8888-888888888888",
+        "name": "{name} Meets the Alphabet",
+        "description": "An early-learning adventure where {name} meets a new letter friend on every page — from A for Ant to Z for Zebra!",
+        "cover_image": "https://images.pexels.com/photos/159581/dictionary-reference-book-learning-meaning-159581.jpeg?auto=compress&cs=tinysrgb&w=800",
+        "total_pages": 28,
+        "tags": ["Early Learning", "Alphabet"],
+        "age_range": "2 - 5",
+        "pages": [
+            {
+                "page_number": 1,
+                "profession_title": "Hello, Alphabet!",
+                "text_template": (
+                    "{name} opens a big colourful book today,\n"
+                    "{He_She} is ready to learn in every way.\n"
+                    "Twenty-six letters waiting just for {him_her},\n"
+                    "Let's meet them all — come along with {name}!"
+                ),
+                "image_prompt_template": (
+                    "Semi-realistic watercolor portrait storybook illustration. "
+                    "White background with soft watercolor paint splashes at the corners. "
+                    "The child is the single hero subject, rendered with photographic facial accuracy "
+                    "(real face shape, skin tone, hair colour and texture). "
+                    "Child positioned slightly to the left of the frame, clear white space on the right side for text. "
+                    "A {age}-year-old {gender} child named {name} sitting cross-legged, opening a giant colourful alphabet book, letters floating out magically around {name}, wide-eyed with delight. "
+                    "Magical learning atmosphere. Soft brush strokes, bright rainbow palette. "
+                    "Professional premium children's book illustration quality. No text, no watermarks."
+                ),
+            },
+            {
+                "page_number": 2,
+                "profession_title": "Letter A",
+                "text_template": (
+                    "A is for Ant so tiny and small,\n"
+                    "{name} watches it carry a crumb down the hall.\n"
+                    "Ants work together the whole day through,\n"
+                    "A, A, A — {name} loves ants too!"
+                ),
+                "image_prompt_template": (
+                    "Semi-realistic watercolor portrait storybook illustration. "
+                    "White background with soft watercolor paint splashes at the corners. "
+                    "The child is the single hero subject, rendered with photographic facial accuracy "
+                    "(real face shape, skin tone, hair colour and texture). "
+                    "Child positioned slightly to the right of the frame, clear white space on the left side for text. "
+                    "A {age}-year-old {gender} child named {name} crouching down on a garden path, peering with delight at a line of cheerful cartoon ants carrying crumbs, a giant letter A softly visible in the watercolor background. "
+                    "Warm garden greens. Soft brush strokes, fresh spring palette. "
+                    "Professional premium children's book illustration quality. No text, no watermarks."
+                ),
+            },
+            {
+                "page_number": 3,
+                "profession_title": "Letter B",
+                "text_template": (
+                    "B is for Bear big and fluffy and brown,\n"
+                    "{name} gives {his_her} bear a hug without a frown.\n"
+                    "Bears love honey and sleeping in caves,\n"
+                    "B, B, B — {name} always behaves!"
+                ),
+                "image_prompt_template": (
+                    "Semi-realistic watercolor portrait storybook illustration. "
+                    "White background with soft watercolor paint splashes at the corners. "
+                    "The child is the single hero subject, rendered with photographic facial accuracy "
+                    "(real face shape, skin tone, hair colour and texture). "
+                    "Child positioned slightly to the left of the frame, clear white space on the right side for text. "
+                    "A {age}-year-old {gender} child named {name} hugging a friendly round brown bear cub, both sitting in a sunny forest clearing with honeycomb details, a soft letter B watercolor wash in the background. "
+                    "Cosy forest warmth. Soft brush strokes, honey-brown palette. "
+                    "Professional premium children's book illustration quality. No text, no watermarks."
+                ),
+            },
+            {
+                "page_number": 4,
+                "profession_title": "Letter C",
+                "text_template": (
+                    "C is for Cat that purrs on the mat,\n"
+                    "{name} strokes {his_her} fur and {he_she} likes that.\n"
+                    "Cats curl up soft in the afternoon sun,\n"
+                    "C, C, C — cuddling is so fun!"
+                ),
+                "image_prompt_template": (
+                    "Semi-realistic watercolor portrait storybook illustration. "
+                    "White background with soft watercolor paint splashes at the corners. "
+                    "The child is the single hero subject, rendered with photographic facial accuracy "
+                    "(real face shape, skin tone, hair colour and texture). "
+                    "Child positioned slightly to the right of the frame, clear white space on the left side for text. "
+                    "A {age}-year-old {gender} child named {name} sitting on a cosy rug gently stroking an orange tabby cat purring in {name}'s lap, warm afternoon sunlight through a window, soft letter C in the watercolor background. "
+                    "Warm cosy home feeling. Soft brush strokes, amber and ginger palette. "
+                    "Professional premium children's book illustration quality. No text, no watermarks."
+                ),
+            },
+            {
+                "page_number": 5,
+                "profession_title": "Letter D",
+                "text_template": (
+                    "D is for Dog that wags {his_her} tail with glee,\n"
+                    "{name} runs across the garden wild and free.\n"
+                    "Dogs are loyal and playful every day,\n"
+                    "D, D, D — let's go outside and play!"
+                ),
+                "image_prompt_template": (
+                    "Semi-realistic watercolor portrait storybook illustration. "
+                    "White background with soft watercolor paint splashes at the corners. "
+                    "The child is the single hero subject, rendered with photographic facial accuracy "
+                    "(real face shape, skin tone, hair colour and texture). "
+                    "Child positioned slightly to the left of the frame, clear white space on the right side for text. "
+                    "A {age}-year-old {gender} child named {name} running joyfully across a green garden with a fluffy golden dog bounding beside {name}, both full of energy and happiness, soft letter D watercolor in background. "
+                    "Bright outdoor energy. Soft brush strokes, fresh green and gold palette. "
+                    "Professional premium children's book illustration quality. No text, no watermarks."
+                ),
+            },
+            {
+                "page_number": 6,
+                "profession_title": "Letter E",
+                "text_template": (
+                    "E is for Elephant grey and so tall,\n"
+                    "{name} marvels at the biggest of all.\n"
+                    "Elephants spray water up in the air,\n"
+                    "E, E, E — they are gentle and rare!"
+                ),
+                "image_prompt_template": (
+                    "Semi-realistic watercolor portrait storybook illustration. "
+                    "White background with soft watercolor paint splashes at the corners. "
+                    "The child is the single hero subject, rendered with photographic facial accuracy "
+                    "(real face shape, skin tone, hair colour and texture). "
+                    "Child positioned slightly to the right of the frame, clear white space on the left side for text. "
+                    "A {age}-year-old {gender} child named {name} standing beside a gentle baby elephant that is spraying a playful arc of water, savanna grasses and soft sky, letter E in the watercolor corner wash. "
+                    "Gentle awe and wonder. Soft brush strokes, warm grey and sky-blue palette. "
+                    "Professional premium children's book illustration quality. No text, no watermarks."
+                ),
+            },
+            {
+                "page_number": 7,
+                "profession_title": "Letter F",
+                "text_template": (
+                    "F is for Frog that leaps with a spring,\n"
+                    "{name} laughs at each hop and the splashing it brings.\n"
+                    "Frogs love lily pads, puddles and rain,\n"
+                    "F, F, F — let's count the hops again!"
+                ),
+                "image_prompt_template": (
+                    "Semi-realistic watercolor portrait storybook illustration. "
+                    "White background with soft watercolor paint splashes at the corners. "
+                    "The child is the single hero subject, rendered with photographic facial accuracy "
+                    "(real face shape, skin tone, hair colour and texture). "
+                    "Child positioned slightly to the left of the frame, clear white space on the right side for text. "
+                    "A {age}-year-old {gender} child named {name} sitting at the edge of a lily-pad pond, giggling as a cheerful bright green frog leaps between pads, water droplets catching the light, soft letter F watercolor wash. "
+                    "Playful pond freshness. Soft brush strokes, leafy green and aqua palette. "
+                    "Professional premium children's book illustration quality. No text, no watermarks."
+                ),
+            },
+            {
+                "page_number": 8,
+                "profession_title": "Letter G",
+                "text_template": (
+                    "G is for Giraffe with a neck so long,\n"
+                    "{name} cranes {his_her} neck and sings a silly song.\n"
+                    "Giraffes munch leaves at the very top,\n"
+                    "G, G, G — they never seem to stop!"
+                ),
+                "image_prompt_template": (
+                    "Semi-realistic watercolor portrait storybook illustration. "
+                    "White background with soft watercolor paint splashes at the corners. "
+                    "The child is the single hero subject, rendered with photographic facial accuracy "
+                    "(real face shape, skin tone, hair colour and texture). "
+                    "Child positioned slightly to the right of the frame, clear white space on the left side for text. "
+                    "A {age}-year-old {gender} child named {name} looking up in delight at a tall friendly giraffe munching leaves from an acacia treetop, savanna landscape, soft letter G watercolor in the background. "
+                    "Tall wonder and silliness. Soft brush strokes, golden savanna palette. "
+                    "Professional premium children's book illustration quality. No text, no watermarks."
+                ),
+            },
+            {
+                "page_number": 9,
+                "profession_title": "Letter H",
+                "text_template": (
+                    "H is for Horse that gallops along,\n"
+                    "{name} rides on {his_her} back feeling brave and strong.\n"
+                    "Horses toss manes in the warm summer breeze,\n"
+                    "H, H, H — {name} rides through the trees!"
+                ),
+                "image_prompt_template": (
+                    "Semi-realistic watercolor portrait storybook illustration. "
+                    "White background with soft watercolor paint splashes at the corners. "
+                    "The child is the single hero subject, rendered with photographic facial accuracy "
+                    "(real face shape, skin tone, hair colour and texture). "
+                    "Child positioned slightly to the left of the frame, clear white space on the right side for text. "
+                    "A {age}-year-old {gender} child named {name} sitting proudly on a gentle brown horse, riding through a sunny meadow with wild flowers, wind in {name}'s hair, soft letter H watercolor in background. "
+                    "Bold and brave joy. Soft brush strokes, chestnut and meadow green palette. "
+                    "Professional premium children's book illustration quality. No text, no watermarks."
+                ),
+            },
+            {
+                "page_number": 10,
+                "profession_title": "Letter I",
+                "text_template": (
+                    "I is for Igloo built of ice and snow,\n"
+                    "{name} peeks inside where warm lanterns glow.\n"
+                    "Igloos keep families cosy in the cold,\n"
+                    "I, I, I — what a story to be told!"
+                ),
+                "image_prompt_template": (
+                    "Semi-realistic watercolor portrait storybook illustration. "
+                    "White background with soft watercolor paint splashes at the corners. "
+                    "The child is the single hero subject, rendered with photographic facial accuracy "
+                    "(real face shape, skin tone, hair colour and texture). "
+                    "Child positioned slightly to the right of the frame, clear white space on the left side for text. "
+                    "A {age}-year-old {gender} child named {name} in a warm winter coat bending down to peek into the entrance of a cosy igloo, warm golden lantern light glowing inside, soft arctic blue surroundings, letter I watercolor wash. "
+                    "Cosy arctic wonder. Soft brush strokes, icy blue and warm gold palette. "
+                    "Professional premium children's book illustration quality. No text, no watermarks."
+                ),
+            },
+            {
+                "page_number": 11,
+                "profession_title": "Letter J",
+                "text_template": (
+                    "J is for Jellyfish floating so light,\n"
+                    "{name} watches them glow like lanterns at night.\n"
+                    "Jellyfish shimmer in purple and blue,\n"
+                    "J, J, J — what a beautiful view!"
+                ),
+                "image_prompt_template": (
+                    "Semi-realistic watercolor portrait storybook illustration. "
+                    "White background with soft watercolor paint splashes at the corners. "
+                    "The child is the single hero subject, rendered with photographic facial accuracy "
+                    "(real face shape, skin tone, hair colour and texture). "
+                    "Child positioned slightly to the left of the frame, clear white space on the right side for text. "
+                    "A {age}-year-old {gender} child named {name} floating underwater in a diving suit, gazing with wonder at glowing purple and blue jellyfish drifting around {name}, soft light beams from above, letter J watercolor wash. "
+                    "Magical underwater luminescence. Soft brush strokes, deep ocean blue and violet palette. "
+                    "Professional premium children's book illustration quality. No text, no watermarks."
+                ),
+            },
+            {
+                "page_number": 12,
+                "profession_title": "Letter K",
+                "text_template": (
+                    "K is for Kangaroo with a joey inside,\n"
+                    "{name} watches the little one peek out with pride.\n"
+                    "Kangaroos hop and hop without a stop,\n"
+                    "K, K, K — {name} bounces on top!"
+                ),
+                "image_prompt_template": (
+                    "Semi-realistic watercolor portrait storybook illustration. "
+                    "White background with soft watercolor paint splashes at the corners. "
+                    "The child is the single hero subject, rendered with photographic facial accuracy "
+                    "(real face shape, skin tone, hair colour and texture). "
+                    "Child positioned slightly to the right of the frame, clear white space on the left side for text. "
+                    "A {age}-year-old {gender} child named {name} crouching with delight beside a mother kangaroo in the Australian outback, a tiny joey peeking out from the pouch, red earth and eucalyptus trees behind, letter K watercolor wash. "
+                    "Warm outback wonder. Soft brush strokes, rust and dusty green palette. "
+                    "Professional premium children's book illustration quality. No text, no watermarks."
+                ),
+            },
+            {
+                "page_number": 13,
+                "profession_title": "Letter L",
+                "text_template": (
+                    "L is for Lion with a magnificent mane,\n"
+                    "{name} listens to {his_her} roar like rolling thunder and rain.\n"
+                    "Lions lead their pride with courage and care,\n"
+                    "L, L, L — leadership is rare!"
+                ),
+                "image_prompt_template": (
+                    "Semi-realistic watercolor portrait storybook illustration. "
+                    "White background with soft watercolor paint splashes at the corners. "
+                    "The child is the single hero subject, rendered with photographic facial accuracy "
+                    "(real face shape, skin tone, hair colour and texture). "
+                    "Child positioned slightly to the left of the frame, clear white space on the right side for text. "
+                    "A {age}-year-old {gender} child named {name} sitting confidently beside a majestic friendly lion on an African savanna rock, golden sunset sky behind them, letter L soft watercolor wash. "
+                    "Regal golden warmth. Soft brush strokes, golden lion mane palette. "
+                    "Professional premium children's book illustration quality. No text, no watermarks."
+                ),
+            },
+            {
+                "page_number": 14,
+                "profession_title": "Letter M",
+                "text_template": (
+                    "M is for Monkey swinging up high,\n"
+                    "{name} laughs as {he_she} reaches up toward the sky.\n"
+                    "Monkeys are cheeky and clever and bright,\n"
+                    "M, M, M — what a mischievous delight!"
+                ),
+                "image_prompt_template": (
+                    "Semi-realistic watercolor portrait storybook illustration. "
+                    "White background with soft watercolor paint splashes at the corners. "
+                    "The child is the single hero subject, rendered with photographic facial accuracy "
+                    "(real face shape, skin tone, hair colour and texture). "
+                    "Child positioned slightly to the right of the frame, clear white space on the left side for text. "
+                    "A {age}-year-old {gender} child named {name} laughing up at a cheeky brown monkey swinging on a jungle vine, {name} reaching up playfully, lush jungle canopy background, letter M watercolor wash. "
+                    "Playful jungle energy. Soft brush strokes, tropical green and brown palette. "
+                    "Professional premium children's book illustration quality. No text, no watermarks."
+                ),
+            },
+            {
+                "page_number": 15,
+                "profession_title": "Letter N",
+                "text_template": (
+                    "N is for Narwhal with a twirly horn,\n"
+                    "{name} waves as it swims since the early morn.\n"
+                    "Narwhals are the unicorns of the sea,\n"
+                    "N, N, N — as magical as can be!"
+                ),
+                "image_prompt_template": (
+                    "Semi-realistic watercolor portrait storybook illustration. "
+                    "White background with soft watercolor paint splashes at the corners. "
+                    "The child is the single hero subject, rendered with photographic facial accuracy "
+                    "(real face shape, skin tone, hair colour and texture). "
+                    "Child positioned slightly to the left of the frame, clear white space on the right side for text. "
+                    "A {age}-year-old {gender} child named {name} in a submarine porthole waving at a beautiful grey narwhal swimming past with its spiral horn glinting, deep arctic blue ocean, soft letter N watercolor wash. "
+                    "Magical arctic ocean. Soft brush strokes, deep blue and silver palette. "
+                    "Professional premium children's book illustration quality. No text, no watermarks."
+                ),
+            },
+            {
+                "page_number": 16,
+                "profession_title": "Letter O",
+                "text_template": (
+                    "O is for Octopus with eight wiggly arms,\n"
+                    "{name} counts every one with laughter and charms.\n"
+                    "Octopuses are clever and change colour too,\n"
+                    "O, O, O — what a trick to do!"
+                ),
+                "image_prompt_template": (
+                    "Semi-realistic watercolor portrait storybook illustration. "
+                    "White background with soft watercolor paint splashes at the corners. "
+                    "The child is the single hero subject, rendered with photographic facial accuracy "
+                    "(real face shape, skin tone, hair colour and texture). "
+                    "Child positioned slightly to the right of the frame, clear white space on the left side for text. "
+                    "A {age}-year-old {gender} child named {name} in snorkelling gear underwater, playfully counting the waving arms of a friendly purple and orange octopus, colourful coral reef background, letter O watercolor wash. "
+                    "Vivid underwater fun. Soft brush strokes, coral and ocean blue palette. "
+                    "Professional premium children's book illustration quality. No text, no watermarks."
+                ),
+            },
+            {
+                "page_number": 17,
+                "profession_title": "Letter P",
+                "text_template": (
+                    "P is for Penguin in a black and white suit,\n"
+                    "{name} waddles along — isn't that cute?\n"
+                    "Penguins slide on ice and huddle up tight,\n"
+                    "P, P, P — what a penguin delight!"
+                ),
+                "image_prompt_template": (
+                    "Semi-realistic watercolor portrait storybook illustration. "
+                    "White background with soft watercolor paint splashes at the corners. "
+                    "The child is the single hero subject, rendered with photographic facial accuracy "
+                    "(real face shape, skin tone, hair colour and texture). "
+                    "Child positioned slightly to the left of the frame, clear white space on the right side for text. "
+                    "A {age}-year-old {gender} child named {name} in a puffy winter jacket waddling beside a huddle of round penguins on an icy Antarctic shore, laughing and mimicking the penguin walk, soft letter P watercolor wash. "
+                    "Chilly penguin fun. Soft brush strokes, black, white and icy blue palette. "
+                    "Professional premium children's book illustration quality. No text, no watermarks."
+                ),
+            },
+            {
+                "page_number": 18,
+                "profession_title": "Letter Q",
+                "text_template": (
+                    "Q is for Queen bee that hums in the hive,\n"
+                    "{name} watches the buzzing bees come alive.\n"
+                    "Every bee has a job and a very big role,\n"
+                    "Q, Q, Q — teamwork makes them whole!"
+                ),
+                "image_prompt_template": (
+                    "Semi-realistic watercolor portrait storybook illustration. "
+                    "White background with soft watercolor paint splashes at the corners. "
+                    "The child is the single hero subject, rendered with photographic facial accuracy "
+                    "(real face shape, skin tone, hair colour and texture). "
+                    "Child positioned slightly to the right of the frame, clear white space on the left side for text. "
+                    "A {age}-year-old {gender} child named {name} wearing a beekeeper's hat, peering with wonder at a golden honeycomb hive with cheerful bees buzzing around, one large queen bee in the centre, soft letter Q watercolor wash. "
+                    "Sunny honey warmth. Soft brush strokes, golden amber and yellow palette. "
+                    "Professional premium children's book illustration quality. No text, no watermarks."
+                ),
+            },
+            {
+                "page_number": 19,
+                "profession_title": "Letter R",
+                "text_template": (
+                    "R is for Rabbit with ears fluffy and tall,\n"
+                    "{name} chases it gently across the back wall.\n"
+                    "Rabbits hop fast through the clover and grass,\n"
+                    "R, R, R — they're gone in a flash!"
+                ),
+                "image_prompt_template": (
+                    "Semi-realistic watercolor portrait storybook illustration. "
+                    "White background with soft watercolor paint splashes at the corners. "
+                    "The child is the single hero subject, rendered with photographic facial accuracy "
+                    "(real face shape, skin tone, hair colour and texture). "
+                    "Child positioned slightly to the left of the frame, clear white space on the right side for text. "
+                    "A {age}-year-old {gender} child named {name} in a garden gently chasing a fluffy white rabbit through tall clover and daisies, both mid-hop, flower details everywhere, soft letter R watercolor wash. "
+                    "Springtime garden delight. Soft brush strokes, soft green and white palette. "
+                    "Professional premium children's book illustration quality. No text, no watermarks."
+                ),
+            },
+            {
+                "page_number": 20,
+                "profession_title": "Letter S",
+                "text_template": (
+                    "S is for Shark that swims with a fin,\n"
+                    "{name} sees it and gives a wide brave grin.\n"
+                    "Sharks keep the ocean balanced and right,\n"
+                    "S, S, S — sharks are a beautiful sight!"
+                ),
+                "image_prompt_template": (
+                    "Semi-realistic watercolor portrait storybook illustration. "
+                    "White background with soft watercolor paint splashes at the corners. "
+                    "The child is the single hero subject, rendered with photographic facial accuracy "
+                    "(real face shape, skin tone, hair colour and texture). "
+                    "Child positioned slightly to the right of the frame, clear white space on the left side for text. "
+                    "A {age}-year-old {gender} child named {name} in a glass underwater submarine pod, gazing out with a brave grin at a magnificent great white shark swimming peacefully past, ocean blue surroundings, soft letter S watercolor wash. "
+                    "Ocean awe and bravery. Soft brush strokes, deep blue and silver palette. "
+                    "Professional premium children's book illustration quality. No text, no watermarks."
+                ),
+            },
+            {
+                "page_number": 21,
+                "profession_title": "Letter T",
+                "text_template": (
+                    "T is for Tiger striped orange and black,\n"
+                    "{name} spots {him_her} prowling and waves from the track.\n"
+                    "Tigers are powerful, graceful, and strong,\n"
+                    "T, T, T — {name} cheers them along!"
+                ),
+                "image_prompt_template": (
+                    "Semi-realistic watercolor portrait storybook illustration. "
+                    "White background with soft watercolor paint splashes at the corners. "
+                    "The child is the single hero subject, rendered with photographic facial accuracy "
+                    "(real face shape, skin tone, hair colour and texture). "
+                    "Child positioned slightly to the left of the frame, clear white space on the right side for text. "
+                    "A {age}-year-old {gender} child named {name} on a jungle observation platform waving at a magnificent Bengal tiger walking gracefully through tall orange and green grass below, letter T watercolor wash. "
+                    "Bold jungle power. Soft brush strokes, tiger orange and deep green palette. "
+                    "Professional premium children's book illustration quality. No text, no watermarks."
+                ),
+            },
+            {
+                "page_number": 22,
+                "profession_title": "Letter U",
+                "text_template": (
+                    "U is for Umbrella in the pattering rain,\n"
+                    "{name} jumps in every puddle again and again.\n"
+                    "Umbrellas keep us dry and bright and bold,\n"
+                    "U, U, U — the best story ever told!"
+                ),
+                "image_prompt_template": (
+                    "Semi-realistic watercolor portrait storybook illustration. "
+                    "White background with soft watercolor paint splashes at the corners. "
+                    "The child is the single hero subject, rendered with photographic facial accuracy "
+                    "(real face shape, skin tone, hair colour and texture). "
+                    "Child positioned slightly to the right of the frame, clear white space on the left side for text. "
+                    "A {age}-year-old {gender} child named {name} jumping gleefully into a large muddy puddle under a bright red umbrella in the rain, rain drops and splashes everywhere, letter U soft watercolor wash. "
+                    "Rainy day joy. Soft brush strokes, red umbrella and grey-blue rain palette. "
+                    "Professional premium children's book illustration quality. No text, no watermarks."
+                ),
+            },
+            {
+                "page_number": 23,
+                "profession_title": "Letter V",
+                "text_template": (
+                    "V is for Vulture soaring up so high,\n"
+                    "{name} shields {his_her} eyes to watch it in the sky.\n"
+                    "Vultures clean the land and keep it well,\n"
+                    "V, V, V — what stories they could tell!"
+                ),
+                "image_prompt_template": (
+                    "Semi-realistic watercolor portrait storybook illustration. "
+                    "White background with soft watercolor paint splashes at the corners. "
+                    "The child is the single hero subject, rendered with photographic facial accuracy "
+                    "(real face shape, skin tone, hair colour and texture). "
+                    "Child positioned slightly to the left of the frame, clear white space on the right side for text. "
+                    "A {age}-year-old {gender} child named {name} on a sunny hilltop shading {name}'s eyes to watch a wide-winged vulture circling majestically in the blue sky above, golden rolling hills below, letter V watercolor wash. "
+                    "Open sky wonder. Soft brush strokes, sky blue and golden hill palette. "
+                    "Professional premium children's book illustration quality. No text, no watermarks."
+                ),
+            },
+            {
+                "page_number": 24,
+                "profession_title": "Letter W",
+                "text_template": (
+                    "W is for Whale the biggest of all,\n"
+                    "{name} hears {his_her} song like an ocean-wide call.\n"
+                    "Whales sing to each other across the deep blue,\n"
+                    "W, W, W — {name} sings too!"
+                ),
+                "image_prompt_template": (
+                    "Semi-realistic watercolor portrait storybook illustration. "
+                    "White background with soft watercolor paint splashes at the corners. "
+                    "The child is the single hero subject, rendered with photographic facial accuracy "
+                    "(real face shape, skin tone, hair colour and texture). "
+                    "Child positioned slightly to the right of the frame, clear white space on the left side for text. "
+                    "A {age}-year-old {gender} child named {name} on the bow of a small sailing boat, mouth open in joyful song, beside an enormous friendly blue whale surfacing and spouting a rainbow arc of water, letter W watercolor wash. "
+                    "Ocean grandeur and joy. Soft brush strokes, ocean blue and white palette. "
+                    "Professional premium children's book illustration quality. No text, no watermarks."
+                ),
+            },
+            {
+                "page_number": 25,
+                "profession_title": "Letter X",
+                "text_template": (
+                    "X marks the spot on a treasure map bright,\n"
+                    "{name} digs up a chest in the golden sunlight.\n"
+                    "X is the letter that marks something grand,\n"
+                    "X, X, X — treasures across every land!"
+                ),
+                "image_prompt_template": (
+                    "Semi-realistic watercolor portrait storybook illustration. "
+                    "White background with soft watercolor paint splashes at the corners. "
+                    "The child is the single hero subject, rendered with photographic facial accuracy "
+                    "(real face shape, skin tone, hair colour and texture). "
+                    "Child positioned slightly to the left of the frame, clear white space on the right side for text. "
+                    "A {age}-year-old {gender} child named {name} digging excitedly on a sandy beach, a treasure map with an X in {name}'s hand, an old wooden chest just unearthed, golden coins glinting, letter X soft watercolor wash. "
+                    "Adventure and discovery. Soft brush strokes, golden sand and treasure palette. "
+                    "Professional premium children's book illustration quality. No text, no watermarks."
+                ),
+            },
+            {
+                "page_number": 26,
+                "profession_title": "Letter Y",
+                "text_template": (
+                    "Y is for Yak all shaggy and wide,\n"
+                    "{name} pats {his_her} thick coat and rides by {his_her} side.\n"
+                    "Yaks carry loads over mountain and snow,\n"
+                    "Y, Y, Y — how far they can go!"
+                ),
+                "image_prompt_template": (
+                    "Semi-realistic watercolor portrait storybook illustration. "
+                    "White background with soft watercolor paint splashes at the corners. "
+                    "The child is the single hero subject, rendered with photographic facial accuracy "
+                    "(real face shape, skin tone, hair colour and texture). "
+                    "Child positioned slightly to the right of the frame, clear white space on the left side for text. "
+                    "A {age}-year-old {gender} child named {name} bundled in warm mountain clothes patting the thick shaggy coat of a friendly yak on a snowy Himalayan mountain path, misty peaks behind, letter Y watercolor wash. "
+                    "High altitude warmth. Soft brush strokes, snow white and deep brown palette. "
+                    "Professional premium children's book illustration quality. No text, no watermarks."
+                ),
+            },
+            {
+                "page_number": 27,
+                "profession_title": "Letter Z",
+                "text_template": (
+                    "Z is for Zebra with stripes black and white,\n"
+                    "{name} counts every stripe from morning to night.\n"
+                    "No two zebras have the same pattern at all,\n"
+                    "Z, Z, Z — {name} is unique like them all!"
+                ),
+                "image_prompt_template": (
+                    "Semi-realistic watercolor portrait storybook illustration. "
+                    "White background with soft watercolor paint splashes at the corners. "
+                    "The child is the single hero subject, rendered with photographic facial accuracy "
+                    "(real face shape, skin tone, hair colour and texture). "
+                    "Child positioned slightly to the left of the frame, clear white space on the right side for text. "
+                    "A {age}-year-old {gender} child named {name} standing beside a beautiful zebra in the golden savanna, carefully counting the black and white stripes with one finger, looking thoughtful and amazed, letter Z watercolor wash. "
+                    "Unique pattern wonder. Soft brush strokes, black, white and golden savanna palette. "
+                    "Professional premium children's book illustration quality. No text, no watermarks."
+                ),
+            },
+            {
+                "page_number": 28,
+                "profession_title": "The Whole Alphabet!",
+                "text_template": (
+                    "{name} has met every letter from A to Z,\n"
+                    "{He_She} knows all the alphabet now — hooray!\n"
+                    "Letters are friends that help us to read and say,\n"
+                    "All the wonderful words we use every day!"
+                ),
+                "image_prompt_template": (
+                    "Semi-realistic watercolor portrait storybook illustration. "
+                    "White background with soft watercolor paint splashes at the corners. "
+                    "The child is the single hero subject, rendered with photographic facial accuracy "
+                    "(real face shape, skin tone, hair colour and texture). "
+                    "Child positioned slightly to the right of the frame, clear white space on the left side for text. "
+                    "A {age}-year-old {gender} child named {name} standing triumphantly holding a banner reading the alphabet, surrounded by all 26 animal friends from the book arranged in a joyful crowd, confetti and letters floating everywhere. "
+                    "Grand celebratory finale. Soft brush strokes, bright rainbow celebration palette. "
+                    "Professional premium children's book illustration quality. No text, no watermarks."
+                ),
+            },
+        ],
+    },
 ]
 
 
@@ -798,6 +1875,8 @@ def get_available_templates() -> List[Dict]:
             "description": t.get("description", ""),
             "cover_image": t.get("cover_image", ""),
             "total_pages": t.get("total_pages", len(t.get("pages", []))),
+            "tags": t.get("tags", []),
+            "age_range": t.get("age_range", ""),
         }
         for t in DEFAULT_TEMPLATES
     ]
@@ -829,7 +1908,7 @@ def render_template_book_form():
         st.write(f"**Templates found:** {len(templates)}")
         for t in templates:
             st.write(f"- {t.get('name', 'Unknown')} (ID: {t.get('id', 'N/A')}, Pages: {t.get('total_pages', 'N/A')})")
-        st.caption("Expected: 5 templates (When I Grow Up, Snow White, Cricket, Cinderella, Sports Day)")
+        st.caption("Expected: 8 templates (When I Grow Up, Snow White, Cricket, Cinderella, Sports Day, Space Adventure, World of Friends, ABC)")
         st.caption("Templates are built-in — no database seeding required.")
 
     if not templates:
@@ -844,7 +1923,7 @@ def render_template_book_form():
         st.session_state.selected_template_id = None
         st.session_state.selected_template_name = None
 
-    # Display templates in a grid (3 columns, wraps to next row)
+    # Display templates in a Diffrun-style card grid (3 columns, wraps to next row)
     num_cols = 3
     for row_start in range(0, len(templates), num_cols):
         cols = st.columns(num_cols)
@@ -853,44 +1932,92 @@ def render_template_book_form():
             if idx < len(templates):
                 tmpl = templates[idx]
                 with col:
-                    # Card-like container with border
+                    is_selected = st.session_state.selected_template_id == tmpl.get("id")
+                    total_pages = tmpl.get("total_pages") or tmpl.get("page_count") or 0
+                    tags = tmpl.get("tags", [])
+                    age_range = tmpl.get("age_range", "")
+                    cover_img = tmpl.get("cover_image", "")
+                    desc = tmpl.get("description", "")
+                    if len(desc) > 100:
+                        desc = desc[:97] + "..."
+
+                    # Build badge HTML for tags and pages
+                    badge_html = ""
+                    if age_range:
+                        badge_html += (
+                            f'<span style="background:#FFF3E0;color:#E65100;border-radius:999px;'
+                            f'padding:2px 10px;font-size:11px;font-weight:600;margin-right:4px;">'
+                            f'Ages {age_range}</span>'
+                        )
+                    for tag in tags:
+                        badge_html += (
+                            f'<span style="background:#FCE4EC;color:#AD1457;border-radius:999px;'
+                            f'padding:2px 10px;font-size:11px;font-weight:600;margin-right:4px;">'
+                            f'{tag}</span>'
+                        )
+                    if total_pages:
+                        badge_html += (
+                            f'<span style="background:#E3F2FD;color:#1565C0;border-radius:999px;'
+                            f'padding:2px 10px;font-size:11px;font-weight:600;margin-right:4px;">'
+                            f'{total_pages} pages</span>'
+                        )
+
+                    border_color = "#4A90E2" if is_selected else "#e8e8e8"
+                    shadow = "0 4px 16px rgba(74,144,226,0.18)" if is_selected else "0 2px 8px rgba(0,0,0,0.07)"
+
                     st.markdown(
                         f"""
                         <div style="
-                            border: 2px solid #e0e0e0;
-                            border-radius: 10px;
-                            padding: 15px;
-                            margin-bottom: 15px;
-                            background-color: {'#f0f8ff' if st.session_state.selected_template_id == tmpl.get('id') else '#ffffff'};
+                            border: 2px solid {border_color};
+                            border-radius: 16px;
+                            overflow: hidden;
+                            margin-bottom: 20px;
+                            background: #fff;
+                            box-shadow: {shadow};
                         ">
                         """,
                         unsafe_allow_html=True,
                     )
 
-                    # Display cover image if available
-                    cover_img = tmpl.get("cover_image", "")
                     if cover_img:
                         st.image(cover_img, use_container_width=True)
 
-                    st.markdown(f"#### {tmpl.get('name', 'Template')}")
-                    desc = tmpl.get("description", "")
-                    # Truncate long descriptions
-                    if len(desc) > 100:
-                        desc = desc[:97] + "..."
-                    st.caption(desc)
-                    total_pages = tmpl.get("total_pages") or tmpl.get("page_count") or 0
-                    if total_pages:
-                        st.markdown(f"📄 **{total_pages} pages**")
-                    if st.button(
-                        "✨ Use This Template",
-                        key=f"use_template_{tmpl.get('id')}",
-                        use_container_width=True,
-                        type="primary" if st.session_state.selected_template_id == tmpl.get("id") else "secondary",
-                    ):
-                        st.session_state.selected_template_id = tmpl.get("id")
-                        st.session_state.selected_template_name = tmpl.get("name")
-                        st.session_state.scroll_to_details = True
-                        st.rerun()
+                    st.markdown(
+                        f"""
+                        <div style="padding: 14px 14px 4px 14px;">
+                            <div style="margin-bottom:8px;">{badge_html}</div>
+                            <div style="font-size:17px;font-weight:700;color:#1a1a2e;margin-bottom:6px;line-height:1.3;">
+                                {tmpl.get('name', 'Template')}
+                            </div>
+                            <div style="font-size:13px;color:#555;margin-bottom:10px;line-height:1.5;">
+                                {desc}
+                            </div>
+                            <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+                                <span style="font-size:20px;font-weight:800;color:#1a1a2e;">&#8377;300</span>
+                                <span style="background:#E8F5E9;color:#2E7D32;border-radius:999px;padding:2px 9px;font-size:11px;font-weight:700;">10% off</span>
+                                <span style="font-size:13px;color:#aaa;text-decoration:line-through;">&#8377;333</span>
+                            </div>
+                            <div style="font-size:12px;color:#7B5EA7;margin-bottom:12px;">
+                                &#10024; Add your child's photo to star in every page!
+                            </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
+                    btn_col, _ = st.columns([4, 1])
+                    with btn_col:
+                        if st.button(
+                            "Personalize →",
+                            key=f"use_template_{tmpl.get('id')}",
+                            use_container_width=True,
+                            type="primary",
+                        ):
+                            st.session_state.selected_template_id = tmpl.get("id")
+                            st.session_state.selected_template_name = tmpl.get("name")
+                            st.session_state.scroll_to_details = True
+                            st.rerun()
+
                     st.markdown("</div>", unsafe_allow_html=True)
 
     if not st.session_state.selected_template_id:
@@ -1016,6 +2143,53 @@ def render_template_book_form():
         for i, (col, photo) in enumerate(zip(photo_cols, photos)):
             with col:
                 st.image(photo, caption=f"Photo {i + 1}", use_container_width=True)
+
+    # Photo-to-hero demo panel
+    st.markdown(
+        """
+        <div style="
+            background: linear-gradient(135deg, #f8f0ff 0%, #e8f4fd 100%);
+            border-radius: 16px;
+            padding: 24px 28px;
+            margin: 16px 0 20px 0;
+            display: flex;
+            align-items: center;
+            gap: 0;
+        ">
+            <div style="display:flex;align-items:center;justify-content:center;gap:24px;width:100%;">
+                <div style="text-align:center;">
+                    <div style="
+                        width: 90px; height: 90px;
+                        border: 3px dashed #9B59B6;
+                        border-radius: 50%;
+                        display: flex; align-items: center; justify-content: center;
+                        background: #fff;
+                        margin: 0 auto 8px auto;
+                        font-size: 32px;
+                    ">&#128247;</div>
+                    <div style="font-size:13px;color:#555;font-weight:600;">Your child's photo</div>
+                </div>
+                <div style="font-size:28px;color:#9B59B6;font-weight:700;padding: 0 8px;">&#8594;</div>
+                <div style="text-align:center;">
+                    <div style="
+                        width: 90px; height: 90px;
+                        border: 3px solid #F1C40F;
+                        border-radius: 50%;
+                        display: flex; align-items: center; justify-content: center;
+                        background: #fffde7;
+                        margin: 0 auto 8px auto;
+                        font-size: 32px;
+                    ">&#11088;</div>
+                    <div style="font-size:13px;color:#555;font-weight:600;">Becomes the hero!</div>
+                </div>
+            </div>
+        </div>
+        <div style="text-align:center;font-size:13px;color:#7B5EA7;margin-bottom:16px;">
+            Upload your child's photo and watch them become the star of every page
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     st.markdown("---")
 

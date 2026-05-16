@@ -27,7 +27,12 @@ else:
 logger = logging.getLogger(__name__)
 
 FREE_IMAGES_PER_BOOK = 3
-PRICE_PER_PAGE_INR = 15
+PRICE_PER_PAGE_INR = 15  # kept for legacy per-page calc
+
+# Flat pricing
+CUSTOM_BOOK_PRICE_INR = 1100   # wizard-generated custom book with AI images
+TEMPLATE_BOOK_PRICE_INR = 300  # template book (pre-designed)
+
 CF_API_VERSION = "2023-08-01"
 
 
@@ -112,6 +117,14 @@ def book_price_inr(page_count: int) -> int:
 
 def book_price_paise(page_count: int) -> int:
     return book_price_inr(page_count) * 100
+
+
+def custom_book_price_inr() -> int:
+    return CUSTOM_BOOK_PRICE_INR
+
+
+def template_book_price_inr() -> int:
+    return TEMPLATE_BOOK_PRICE_INR
 
 
 def user_can_afford_book(user_id: str, page_count: int) -> bool:

@@ -2974,6 +2974,7 @@ def main():
             # ── Paywall / free tier check ──────────────────────────────────────
             from payments import (
                 FREE_IMAGES_PER_BOOK, book_price_inr, book_price_paise,
+                custom_book_price_inr, template_book_price_inr,
                 get_user_balance_inr, user_can_afford_book,
                 create_payment_link, confirm_payment_and_credit,
                 is_cashfree_configured,
@@ -2990,7 +2991,7 @@ def main():
             )
 
             if needs_payment and not user_can_afford_book(user_id_pay, total_pages):
-                price_inr = book_price_inr(total_pages)
+                price_inr = custom_book_price_inr()
                 balance_inr = get_user_balance_inr(user_id_pay)
                 st.divider()
                 st.markdown(
@@ -2998,8 +2999,7 @@ def main():
                 )
                 st.info(
                     f"You've used your **{FREE_IMAGES_PER_BOOK} free images**. "
-                    f"Generate the full {total_pages}-page book for **₹{price_inr}** "
-                    f"({total_pages} pages × ₹15)."
+                    f"Generate the full {total_pages}-page personalized storybook for **₹1,100**."
                 )
                 if balance_inr > 0:
                     st.caption(f"Your current balance: ₹{balance_inr:.2f}")
@@ -3026,11 +3026,11 @@ def main():
                             st.markdown(f"[Open payment page]({pending_url})", unsafe_allow_html=False)
                     else:
                         user_email = (st.session_state.get("auth_user") or {}).get("email", "user@example.com")
-                        if st.button(f"💳 Pay ₹{price_inr} to unlock all images", type="primary", use_container_width=True):
+                        if st.button(f"💳 Pay ₹1,100 to unlock all images", type="primary", use_container_width=True):
                             with st.spinner("Creating payment link..."):
                                 result = create_payment_link(
                                     user_id_pay, user_email, price_inr,
-                                    f"{total_pages}-page children's book"
+                                    f"{total_pages}-page personalized storybook"
                                 )
                             if result:
                                 st.session_state.pending_payment_link_id = result["link_id"]
