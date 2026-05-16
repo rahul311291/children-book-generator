@@ -108,14 +108,15 @@ def _send_otp_email(to_email: str, otp: str, child_name: str = "") -> bool:
         return False
 
 
-def send_otp(email: str) -> bool:
-    """Generate OTP, store it, and email it. Returns True on success."""
+def send_otp(email: str) -> tuple[bool, str]:
+    """Generate OTP, store it, and email it. Returns (email_sent, otp_code)."""
     try:
         otp = _generate_and_store_otp(email)
-        return _send_otp_email(email, otp)
+        sent = _send_otp_email(email, otp)
+        return sent, otp
     except Exception as e:
         logger.error(f"send_otp error: {e}")
-        return False
+        return False, ""
 
 
 def verify_otp(email: str, otp: str) -> bool:
@@ -272,12 +273,14 @@ def sign_up(email: str, password: str) -> bool:
         # Non-admin: require OTP verification
         st.session_state.otp_pending_email = email
         st.session_state.otp_last_sent_at = datetime.utcnow()
-        sent = send_otp(email)
+        sent, otp_code = send_otp(email)
         if sent:
             st.session_state.auth_success = f"Account created! A 6-digit code was sent to {email}."
         else:
+            # Email not configured — show the code directly so user can proceed
             st.session_state.auth_success = (
-                "Account created! Email delivery failed — check GMAIL_USER/GMAIL_APP_PASSWORD config."
+                f"Account created! Email delivery is not configured. "
+                f"Your verification code is: **{otp_code}**"
             )
         return True
     except Exception as e:
@@ -305,9 +308,15 @@ def sign_in(email: str, password: str) -> bool:
         if not user.get("email_verified", False):
             st.session_state.otp_pending_email = email
             st.session_state.otp_last_sent_at = datetime.utcnow()
-            send_otp(email)
+            sent, otp_code = send_otp(email)
             st.session_state.auth_error = None
-            st.session_state.auth_success = f"Please verify your email — a code was sent to {email}."
+            if sent:
+                st.session_state.auth_success = f"Please verify your email — a code was sent to {email}."
+            else:
+                st.session_state.auth_success = (
+                    f"Please verify your email. Email delivery is not configured. "
+                    f"Your verification code is: **{otp_code}**"
+                )
             return False  # Not yet authenticated; OTP screen will handle next step
         user_id = str(user["_id"])
         _load_user_into_session(user_id, email, user)
@@ -316,6 +325,28 @@ def sign_in(email: str, password: str) -> bool:
         st.session_state.auth_error = f"Login failed: {e}"
         logger.error(f"Sign in error: {e}")
         return False
+
+
+def get_admin_vertex_config() -> dict:
+    """Return the Vertex AI credentials stored for the admin account (used as shared fallback)."""
+    try:
+        for admin_email in ADMIN_EMAILS:
+            admin = _users().find_one(
+                {"email": admin_email},
+                {"vertex_project_id": 1, "vertex_location": 1, "vertex_sa_json": 1,
+                 "gemini_api_key": 1, "openrouter_api_key": 1},
+            )
+            if admin and admin.get("vertex_sa_json"):
+                return {
+                    "project_id": admin.get("vertex_project_id", ""),
+                    "location": admin.get("vertex_location", "us-central1"),
+                    "sa_json": admin.get("vertex_sa_json", ""),
+                    "gemini_api_key": admin.get("gemini_api_key", ""),
+                    "openrouter_api_key": admin.get("openrouter_api_key", ""),
+                }
+    except Exception as e:
+        logger.warning(f"Could not load admin Vertex config: {e}")
+    return {}
 
 
 def _load_user_into_session(user_id: str, email: str, user: dict):
@@ -334,6 +365,22 @@ def _load_user_into_session(user_id: str, email: str, user: dict):
         st.session_state.vertex_location = user["vertex_location"]
     if user.get("vertex_sa_json"):
         st.session_state.vertex_sa_json = user["vertex_sa_json"]
+
+    # For non-admin users with no Vertex config, fall back to admin's shared credentials
+    if email not in ADMIN_EMAILS and not user.get("vertex_sa_json"):
+        admin_cfg = get_admin_vertex_config()
+        if admin_cfg:
+            if not st.session_state.get("vertex_project_id") and admin_cfg.get("project_id"):
+                st.session_state.vertex_project_id = admin_cfg["project_id"]
+            if not st.session_state.get("vertex_location"):
+                st.session_state.vertex_location = admin_cfg.get("location", "us-central1")
+            if not st.session_state.get("vertex_sa_json") and admin_cfg.get("sa_json"):
+                st.session_state.vertex_sa_json = admin_cfg["sa_json"]
+            if not st.session_state.get("api_key") and admin_cfg.get("gemini_api_key"):
+                st.session_state.api_key = admin_cfg["gemini_api_key"]
+            if not st.session_state.get("openrouter_api_key") and admin_cfg.get("openrouter_api_key"):
+                st.session_state.openrouter_api_key = admin_cfg["openrouter_api_key"]
+
     st.session_state._pending_session_token = _create_session_token(user_id)
 
 
@@ -491,9 +538,14 @@ def render_otp_page():
         )
         if can_resend:
             if st.button("Resend code", use_container_width=True):
-                sent = send_otp(email)
+                sent, otp_code = send_otp(email)
                 st.session_state.otp_last_sent_at = datetime.utcnow()
-                st.session_state.auth_success = "A new code was sent." if sent else "Failed to send email — check server config."
+                if sent:
+                    st.session_state.auth_success = "A new code was sent."
+                else:
+                    st.session_state.auth_success = (
+                        f"Email delivery not configured. Your code is: **{otp_code}**"
+                    )
                 st.rerun()
         else:
             remaining = 60 - int((datetime.utcnow() - last_sent).total_seconds())

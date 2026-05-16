@@ -790,7 +790,7 @@ DEFAULT_TEMPLATES: List[Dict] = [
         "id": "a6666666-6666-6666-6666-666666666666",
         "name": "{name}'s Space Adventure",
         "description": "Blast off on an intergalactic journey! {name} explores the Moon, Mars, Saturn's rings, meets alien friends, and returns home a hero.",
-        "cover_image": "https://images.pexels.com/photos/2166/flight-sky-earth-space.jpg?auto=compress&cs=tinysrgb&w=800",
+        "cover_image": "https://images.pexels.com/photos/1169754/pexels-photo-1169754.jpeg?auto=compress&cs=tinysrgb&w=800",
         "total_pages": 12,
         "tags": ["Adventure", "Sci-Fi"],
         "age_range": "4 - 10",
@@ -1043,7 +1043,7 @@ DEFAULT_TEMPLATES: List[Dict] = [
         "id": "a7777777-7777-7777-7777-777777777777",
         "name": "{name}'s World of Friends",
         "description": "A heartwarming journey where {name} travels the globe meeting friends from different cultures, learning about sharing, kindness, bravery, and gratitude.",
-        "cover_image": "https://images.pexels.com/photos/1648387/pexels-photo-1648387.jpeg?auto=compress&cs=tinysrgb&w=800",
+        "cover_image": "https://images.pexels.com/photos/296301/pexels-photo-296301.jpeg?auto=compress&cs=tinysrgb&w=800",
         "total_pages": 12,
         "tags": ["Friendship", "Emotions"],
         "age_range": "3 - 7",
@@ -1295,7 +1295,7 @@ DEFAULT_TEMPLATES: List[Dict] = [
         "id": "a8888888-8888-8888-8888-888888888888",
         "name": "{name} Meets the Alphabet",
         "description": "An early-learning adventure where {name} meets a new letter friend on every page — from A for Ant to Z for Zebra!",
-        "cover_image": "https://images.pexels.com/photos/159581/dictionary-reference-book-learning-meaning-159581.jpeg?auto=compress&cs=tinysrgb&w=800",
+        "cover_image": "https://images.pexels.com/photos/1148998/pexels-photo-1148998.jpeg?auto=compress&cs=tinysrgb&w=800",
         "total_pages": 28,
         "tags": ["Early Learning", "Alphabet"],
         "age_range": "2 - 5",
@@ -1979,8 +1979,16 @@ def render_template_book_form():
                         unsafe_allow_html=True,
                     )
 
-                    if cover_img:
-                        st.image(cover_img, use_container_width=True)
+                    # Fixed-height cover image so all cards align
+                    img_html = (
+                        f'<div style="height:200px;overflow:hidden;background:#f0f4f8;">'
+                        f'<img src="{cover_img}" style="width:100%;height:100%;object-fit:cover;display:block;" />'
+                        f'</div>'
+                    ) if cover_img else (
+                        '<div style="height:200px;background:linear-gradient(135deg,#FFE0F0,#E0F0FF);'
+                        'display:flex;align-items:center;justify-content:center;font-size:48px;">📖</div>'
+                    )
+                    st.markdown(img_html, unsafe_allow_html=True)
 
                     st.markdown(
                         f"""
@@ -1993,9 +2001,9 @@ def render_template_book_form():
                                 {desc}
                             </div>
                             <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
-                                <span style="font-size:20px;font-weight:800;color:#1a1a2e;">&#8377;300</span>
+                                <span style="font-size:20px;font-weight:800;color:#1a1a2e;">&#8377;500</span>
                                 <span style="background:#E8F5E9;color:#2E7D32;border-radius:999px;padding:2px 9px;font-size:11px;font-weight:700;">10% off</span>
-                                <span style="font-size:13px;color:#aaa;text-decoration:line-through;">&#8377;333</span>
+                                <span style="font-size:13px;color:#aaa;text-decoration:line-through;">&#8377;556</span>
                             </div>
                             <div style="font-size:12px;color:#7B5EA7;margin-bottom:12px;">
                                 &#10024; Add your child's photo to star in every page!

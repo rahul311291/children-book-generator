@@ -6,6 +6,10 @@ enableXsrfProtection = false
 [browser]
 gatherUsageStats = false
 
+[client]
+toolbarMode = "minimal"
+showErrorDetails = false
+
 [theme]
 primaryColor = "#FF6B6B"
 backgroundColor = "#FFFFFF"
