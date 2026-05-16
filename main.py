@@ -3017,7 +3017,6 @@ def main():
                 create_payment_link, confirm_payment_and_credit,
                 is_cashfree_configured,
             )
-            from auth import ADMIN_EMAILS
             user_id_pay = get_current_user_id()
             _current_user_email = (st.session_state.get("auth_user") or {}).get("email", "")
             _is_admin_user = _current_user_email in ADMIN_EMAILS
