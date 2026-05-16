@@ -108,14 +108,15 @@ def _send_otp_email(to_email: str, otp: str, child_name: str = "") -> bool:
         return False
 
 
-def send_otp(email: str) -> bool:
-    """Generate OTP, store it, and email it. Returns True on success."""
+def send_otp(email: str) -> tuple[bool, str]:
+    """Generate OTP, store it, and email it. Returns (email_sent, otp_code)."""
     try:
         otp = _generate_and_store_otp(email)
-        return _send_otp_email(email, otp)
+        sent = _send_otp_email(email, otp)
+        return sent, otp
     except Exception as e:
         logger.error(f"send_otp error: {e}")
-        return False
+        return False, ""
 
 
 def verify_otp(email: str, otp: str) -> bool:
@@ -272,12 +273,14 @@ def sign_up(email: str, password: str) -> bool:
         # Non-admin: require OTP verification
         st.session_state.otp_pending_email = email
         st.session_state.otp_last_sent_at = datetime.utcnow()
-        sent = send_otp(email)
+        sent, otp_code = send_otp(email)
         if sent:
             st.session_state.auth_success = f"Account created! A 6-digit code was sent to {email}."
         else:
+            # Email not configured — show the code directly so user can proceed
             st.session_state.auth_success = (
-                "Account created! Email delivery failed — check GMAIL_USER/GMAIL_APP_PASSWORD config."
+                f"Account created! Email delivery is not configured. "
+                f"Your verification code is: **{otp_code}**"
             )
         return True
     except Exception as e:
@@ -305,9 +308,15 @@ def sign_in(email: str, password: str) -> bool:
         if not user.get("email_verified", False):
             st.session_state.otp_pending_email = email
             st.session_state.otp_last_sent_at = datetime.utcnow()
-            send_otp(email)
+            sent, otp_code = send_otp(email)
             st.session_state.auth_error = None
-            st.session_state.auth_success = f"Please verify your email — a code was sent to {email}."
+            if sent:
+                st.session_state.auth_success = f"Please verify your email — a code was sent to {email}."
+            else:
+                st.session_state.auth_success = (
+                    f"Please verify your email. Email delivery is not configured. "
+                    f"Your verification code is: **{otp_code}**"
+                )
             return False  # Not yet authenticated; OTP screen will handle next step
         user_id = str(user["_id"])
         _load_user_into_session(user_id, email, user)
@@ -491,9 +500,14 @@ def render_otp_page():
         )
         if can_resend:
             if st.button("Resend code", use_container_width=True):
-                sent = send_otp(email)
+                sent, otp_code = send_otp(email)
                 st.session_state.otp_last_sent_at = datetime.utcnow()
-                st.session_state.auth_success = "A new code was sent." if sent else "Failed to send email — check server config."
+                if sent:
+                    st.session_state.auth_success = "A new code was sent."
+                else:
+                    st.session_state.auth_success = (
+                        f"Email delivery not configured. Your code is: **{otp_code}**"
+                    )
                 st.rerun()
         else:
             remaining = 60 - int((datetime.utcnow() - last_sent).total_seconds())
