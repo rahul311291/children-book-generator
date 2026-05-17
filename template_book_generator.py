@@ -2267,6 +2267,14 @@ def generate_template_book(api_key: str, book_data: Dict):
         age_group = _age_to_group(age)
         use_shared_pool = not bool(reference_image_base64)  # only share generic images
 
+        # Payment gate: non-admin users get 3 free images, then must pay
+        from auth import ADMIN_EMAILS
+        from payments import FREE_IMAGES_PER_BOOK, template_book_price_inr
+        _current_email = st.session_state.get("auth_user", {}).get("email", "")
+        _is_admin = _current_email in ADMIN_EMAILS
+        book_paid = st.session_state.get("current_book_payment_status") == "paid"
+        gen_limit = total_pages if (_is_admin or book_paid) else FREE_IMAGES_PER_BOOK
+
         for idx, page in enumerate(pages):
             status_text.text(f"Generating page {idx + 1} of {total_pages}: {page['profession_title']}")
 
@@ -2280,13 +2288,22 @@ def generate_template_book(api_key: str, book_data: Dict):
             if use_shared_pool:
                 image_url = get_shared_pool_image(template_id, page['page_number'], age_group, gender)
                 if image_url:
-                    status_text.text(f"♻️ Reusing cached image for page {idx + 1} of {total_pages}: {page['profession_title']}")
+                    status_text.text(f"Reusing cached image for page {idx + 1} of {total_pages}: {page['profession_title']}")
 
             if not image_url:
-                image_url = generate_page_image(api_key, personalized_image_prompt, reference_image_base64, openrouter_key=openrouter_key)
-                # Contribute to shared pool if generic
-                if image_url and use_shared_pool:
-                    save_to_shared_pool(template_id, page['page_number'], age_group, gender, image_url)
+                # Enforce payment gate: only generate images up to gen_limit
+                if idx < gen_limit:
+                    image_url = generate_page_image(api_key, personalized_image_prompt, reference_image_base64, openrouter_key=openrouter_key)
+                    # Contribute to shared pool if generic
+                    if image_url and use_shared_pool:
+                        save_to_shared_pool(template_id, page['page_number'], age_group, gender, image_url)
+                    # Rate-limit pause: wait 60s between API calls to avoid quota exhaustion
+                    if idx < total_pages - 1 and idx < gen_limit - 1:
+                        import time
+                        status_text.text(f"Waiting 60s before next image to avoid rate limits... (page {idx + 1}/{total_pages} done)")
+                        time.sleep(60)
+                else:
+                    image_url = None
 
             generated_book['pages'].append({
                 'page_number': page['page_number'],
@@ -2298,7 +2315,15 @@ def generate_template_book(api_key: str, book_data: Dict):
 
             progress_bar.progress((idx + 1) / total_pages)
 
-        status_text.text("✅ Book generation complete!")
+        # Inform non-admin users about payment requirement
+        if not _is_admin and not book_paid and total_pages > FREE_IMAGES_PER_BOOK:
+            generated_count = len([p for p in generated_book['pages'] if p.get('image_url')])
+            if generated_count <= FREE_IMAGES_PER_BOOK:
+                status_text.text(f"Preview ready! {FREE_IMAGES_PER_BOOK} free images generated. Purchase to unlock all {total_pages} pages.")
+            else:
+                status_text.text("Book generation complete!")
+        else:
+            status_text.text("Book generation complete!")
         st.session_state.template_generated_book = generated_book
 
         # --- Persist to Supabase cache ---
@@ -2550,7 +2575,14 @@ def generate_page_image(api_key: str, prompt: str, reference_image_base64: Optio
         style_modifiers = "Children's book art, high quality, bold clean outlines, smooth cel shading"
     else:
         style_modifiers = "Watercolor illustration style, soft edges, gentle colors, children's book art, high quality"
-    enhanced_prompt = f"{no_text_instruction}. {prompt}. {style_modifiers}. {no_text_instruction}"
+    likeness_note = ""
+    if reference_image_base64:
+        likeness_note = (
+            " The child character MUST match the reference photo exactly -- same face shape, "
+            "skin tone, hair color, hair style, eye color, and overall appearance. "
+            "Keep the child recognizable across all pages."
+        )
+    enhanced_prompt = f"{no_text_instruction}. {prompt}.{likeness_note} {style_modifiers}. {no_text_instruction}"
 
     result_url = _call_gemini_image_api(api_key, enhanced_prompt, reference_image_base64)
     if result_url:
@@ -2678,18 +2710,95 @@ def display_template_book_preview(book_data: Dict, api_key: Optional[str] = None
             else:
                 st.error(f"Image generation failed for page {idx + 1}. Edit the image prompt below to try a different description, then click Regenerate again.")
 
-    st.success(f"✨ Your personalized book for **{book_data['child_name']}** is ready!")
+    # Payment gate check for template book preview
+    from auth import ADMIN_EMAILS
+    from payments import FREE_IMAGES_PER_BOOK, template_book_price_inr, is_cashfree_configured, create_payment_link, confirm_payment_and_credit
+    _current_email_tpl = st.session_state.get("auth_user", {}).get("email", "")
+    _is_admin_tpl = _current_email_tpl in ADMIN_EMAILS
+    book_paid_tpl = st.session_state.get("current_book_payment_status") == "paid"
+    total_tpl_pages = len(book_data.get("pages", []))
+    images_with_content = len([p for p in book_data.get("pages", []) if p.get("image_url")])
+    needs_payment_tpl = (
+        not _is_admin_tpl
+        and total_tpl_pages > FREE_IMAGES_PER_BOOK
+        and not book_paid_tpl
+        and images_with_content <= FREE_IMAGES_PER_BOOK
+    )
+
+    if needs_payment_tpl:
+        price_inr = template_book_price_inr()
+        st.warning(f"Preview: {FREE_IMAGES_PER_BOOK} free images generated. Pay Rs.{price_inr} to unlock all {total_tpl_pages} pages.")
+        user_id_pay = st.session_state.get("auth_user", {}).get("id", "")
+        if is_cashfree_configured():
+            pending_link_id = st.session_state.get("pending_payment_link_id")
+            if pending_link_id:
+                col_check, col_new = st.columns(2)
+                with col_check:
+                    if st.button("I've paid -- continue", type="primary", use_container_width=True, key="tpl_pay_confirm"):
+                        if confirm_payment_and_credit(pending_link_id, user_id_pay):
+                            st.session_state.current_book_payment_status = "paid"
+                            st.session_state.pending_payment_link_id = None
+                            st.session_state.pending_payment_url = None
+                            st.success("Payment confirmed! Regenerating remaining images...")
+                            st.rerun()
+                        else:
+                            st.error("Payment not confirmed yet. Complete the payment and try again.")
+                with col_new:
+                    if st.button("New payment link", use_container_width=True, key="tpl_pay_new"):
+                        st.session_state.pending_payment_link_id = None
+                        st.session_state.pending_payment_url = None
+                        st.rerun()
+                pending_url = st.session_state.get("pending_payment_url", "")
+                if pending_url:
+                    st.markdown(
+                        f'<a href="{pending_url}" target="_blank" style="display:inline-block;'
+                        f'background:#2563eb;color:white;padding:10px 24px;border-radius:8px;'
+                        f'font-weight:700;text-decoration:none;">Open payment page</a>',
+                        unsafe_allow_html=True,
+                    )
+            else:
+                user_email_pay = _current_email_tpl or "user@example.com"
+                if st.button(f"Pay Rs.{price_inr} to unlock all images", type="primary", use_container_width=True, key="tpl_pay_btn"):
+                    with st.spinner("Creating payment link..."):
+                        result = create_payment_link(
+                            user_id_pay, user_email_pay, price_inr,
+                            f"Template book – {total_tpl_pages} pages"
+                        )
+                    if result:
+                        st.session_state.pending_payment_link_id = result["link_id"]
+                        st.session_state.pending_payment_url = result["link_url"]
+                        st.session_state.current_book_payment_status = "pending"
+                        st.rerun()
+                    else:
+                        st.error("Could not create payment link.")
+        else:
+            st.info("Payment gateway not configured.")
+            if _is_admin_tpl or st.button("Unlock (no payment gateway)", key="tpl_unlock_bypass"):
+                st.session_state.current_book_payment_status = "paid"
+                st.rerun()
+
+    st.success(f"Your personalized book for **{book_data['child_name']}** is ready!")
     st.markdown("---")
-    st.markdown("### 📖 Book Preview")
+    st.markdown("### Book Preview")
 
     for idx, page in enumerate(book_data["pages"]):
+        # Lock pages beyond free limit for unpaid non-admin users
+        if needs_payment_tpl and idx >= FREE_IMAGES_PER_BOOK:
+            st.markdown(
+                f"<div style='background:#f0f0f0;border-radius:8px;padding:20px;margin:8px 0;"
+                f"text-align:center;color:#999;'>"
+                f"Page {page['page_number']}: {page['profession_title']} -- Locked. Purchase to unlock.</div>",
+                unsafe_allow_html=True,
+            )
+            continue
+
         with st.container():
             # Page header + delete button on the same row
             hcol1, hcol2 = st.columns([5, 1])
             with hcol1:
                 st.markdown(f"#### Page {page['page_number']}: {page['profession_title']}")
             with hcol2:
-                if st.button("🗑️ Delete", key=f"del_tpl_page_{idx}", use_container_width=True, help="Remove this page from the book"):
+                if st.button("Delete", key=f"del_tpl_page_{idx}", use_container_width=True, help="Remove this page from the book"):
                     st.session_state.delete_template_page_idx = idx
                     st.rerun()
 
