@@ -14,6 +14,7 @@ the Gemini models for your project.
 import os
 import json
 import logging
+import time
 import requests
 from pathlib import Path
 from typing import Optional
@@ -256,12 +257,18 @@ def call_gemini_image(
             refs = reference_image_b64 if isinstance(reference_image_b64, list) else [reference_image_b64]
             n = len(refs)
             parts = [{"inlineData": {"mimeType": "image/jpeg", "data": r}} for r in refs]
-            note = (
-                f"Use all {n} reference photos together to build a complete picture of the child's appearance."
-                if n > 1
-                else "Make the child look like the person in the reference photo."
+            likeness_instruction = (
+                "CRITICAL LIKENESS REQUIREMENT: The child in this illustration MUST closely match the reference photo(s). "
+                "Preserve the EXACT same face shape, skin tone, hair color, hair texture, hair length, eye shape, "
+                "eye color, nose shape, and facial proportions. The child should be immediately recognizable as "
+                "the same person in the reference photo. Do NOT change any facial features."
             )
-            parts.append({"text": f"{prompt}. {note} Keep the child's likeness consistent."})
+            note = (
+                f"Use all {n} reference photos together to build a complete picture of the child's appearance. {likeness_instruction}"
+                if n > 1
+                else f"Make the child look EXACTLY like the person in the reference photo. {likeness_instruction}"
+            )
+            parts.append({"text": f"{prompt}. {note}"})
             return parts
         return [{"text": prompt}]
 
@@ -290,62 +297,79 @@ def call_gemini_image(
                 urls_to_try = [_vertex_global_url(model), _vertex_url(model)]
                 model_success = False
                 for url in urls_to_try:
-                    try:
-                        r = requests.post(url, headers=headers, json=payload, timeout=180)
-                        if r.status_code == 200:
-                            for part in r.json().get("candidates", [{}])[0].get("content", {}).get("parts", []):
-                                if "inlineData" in part:
-                                    logger.info(f"Vertex Gemini image OK: {model} ({url})")
-                                    return f"data:image/png;base64,{part['inlineData']['data']}"
-                            vertex_img_errors.append(f"{model}: 200 but no image in response")
+                    for _attempt in range(3):
+                        try:
+                            r = requests.post(url, headers=headers, json=payload, timeout=180)
+                            if r.status_code == 200:
+                                for part in r.json().get("candidates", [{}])[0].get("content", {}).get("parts", []):
+                                    if "inlineData" in part:
+                                        logger.info(f"Vertex Gemini image OK: {model} ({url})")
+                                        return f"data:image/png;base64,{part['inlineData']['data']}"
+                                vertex_img_errors.append(f"{model}: 200 but no image in response")
+                                model_success = True
+                                break
+                            elif r.status_code == 429:
+                                wait = 60 * (_attempt + 1)
+                                logger.warning(f"Vertex Gemini image {model} rate limited (429), waiting {wait}s (attempt {_attempt+1}/3)")
+                                time.sleep(wait)
+                                continue
+                            elif r.status_code == 404:
+                                logger.warning(f"Vertex Gemini image {model} 404 at {url}, trying next")
+                                break
+                            else:
+                                vertex_img_errors.append(f"{model}: HTTP {r.status_code} — {r.text[:200]}")
+                                logger.warning(f"Vertex Gemini image {model} → {r.status_code}: {r.text[:150]}")
+                                model_success = True
+                                break
+                        except Exception as e:
+                            vertex_img_errors.append(f"{model}: {e}")
+                            logger.warning(f"Vertex Gemini image {model} error: {e}")
                             model_success = True
                             break
-                        elif r.status_code == 404:
-                            logger.warning(f"Vertex Gemini image {model} 404 at {url}, trying next")
-                            continue
-                        else:
-                            vertex_img_errors.append(f"{model}: HTTP {r.status_code} — {r.text[:200]}")
-                            logger.warning(f"Vertex Gemini image {model} → {r.status_code}: {r.text[:150]}")
-                            model_success = True
-                            break
-                    except Exception as e:
-                        vertex_img_errors.append(f"{model}: {e}")
-                        logger.warning(f"Vertex Gemini image {model} error: {e}")
-                        model_success = True
+                    if model_success:
                         break
                 if not model_success:
                     vertex_img_errors.append(f"{model}: 404 on all endpoints")
 
             # Try Imagen models (predict API — different payload and response format)
             for model in _IMAGEN_MODELS:
-                try:
-                    imagen_prompt = prompt
-                    if reference_image_b64:
-                        imagen_prompt = f"{prompt}. Make the child look like the person in the reference photo."
-                    r = requests.post(
-                        _vertex_predict_url(model),
-                        headers=headers,
-                        json={
-                            "instances": [{"prompt": imagen_prompt}],
-                            "parameters": {
-                                "sampleCount": 1,
-                                "aspectRatio": "1:1",
+                imagen_prompt = prompt
+                if reference_image_b64:
+                    imagen_prompt = f"{prompt}. Make the child look like the person in the reference photo."
+                for _attempt in range(3):
+                    try:
+                        r = requests.post(
+                            _vertex_predict_url(model),
+                            headers=headers,
+                            json={
+                                "instances": [{"prompt": imagen_prompt}],
+                                "parameters": {
+                                    "sampleCount": 1,
+                                    "aspectRatio": "1:1",
+                                },
                             },
-                        },
-                        timeout=180,
-                    )
-                    if r.status_code == 200:
-                        predictions = r.json().get("predictions", [])
-                        if predictions and predictions[0].get("bytesBase64Encoded"):
-                            logger.info(f"Vertex Imagen OK: {model}")
-                            return f"data:image/png;base64,{predictions[0]['bytesBase64Encoded']}"
-                        vertex_img_errors.append(f"{model}: 200 but no image in response")
-                    else:
-                        vertex_img_errors.append(f"{model}: HTTP {r.status_code} — {r.text[:200]}")
-                    logger.warning(f"Vertex Imagen {model} → {r.status_code}: {r.text[:150]}")
-                except Exception as e:
-                    vertex_img_errors.append(f"{model}: {e}")
-                    logger.warning(f"Vertex Imagen {model} error: {e}")
+                            timeout=180,
+                        )
+                        if r.status_code == 200:
+                            predictions = r.json().get("predictions", [])
+                            if predictions and predictions[0].get("bytesBase64Encoded"):
+                                logger.info(f"Vertex Imagen OK: {model}")
+                                return f"data:image/png;base64,{predictions[0]['bytesBase64Encoded']}"
+                            vertex_img_errors.append(f"{model}: 200 but no image in response")
+                            break
+                        elif r.status_code == 429:
+                            wait = 60 * (_attempt + 1)
+                            logger.warning(f"Vertex Imagen {model} rate limited (429), waiting {wait}s (attempt {_attempt+1}/3)")
+                            time.sleep(wait)
+                            continue
+                        else:
+                            vertex_img_errors.append(f"{model}: HTTP {r.status_code} — {r.text[:200]}")
+                            logger.warning(f"Vertex Imagen {model} → {r.status_code}: {r.text[:150]}")
+                            break
+                    except Exception as e:
+                        vertex_img_errors.append(f"{model}: {e}")
+                        logger.warning(f"Vertex Imagen {model} error: {e}")
+                        break
 
         if vertex_img_errors:
             try:

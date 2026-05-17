@@ -415,6 +415,10 @@ def save_story(story_data: Dict, child_name: str, metadata: Dict = None):
                         logger.info(f"Story updated in MongoDB doc {existing_id}, images={len(images_for_db)}")
                 if not existing_id:
                     doc_id = str(_uuid.uuid4())
+                    has_ref_photo = bool(
+                        (metadata or {}).get("has_reference_photo")
+                        or st.session_state.get("wiz_reference_photos_b64")
+                    )
                     col.insert_one({
                         "_id": doc_id,
                         "user_id": user_id,
@@ -423,11 +427,12 @@ def save_story(story_data: Dict, child_name: str, metadata: Dict = None):
                         "book_type": "custom",
                         "story_data": story_for_db,
                         "images": images_for_db,
+                        "is_private": has_ref_photo,
                         "metadata": {**(metadata or {}), "timestamp": timestamp, "journey_state": journey_state},
                         "created_at": datetime.utcnow(),
                     })
                     st.session_state.current_book_history_id = doc_id
-                    logger.info(f"Story inserted to MongoDB, id={doc_id}, images={len(images_for_db)}")
+                    logger.info(f"Story inserted to MongoDB, id={doc_id}, images={len(images_for_db)}, private={has_ref_photo}")
             except Exception as db_err:
                 logger.warning(f"MongoDB save failed: {db_err}")
                 st.toast(f"⚠️ Cloud save failed: {str(db_err)[:80]}", icon="⚠️")
@@ -475,6 +480,7 @@ def save_template_book_to_history(book_data: Dict):
                 from mongo_client import book_history_col
                 import uuid as _uuid
                 col = book_history_col()
+                has_ref_photo = bool(book_data.get("reference_image_base64"))
                 col.insert_one({
                     "_id": str(_uuid.uuid4()),
                     "user_id": user_id,
@@ -484,6 +490,7 @@ def save_template_book_to_history(book_data: Dict):
                     "template_id": template_id,
                     "template_name": template_name,
                     "story_data": story_payload,
+                    "is_private": has_ref_photo,
                     "metadata": {
                         "template_id": template_id,
                         "template_name": template_name,
@@ -493,7 +500,7 @@ def save_template_book_to_history(book_data: Dict):
                     },
                     "created_at": datetime.utcnow(),
                 })
-                logger.info(f"Template book saved to MongoDB for user {user_id}")
+                logger.info(f"Template book saved to MongoDB for user {user_id}, private={has_ref_photo}")
             except Exception as db_err:
                 logger.warning(f"MongoDB save failed, falling back to local file: {db_err}")
 
@@ -570,8 +577,9 @@ def load_story(filepath) -> Dict:
         return None
 
 def get_story_history():
-    """Get list of all saved stories, preferring MongoDB over local files."""
+    """Get list of all saved stories, combining MongoDB and local files."""
     user_id = get_current_user_id()
+    stories = []
 
     # --- Try MongoDB first ---
     if user_id:
@@ -584,23 +592,23 @@ def get_story_history():
                 {"_id": 1, "child_name": 1, "title": 1, "book_type": 1,
                  "template_id": 1, "template_name": 1, "created_at": 1, "metadata": 1}
             ).sort("created_at", DESCENDING).limit(100))
-            if rows:
-                stories = []
-                for row in rows:
-                    created = row.get("created_at")
-                    ts_display = created.strftime("%Y%m%d_%H%M%S") if created else ""
-                    stories.append({
-                        "db_id": str(row["_id"]),
-                        "filepath": None,
-                        "child_name": row.get("child_name", "Unknown"),
-                        "timestamp": ts_display,
-                        "title": row.get("title", "Untitled"),
-                        "book_type": row.get("book_type", "custom"),
-                        "template_id": row.get("template_id"),
-                        "template_name": row.get("template_name"),
-                    })
+            for row in rows:
+                created = row.get("created_at")
+                ts_display = created.strftime("%Y%m%d_%H%M%S") if created else ""
+                stories.append({
+                    "db_id": str(row["_id"]),
+                    "filepath": None,
+                    "child_name": row.get("child_name", "Unknown"),
+                    "timestamp": ts_display,
+                    "title": row.get("title", "Untitled"),
+                    "book_type": row.get("book_type", "custom"),
+                    "template_id": row.get("template_id"),
+                    "template_name": row.get("template_name"),
+                })
+            if stories:
                 logger.info(f"Loaded {len(stories)} stories from MongoDB")
                 return stories
+            logger.info("MongoDB returned 0 history rows, checking local files")
         except Exception as db_err:
             logger.warning(f"Could not load history from MongoDB: {db_err}")
 
@@ -1683,15 +1691,16 @@ def _load_gallery_book(doc_id: str) -> None:
 
 
 def render_gallery():
-    """Show recent books from all users as inspiration."""
+    """Show recent books from all users as inspiration. Only non-private books are shown."""
     try:
         from mongo_client import book_history_col
         col = book_history_col()
-        # {"images.0": {"$exists": True}} checks that the images array has at least
-        # one element without loading any image data — projection excludes images entirely.
-        # Match only docs where the first image is a valid base64 string (not null/missing)
+        # Only show public books (is_private != True) that have valid images
         books = list(col.find(
-            {"images": {"$elemMatch": {"$type": "string", "$regex": "^data:image"}}},
+            {
+                "images": {"$elemMatch": {"$type": "string", "$regex": "^data:image"}},
+                "is_private": {"$ne": True},
+            },
             {"_id": 1, "child_name": 1, "story_data": 1, "metadata": 1, "created_at": 1}
         ).sort("created_at", -1).limit(48))
     except Exception as _ge:
@@ -2192,10 +2201,23 @@ def main():
 
     # Templates are now seeded via SQL migration, no app-level seeding needed
 
-    # Initialize show_history state
+    # Initialize show_history and show_community state
     if 'show_history' not in st.session_state:
         st.session_state.show_history = False
-    
+    if 'show_community' not in st.session_state:
+        st.session_state.show_community = False
+
+    # Show community gallery page if requested
+    if st.session_state.get("show_community"):
+        st.title("Community Books")
+        st.caption("Books created by our community -- browse and get inspired!")
+        if st.button("Back to Main", type="secondary", key="back_from_community"):
+            st.session_state.show_community = False
+            st.rerun()
+        st.divider()
+        render_gallery()
+        return
+
     # Show history page if requested
     if st.session_state.show_history:
         st.title("📚 Story History")
@@ -2376,13 +2398,25 @@ def main():
             unsafe_allow_html=True,
         )
         # Compact top navigation bar
-        nav_left, nav_mid, nav_right = st.columns([1, 4, 1])
-        with nav_left:
-            if st.button("🏠 Home", use_container_width=True):
+        nav_home, nav_history, nav_community, nav_mid, nav_right = st.columns([1, 1, 1, 3, 1])
+        with nav_home:
+            if st.button("Home", use_container_width=True):
                 reset_story_state()
                 st.session_state.book_mode = None
                 st.session_state.wizard_step = 0
                 st.session_state.wiz_generate_trigger = False
+                st.session_state.show_history = False
+                st.session_state.show_community = False
+                st.rerun()
+        with nav_history:
+            if st.button("My Books", use_container_width=True):
+                st.session_state.show_history = True
+                st.session_state.show_community = False
+                st.rerun()
+        with nav_community:
+            if st.button("Community", use_container_width=True):
+                st.session_state.show_community = True
+                st.session_state.show_history = False
                 st.rerun()
         with nav_mid:
             st.markdown(
@@ -2420,6 +2454,13 @@ def main():
             # Story History
             if st.button("Story History", use_container_width=True, type="secondary"):
                 st.session_state.show_history = True
+                st.session_state.show_community = False
+                st.rerun()
+
+            # Community Gallery
+            if st.button("Community", use_container_width=True, type="secondary"):
+                st.session_state.show_community = True
+                st.session_state.show_history = False
                 st.rerun()
 
             st.divider()
