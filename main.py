@@ -330,6 +330,14 @@ def create_visual_anchor(child_name: str, age: int, gender: str, physical_desc: 
     
     return base_anchor
 
+
+def _stringify_keys(d):
+    """Convert dict with integer keys to string keys for MongoDB compatibility."""
+    if not isinstance(d, dict):
+        return d
+    return {str(k): v for k, v in d.items()}
+
+
 def _save_images_now() -> None:
     """Persist current generated_images to MongoDB immediately (called after each image generates)."""
     user_id = get_current_user_id()
@@ -345,9 +353,9 @@ def _save_images_now() -> None:
         journey_state = {
             "story_approved": st.session_state.get("story_approved", False),
             "all_images_approved": st.session_state.get("all_images_approved", False),
-            "image_approvals": st.session_state.get("image_approvals", {}),
-            "edited_story_pages": st.session_state.get("edited_story_pages", {}),
-            "edited_image_prompts": st.session_state.get("edited_image_prompts", {}),
+            "image_approvals": _stringify_keys(st.session_state.get("image_approvals", {})),
+            "edited_story_pages": _stringify_keys(st.session_state.get("edited_story_pages", {})),
+            "edited_image_prompts": _stringify_keys(st.session_state.get("edited_image_prompts", {})),
             "current_step": "step3" if st.session_state.get("all_images_approved") else "step2",
         }
         book_history_col().update_one(
@@ -366,9 +374,9 @@ def save_story(story_data: Dict, child_name: str, metadata: Dict = None):
         journey_state = {
             "story_approved": st.session_state.get("story_approved", False),
             "all_images_approved": st.session_state.get("all_images_approved", False),
-            "image_approvals": st.session_state.get("image_approvals", {}),
-            "edited_story_pages": st.session_state.get("edited_story_pages", {}),
-            "edited_image_prompts": st.session_state.get("edited_image_prompts", {}),
+            "image_approvals": _stringify_keys(st.session_state.get("image_approvals", {})),
+            "edited_story_pages": _stringify_keys(st.session_state.get("edited_story_pages", {})),
+            "edited_image_prompts": _stringify_keys(st.session_state.get("edited_image_prompts", {})),
             "current_step": "step3" if st.session_state.get("all_images_approved", False) else
                            ("step2" if st.session_state.get("story_approved", False) else "step1")
         }
@@ -3066,7 +3074,13 @@ def main():
                     while len(st.session_state.generated_images) <= regenerate_idx:
                         st.session_state.generated_images.append(None)
                     st.session_state.generated_images[regenerate_idx] = img
+                    st.session_state.image_approvals[regenerate_idx] = True
                     _save_images_now()
+                    # If regeneration was triggered from Step 3, return there
+                    if st.session_state.pop("_return_to_step3_after_regen", False):
+                        n_valid = len([im for im in st.session_state.generated_images if im is not None])
+                        if n_valid == total_pages:
+                            st.session_state.all_images_approved = True
                     st.rerun()
 
             # ── Paywall / free tier check ──────────────────────────────────────
@@ -3398,12 +3412,15 @@ def main():
                         st.session_state.all_images_approved = True
                         st.rerun()
 
-        # ── Check if all images approved (applies to both admin and non-admin) ──
-        approved_count = len([k for k, v in st.session_state.image_approvals.items() if v])
-        if approved_count == total_pages and total_pages > 0:
-            st.session_state.all_images_approved = True
-            if st.session_state.generated_story and st.session_state.current_child_name:
-                save_story(st.session_state.generated_story, st.session_state.current_child_name)
+        # ── Check if all images approved ──
+        # For admin: auto-advance when all individually approved
+        # For non-admin: only advance via explicit CTA button (handled above)
+        if _is_admin_user:
+            approved_count = len([k for k, v in st.session_state.image_approvals.items() if v])
+            if approved_count == total_pages and total_pages > 0:
+                st.session_state.all_images_approved = True
+                if st.session_state.generated_story and st.session_state.current_child_name:
+                    save_story(st.session_state.generated_story, st.session_state.current_child_name)
     
     # Step 3: Generate PDF
     if (st.session_state.generated_story and 
@@ -3489,6 +3506,7 @@ def main():
                     if i in st.session_state.image_approvals:
                         del st.session_state.image_approvals[i]
                     st.session_state.all_images_approved = False
+                    st.session_state._return_to_step3_after_regen = True
                     if i < len(st.session_state.generated_images):
                         st.session_state.generated_images[i] = None
                     st.session_state[f"regenerate_image_{i}"] = True
