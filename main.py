@@ -3072,15 +3072,14 @@ def main():
             # ── Paywall / free tier check ──────────────────────────────────────
             from payments import (
                 FREE_IMAGES_PER_BOOK,
-                custom_book_price_inr,
+                pdf_price_inr, print_price_inr,
                 create_payment_link, confirm_payment_and_credit,
-                is_cashfree_configured,
+                is_cashfree_configured, save_pending_payment_for_reminders,
             )
             user_id_pay = get_current_user_id()
             _current_user_email = (st.session_state.get("auth_user") or {}).get("email", "")
             _is_admin_user = _current_user_email in ADMIN_EMAILS
             generated_count = len([img for img in st.session_state.generated_images if img is not None])
-            # A book is "paid" when the user confirmed payment for THIS book in this session
             book_already_paid = st.session_state.get("current_book_payment_status") == "paid"
             needs_payment = (
                 not _is_admin_user
@@ -3090,12 +3089,17 @@ def main():
             )
 
             if needs_payment:
-                price_inr = custom_book_price_inr()
+                _pdf_p = pdf_price_inr()
+                _print_p = print_price_inr()
                 st.divider()
-                st.markdown(f"### 🔒 {FREE_IMAGES_PER_BOOK} free previews ready")
-                st.info(
-                    f"Unlock your full **{total_pages}-page** personalised storybook for **₹{price_inr:,}**. "
-                    f"One-time payment — yours forever as a PDF."
+                st.markdown(f"### {FREE_IMAGES_PER_BOOK} free previews ready")
+                st.markdown(
+                    f"""
+                    | Option | What you get | Price |
+                    |--------|-------------|-------|
+                    | **PDF Download** | Digital PDF, download instantly | **Rs.{_pdf_p}** |
+                    | **Printed Book** | Physical copy shipped to you | **Rs.{_print_p}** |
+                    """,
                 )
 
                 if is_cashfree_configured():
@@ -3103,7 +3107,7 @@ def main():
                     if pending_link_id:
                         col_check, col_new = st.columns(2)
                         with col_check:
-                            if st.button("✅ I've paid — continue", type="primary", use_container_width=True):
+                            if st.button("I've paid -- continue", type="primary", use_container_width=True):
                                 if confirm_payment_and_credit(pending_link_id, user_id_pay):
                                     st.session_state.current_book_payment_status = "paid"
                                     st.session_state.pending_payment_link_id = None
@@ -3113,7 +3117,7 @@ def main():
                                 else:
                                     st.error("Payment not confirmed yet. Complete the payment and try again.")
                         with col_new:
-                            if st.button("🔄 New payment link", use_container_width=True):
+                            if st.button("New payment link", use_container_width=True):
                                 st.session_state.pending_payment_link_id = None
                                 st.session_state.pending_payment_url = None
                                 st.rerun()
@@ -3121,25 +3125,58 @@ def main():
                         if pending_url:
                             st.markdown(
                                 f'<a href="{pending_url}" target="_blank" style="display:inline-block;'
-                                f'background:#FF6B6B;color:white;padding:10px 24px;border-radius:8px;'
-                                f'font-weight:700;text-decoration:none;">Open payment page ↗</a>',
+                                f'background:#2563eb;color:white;padding:10px 24px;border-radius:8px;'
+                                f'font-weight:700;text-decoration:none;">Open payment page</a>',
                                 unsafe_allow_html=True,
                             )
                     else:
                         user_email_pay = (st.session_state.get("auth_user") or {}).get("email", "user@example.com")
-                        if st.button(f"💳 Pay ₹{price_inr:,} to unlock all images", type="primary", use_container_width=True):
-                            with st.spinner("Creating payment link..."):
-                                result = create_payment_link(
-                                    user_id_pay, user_email_pay, price_inr,
-                                    f"Children's storybook – {total_pages} pages"
-                                )
-                            if result:
-                                st.session_state.pending_payment_link_id = result["link_id"]
-                                st.session_state.pending_payment_url = result["link_url"]
-                                st.session_state.current_book_payment_status = "pending"
-                                st.rerun()
-                            else:
-                                st.error("Could not create payment link. Check Cashfree credentials.")
+                        child_name_pay = st.session_state.get("current_child_name", "")
+                        col_pdf, col_print = st.columns(2)
+                        with col_pdf:
+                            if st.button(f"PDF Download -- Rs.{_pdf_p}", type="primary", use_container_width=True, key="custom_pay_pdf"):
+                                with st.spinner("Creating payment link..."):
+                                    result = create_payment_link(
+                                        user_id_pay, user_email_pay, _pdf_p,
+                                        f"PDF storybook for {child_name_pay} – {total_pages} pages"
+                                    )
+                                if result:
+                                    save_pending_payment_for_reminders(
+                                        user_id=user_id_pay, user_email=user_email_pay,
+                                        amount_inr=_pdf_p, child_name=child_name_pay,
+                                        book_title=f"{child_name_pay}'s Story",
+                                        product_type="pdf",
+                                        payment_link_id=result["link_id"],
+                                        payment_link_url=result["link_url"],
+                                    )
+                                    st.session_state.pending_payment_link_id = result["link_id"]
+                                    st.session_state.pending_payment_url = result["link_url"]
+                                    st.session_state.current_book_payment_status = "pending"
+                                    st.rerun()
+                                else:
+                                    st.error("Could not create payment link.")
+                        with col_print:
+                            if st.button(f"Printed Book -- Rs.{_print_p}", use_container_width=True, key="custom_pay_print"):
+                                with st.spinner("Creating payment link..."):
+                                    result = create_payment_link(
+                                        user_id_pay, user_email_pay, _print_p,
+                                        f"Printed storybook for {child_name_pay} – {total_pages} pages"
+                                    )
+                                if result:
+                                    save_pending_payment_for_reminders(
+                                        user_id=user_id_pay, user_email=user_email_pay,
+                                        amount_inr=_print_p, child_name=child_name_pay,
+                                        book_title=f"{child_name_pay}'s Story",
+                                        product_type="print",
+                                        payment_link_id=result["link_id"],
+                                        payment_link_url=result["link_url"],
+                                    )
+                                    st.session_state.pending_payment_link_id = result["link_id"]
+                                    st.session_state.pending_payment_url = result["link_url"]
+                                    st.session_state.current_book_payment_status = "pending"
+                                    st.rerun()
+                                else:
+                                    st.error("Could not create payment link.")
                 else:
                     # Cashfree not configured — admin bypass button
                     st.warning("Payment gateway not configured. Admin override available.")

@@ -2335,43 +2335,9 @@ def generate_template_book(api_key: str, book_data: Dict):
         st.error(f"Failed to generate book: {e}")
 
 
-def _add_title_overlay(img: Image.Image, title: str) -> Image.Image:
-    """Render a semi-transparent title banner at the top of the image."""
-    from PIL import ImageDraw, ImageFont
-    img = img.convert("RGBA")
-    w, h = img.size
-    banner_h = max(48, int(h * 0.11))
-    overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
-    draw = ImageDraw.Draw(overlay)
-    draw.rectangle([0, 0, w, banner_h], fill=(0, 0, 0, 175))
-    font_size = max(20, int(banner_h * 0.52))
-    font = None
-    for fp in [
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-        "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
-        "/System/Library/Fonts/Helvetica.ttc",
-        "C:/Windows/Fonts/arialbd.ttf",
-    ]:
-        try:
-            font = ImageFont.truetype(fp, font_size)
-            break
-        except Exception:
-            continue
-    if font is None:
-        font = ImageFont.load_default()
-    title_upper = title.upper()
-    bbox = draw.textbbox((0, 0), title_upper, font=font)
-    tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-    tx = (w - tw) // 2
-    ty = (banner_h - th) // 2
-    draw.text((tx + 2, ty + 2), title_upper, font=font, fill=(0, 0, 0, 200))
-    draw.text((tx, ty), title_upper, font=font, fill=(255, 255, 255, 255))
-    return Image.alpha_composite(img, overlay).convert("RGB")
-
 
 def _template_page_image_to_pil(page: Dict) -> Optional[Image.Image]:
-    """Convert template page image_url (data URL) to PIL Image, applying title overlay if present."""
+    """Convert template page image_url (data URL) to PIL Image."""
     url = page.get("image_url")
     if not url:
         return None
@@ -2380,9 +2346,6 @@ def _template_page_image_to_pil(page: Dict) -> Optional[Image.Image]:
             b64 = url.split(",", 1)[-1]
             raw = base64.b64decode(b64)
             img = Image.open(io.BytesIO(raw)).convert("RGB")
-            title = page.get("profession_title", "")
-            if title:
-                img = _add_title_overlay(img, title)
             return img
         return None
     except Exception as e:
@@ -2712,7 +2675,11 @@ def display_template_book_preview(book_data: Dict, api_key: Optional[str] = None
 
     # Payment gate check for template book preview
     from auth import ADMIN_EMAILS
-    from payments import FREE_IMAGES_PER_BOOK, template_book_price_inr, is_cashfree_configured, create_payment_link, confirm_payment_and_credit
+    from payments import (
+        FREE_IMAGES_PER_BOOK, pdf_price_inr, print_price_inr,
+        is_cashfree_configured, create_payment_link, confirm_payment_and_credit,
+        save_pending_payment_for_reminders, template_book_price_inr,
+    )
     _current_email_tpl = st.session_state.get("auth_user", {}).get("email", "")
     _is_admin_tpl = _current_email_tpl in ADMIN_EMAILS
     book_paid_tpl = st.session_state.get("current_book_payment_status") == "paid"
@@ -2726,8 +2693,17 @@ def display_template_book_preview(book_data: Dict, api_key: Optional[str] = None
     )
 
     if needs_payment_tpl:
-        price_inr = template_book_price_inr()
-        st.warning(f"Preview: {FREE_IMAGES_PER_BOOK} free images generated. Pay Rs.{price_inr} to unlock all {total_tpl_pages} pages.")
+        _pdf_price = pdf_price_inr()
+        _print_price = print_price_inr()
+        st.warning(f"Preview: {FREE_IMAGES_PER_BOOK} free images generated. Unlock the full {total_tpl_pages}-page book below.")
+        st.markdown(
+            f"""
+            | Option | What you get | Price |
+            |--------|-------------|-------|
+            | **PDF Download** | Digital PDF file, download instantly | **Rs.{_pdf_price}** |
+            | **Printed Book** | Physical copy shipped to your address | **Rs.{_print_price}** |
+            """,
+        )
         user_id_pay = st.session_state.get("auth_user", {}).get("id", "")
         if is_cashfree_configured():
             pending_link_id = st.session_state.get("pending_payment_link_id")
@@ -2739,7 +2715,7 @@ def display_template_book_preview(book_data: Dict, api_key: Optional[str] = None
                             st.session_state.current_book_payment_status = "paid"
                             st.session_state.pending_payment_link_id = None
                             st.session_state.pending_payment_url = None
-                            st.success("Payment confirmed! Regenerating remaining images...")
+                            st.success("Payment confirmed! Generating remaining images...")
                             st.rerun()
                         else:
                             st.error("Payment not confirmed yet. Complete the payment and try again.")
@@ -2758,24 +2734,93 @@ def display_template_book_preview(book_data: Dict, api_key: Optional[str] = None
                     )
             else:
                 user_email_pay = _current_email_tpl or "user@example.com"
-                if st.button(f"Pay Rs.{price_inr} to unlock all images", type="primary", use_container_width=True, key="tpl_pay_btn"):
-                    with st.spinner("Creating payment link..."):
-                        result = create_payment_link(
-                            user_id_pay, user_email_pay, price_inr,
-                            f"Template book – {total_tpl_pages} pages"
-                        )
-                    if result:
-                        st.session_state.pending_payment_link_id = result["link_id"]
-                        st.session_state.pending_payment_url = result["link_url"]
-                        st.session_state.current_book_payment_status = "pending"
-                        st.rerun()
-                    else:
-                        st.error("Could not create payment link.")
+                child_name_pay = book_data.get("child_name", "")
+                col_pdf, col_print = st.columns(2)
+                with col_pdf:
+                    if st.button(f"PDF Download -- Rs.{_pdf_price}", type="primary", use_container_width=True, key="tpl_pay_pdf"):
+                        with st.spinner("Creating payment link..."):
+                            result = create_payment_link(
+                                user_id_pay, user_email_pay, _pdf_price,
+                                f"PDF book for {child_name_pay} – {total_tpl_pages} pages"
+                            )
+                        if result:
+                            save_pending_payment_for_reminders(
+                                user_id=user_id_pay, user_email=user_email_pay,
+                                amount_inr=_pdf_price, child_name=child_name_pay,
+                                book_title=book_data.get("template_name", ""),
+                                product_type="pdf",
+                                template_id=book_data.get("template_id", ""),
+                                payment_link_id=result["link_id"],
+                                payment_link_url=result["link_url"],
+                            )
+                            st.session_state.pending_payment_link_id = result["link_id"]
+                            st.session_state.pending_payment_url = result["link_url"]
+                            st.session_state.current_book_payment_status = "pending"
+                            st.rerun()
+                        else:
+                            st.error("Could not create payment link.")
+                with col_print:
+                    if st.button(f"Printed Book -- Rs.{_print_price}", use_container_width=True, key="tpl_pay_print"):
+                        with st.spinner("Creating payment link..."):
+                            result = create_payment_link(
+                                user_id_pay, user_email_pay, _print_price,
+                                f"Printed book for {child_name_pay} – {total_tpl_pages} pages"
+                            )
+                        if result:
+                            save_pending_payment_for_reminders(
+                                user_id=user_id_pay, user_email=user_email_pay,
+                                amount_inr=_print_price, child_name=child_name_pay,
+                                book_title=book_data.get("template_name", ""),
+                                product_type="print",
+                                template_id=book_data.get("template_id", ""),
+                                payment_link_id=result["link_id"],
+                                payment_link_url=result["link_url"],
+                            )
+                            st.session_state.pending_payment_link_id = result["link_id"]
+                            st.session_state.pending_payment_url = result["link_url"]
+                            st.session_state.current_book_payment_status = "pending"
+                            st.rerun()
+                        else:
+                            st.error("Could not create payment link.")
         else:
             st.info("Payment gateway not configured.")
             if _is_admin_tpl or st.button("Unlock (no payment gateway)", key="tpl_unlock_bypass"):
                 st.session_state.current_book_payment_status = "paid"
                 st.rerun()
+
+    # After payment: if some pages still lack images, offer to generate them
+    pages_without_images = [i for i, p in enumerate(book_data.get("pages", [])) if not p.get("image_url")]
+    if (book_paid_tpl or _is_admin_tpl) and pages_without_images and api_key:
+        st.info(f"{len(pages_without_images)} page(s) still need images. Click below to generate them.")
+        if st.button("Generate remaining images", type="primary", key="tpl_gen_remaining"):
+            st.session_state.generate_remaining_template_pages = True
+            st.rerun()
+        if st.session_state.get("generate_remaining_template_pages"):
+            st.session_state.generate_remaining_template_pages = False
+            openrouter_key = st.session_state.get("openrouter_api_key", "")
+            ref_b64 = book_data.get("reference_image_base64")
+            progress = st.progress(0)
+            status = st.empty()
+            for count, pidx in enumerate(pages_without_images):
+                page = book_data["pages"][pidx]
+                status.text(f"Generating image for page {pidx + 1}...")
+                img_url = generate_page_image(api_key, page.get("image_prompt", ""), ref_b64, openrouter_key=openrouter_key)
+                if img_url:
+                    book_data["pages"][pidx]["image_url"] = img_url
+                progress.progress((count + 1) / len(pages_without_images))
+                if count < len(pages_without_images) - 1:
+                    import time
+                    status.text(f"Waiting 60s before next image... ({count + 1}/{len(pages_without_images)} done)")
+                    time.sleep(60)
+            status.text("All images generated!")
+            user_id_cache = st.session_state.get("auth_user", {}).get("id", "")
+            if user_id_cache:
+                save_template_book_to_cache(
+                    user_id_cache, book_data.get("template_id", ""),
+                    book_data.get("child_name", ""), book_data.get("gender", ""),
+                    book_data.get("age", 0), book_data,
+                )
+            st.rerun()
 
     st.success(f"Your personalized book for **{book_data['child_name']}** is ready!")
     st.markdown("---")
@@ -2824,9 +2869,17 @@ def display_template_book_preview(book_data: Dict, api_key: Optional[str] = None
                 else:
                     st.info("No image generated for this page")
 
-                if api_key and st.button("🔄 Regenerate image", key=f"regen_tpl_img_{idx}", use_container_width=True):
-                    st.session_state.regenerate_template_page_idx = idx
-                    st.rerun()
+                # Regenerate button: only show for paid users or admins, max 5 regenerations
+                _max_regenerates = 5
+                _regen_count = st.session_state.get("template_regen_count", 0)
+                if api_key and (book_paid_tpl or _is_admin_tpl):
+                    if _regen_count < _max_regenerates or _is_admin_tpl:
+                        if st.button(f"Regenerate image ({_max_regenerates - _regen_count} left)", key=f"regen_tpl_img_{idx}", use_container_width=True):
+                            st.session_state.template_regen_count = _regen_count + 1
+                            st.session_state.regenerate_template_page_idx = idx
+                            st.rerun()
+                    else:
+                        st.caption("Maximum regenerations reached (5/5)")
 
             with col2:
                 # Editable story text
