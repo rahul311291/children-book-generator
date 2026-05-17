@@ -2275,6 +2275,10 @@ def generate_template_book(api_key: str, book_data: Dict):
         book_paid = st.session_state.get("current_book_payment_status") == "paid"
         gen_limit = total_pages if (_is_admin or book_paid) else FREE_IMAGES_PER_BOOK
 
+        import time as _time
+        _images_generated_since_pause = 0
+        _preview_container = st.container()
+
         for idx, page in enumerate(pages):
             status_text.text(f"Generating page {idx + 1} of {total_pages}: {page['profession_title']}")
 
@@ -2283,25 +2287,35 @@ def generate_template_book(api_key: str, book_data: Dict):
                 page['image_prompt_template'], child_name, gender, age
             )
 
-            # Check shared pool first (skip if reference photo — image is person-specific)
+            # Check shared pool first (skip if reference photo -- image is person-specific)
             image_url = None
             if use_shared_pool:
                 image_url = get_shared_pool_image(template_id, page['page_number'], age_group, gender)
                 if image_url:
-                    status_text.text(f"Reusing cached image for page {idx + 1} of {total_pages}: {page['profession_title']}")
+                    status_text.text(f"Loading cached image for page {idx + 1}...")
 
             if not image_url:
                 # Enforce payment gate: only generate images up to gen_limit
                 if idx < gen_limit:
-                    image_url = generate_page_image(api_key, personalized_image_prompt, reference_image_base64, openrouter_key=openrouter_key)
-                    # Contribute to shared pool if generic
-                    if image_url and use_shared_pool:
-                        save_to_shared_pool(template_id, page['page_number'], age_group, gender, image_url)
-                    # Rate-limit pause: wait 60s between API calls to avoid quota exhaustion
-                    if idx < total_pages - 1 and idx < gen_limit - 1:
-                        import time
-                        status_text.text(f"Waiting 60s before next image to avoid rate limits... (page {idx + 1}/{total_pages} done)")
-                        time.sleep(60)
+                    # Retry logic: try up to 2 times with a 60s pause on failure
+                    for _attempt in range(2):
+                        image_url = generate_page_image(api_key, personalized_image_prompt, reference_image_base64, openrouter_key=openrouter_key)
+                        if image_url:
+                            break
+                        if _attempt == 0:
+                            status_text.text(f"Retrying page {idx + 1} after a brief pause...")
+                            _time.sleep(60)
+
+                    if image_url:
+                        _images_generated_since_pause += 1
+                        # Contribute to shared pool if generic
+                        if use_shared_pool:
+                            save_to_shared_pool(template_id, page['page_number'], age_group, gender, image_url)
+                        # Rate-limit pause every 3 generated images
+                        if _images_generated_since_pause >= 3 and idx < gen_limit - 1:
+                            _images_generated_since_pause = 0
+                            status_text.text(f"Page {idx + 1} done. Preparing next batch...")
+                            _time.sleep(60)
                 else:
                     image_url = None
 
@@ -2312,6 +2326,11 @@ def generate_template_book(api_key: str, book_data: Dict):
                 'image_prompt': personalized_image_prompt,
                 'image_url': image_url
             })
+
+            # Show image progressively as it's generated
+            if image_url:
+                with _preview_container:
+                    st.image(image_url, caption=f"Page {page['page_number']}: {page['profession_title']}", width=300)
 
             progress_bar.progress((idx + 1) / total_pages)
 
@@ -2689,7 +2708,6 @@ def display_template_book_preview(book_data: Dict, api_key: Optional[str] = None
         not _is_admin_tpl
         and total_tpl_pages > FREE_IMAGES_PER_BOOK
         and not book_paid_tpl
-        and images_with_content <= FREE_IMAGES_PER_BOOK
     )
 
     if needs_payment_tpl:
@@ -2796,22 +2814,52 @@ def display_template_book_preview(book_data: Dict, api_key: Optional[str] = None
             st.session_state.generate_remaining_template_pages = True
             st.rerun()
         if st.session_state.get("generate_remaining_template_pages"):
+            import time as _time_rem
             st.session_state.generate_remaining_template_pages = False
             openrouter_key = st.session_state.get("openrouter_api_key", "")
             ref_b64 = book_data.get("reference_image_base64")
+            use_pool_rem = not bool(ref_b64)
+            age_group_rem = _age_to_group(book_data.get("age", 5))
+            template_id_rem = book_data.get("template_id", "")
+            gender_rem = book_data.get("gender", "boy")
             progress = st.progress(0)
             status = st.empty()
+            preview_ctr = st.container()
+            _gen_count = 0
             for count, pidx in enumerate(pages_without_images):
                 page = book_data["pages"][pidx]
                 status.text(f"Generating image for page {pidx + 1}...")
-                img_url = generate_page_image(api_key, page.get("image_prompt", ""), ref_b64, openrouter_key=openrouter_key)
+
+                # Check shared pool first
+                img_url = None
+                if use_pool_rem:
+                    img_url = get_shared_pool_image(template_id_rem, page.get("page_number", pidx + 1), age_group_rem, gender_rem)
+
+                if not img_url:
+                    for _attempt in range(2):
+                        img_url = generate_page_image(api_key, page.get("image_prompt", ""), ref_b64, openrouter_key=openrouter_key)
+                        if img_url:
+                            break
+                        if _attempt == 0:
+                            status.text(f"Retrying page {pidx + 1}...")
+                            _time_rem.sleep(60)
+
+                    if img_url:
+                        _gen_count += 1
+                        if use_pool_rem:
+                            save_to_shared_pool(template_id_rem, page.get("page_number", pidx + 1), age_group_rem, gender_rem, img_url)
+                        if _gen_count >= 3 and count < len(pages_without_images) - 1:
+                            _gen_count = 0
+                            status.text(f"Page {pidx + 1} done. Preparing next batch...")
+                            _time_rem.sleep(60)
+
                 if img_url:
                     book_data["pages"][pidx]["image_url"] = img_url
+                    with preview_ctr:
+                        st.image(img_url, caption=f"Page {pidx + 1}: {page.get('profession_title', '')}", width=300)
+
                 progress.progress((count + 1) / len(pages_without_images))
-                if count < len(pages_without_images) - 1:
-                    import time
-                    status.text(f"Waiting 60s before next image... ({count + 1}/{len(pages_without_images)} done)")
-                    time.sleep(60)
+
             status.text("All images generated!")
             user_id_cache = st.session_state.get("auth_user", {}).get("id", "")
             if user_id_cache:
@@ -2829,12 +2877,33 @@ def display_template_book_preview(book_data: Dict, api_key: Optional[str] = None
     for idx, page in enumerate(book_data["pages"]):
         # Lock pages beyond free limit for unpaid non-admin users
         if needs_payment_tpl and idx >= FREE_IMAGES_PER_BOOK:
-            st.markdown(
-                f"<div style='background:#f0f0f0;border-radius:8px;padding:20px;margin:8px 0;"
-                f"text-align:center;color:#999;'>"
-                f"Page {page['page_number']}: {page['profession_title']} -- Locked. Purchase to unlock.</div>",
-                unsafe_allow_html=True,
-            )
+            # Show image preview (read-only) if available from pool, otherwise show locked
+            if page.get("image_url"):
+                with st.container():
+                    st.markdown(f"**Page {page['page_number']}: {page['profession_title']}**")
+                    try:
+                        if page["image_url"].startswith("data:image"):
+                            _pil = _template_page_image_to_pil(page)
+                            if _pil:
+                                _buf = io.BytesIO()
+                                _pil.save(_buf, format="JPEG", quality=70)
+                                st.image(_buf.getvalue(), use_container_width=True)
+                            else:
+                                _raw = base64.b64decode(page["image_url"].split(",", 1)[1])
+                                st.image(_raw, use_container_width=True)
+                        else:
+                            st.image(page["image_url"], use_container_width=True)
+                    except Exception:
+                        pass
+                    st.caption("Purchase to download and customize this page")
+                    st.markdown("---")
+            else:
+                st.markdown(
+                    f"<div style='background:#f0f0f0;border-radius:8px;padding:20px;margin:8px 0;"
+                    f"text-align:center;color:#999;'>"
+                    f"Page {page['page_number']}: {page['profession_title']} -- Purchase to unlock.</div>",
+                    unsafe_allow_html=True,
+                )
             continue
 
         with st.container():
@@ -2914,41 +2983,47 @@ def display_template_book_preview(book_data: Dict, api_key: Optional[str] = None
 
             st.markdown("---")
 
-    # Download section
-    st.markdown("### 📥 Download your book")
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    try:
-        buf = io.BytesIO()
-        create_template_pdf(book_data, buf)
-        pdf_bytes = buf.getvalue()
-        st.download_button(
-            label="📥 Download PDF",
-            data=pdf_bytes,
-            file_name=f"book-template-{ts}.pdf",
-            mime="application/pdf",
-            type="primary",
-            use_container_width=True,
-            key="template_download_pdf",
-        )
-    except Exception as e:
-        logger.exception("Template PDF download failed")
-        st.error(f"Download failed: {e}")
+    # Download section -- only for paid users or admins
+    if book_paid_tpl or _is_admin_tpl:
+        st.markdown("### Download your book")
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        try:
+            buf = io.BytesIO()
+            create_template_pdf(book_data, buf)
+            pdf_bytes = buf.getvalue()
+            st.download_button(
+                label="Download PDF",
+                data=pdf_bytes,
+                file_name=f"book-template-{ts}.pdf",
+                mime="application/pdf",
+                type="primary",
+                use_container_width=True,
+                key="template_download_pdf",
+            )
+        except Exception as e:
+            logger.exception("Template PDF download failed")
+            st.error(f"Download failed: {e}")
+    elif needs_payment_tpl:
+        st.markdown("---")
+        st.info("Purchase the book above to download the PDF or order a printed copy.")
 
     col_json, col_another = st.columns(2)
     with col_json:
-        try:
-            json_str = json.dumps(book_data, indent=2, ensure_ascii=False)
-            st.download_button(
-                label="📥 Download JSON",
-                data=json_str,
-                file_name=f"book-template-{ts}.json",
-                mime="application/json",
-                type="secondary",
-                use_container_width=True,
-                key="template_download_json",
-            )
-        except Exception as e:
-            st.error(f"JSON download failed: {e}")
+        if book_paid_tpl or _is_admin_tpl:
+            try:
+                ts_json = datetime.now().strftime("%Y%m%d_%H%M%S")
+                json_str = json.dumps(book_data, indent=2, ensure_ascii=False)
+                st.download_button(
+                    label="Download JSON",
+                    data=json_str,
+                    file_name=f"book-template-{ts_json}.json",
+                    mime="application/json",
+                    type="secondary",
+                    use_container_width=True,
+                    key="template_download_json",
+                )
+            except Exception as e:
+                st.error(f"JSON download failed: {e}")
     with col_another:
         if st.button("🔄 Create Another Book", use_container_width=True):
             for key in list(st.session_state.keys()):
