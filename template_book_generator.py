@@ -86,6 +86,21 @@ def get_shared_pool_image(template_id: str, page_number: int, age_group: str, ge
     return None
 
 
+def get_any_pool_image_for_page(template_id: str, page_number: int) -> Optional[str]:
+    """Return any available pool image for this template page regardless of age/gender."""
+    try:
+        from mongo_client import image_pool_col
+        doc = image_pool_col().find_one(
+            {"template_id": template_id, "page_number": page_number},
+            {"image_url": 1},
+        )
+        if doc:
+            return doc["image_url"]
+    except Exception:
+        pass
+    return None
+
+
 def save_to_shared_pool(template_id: str, page_number: int, age_group: str, gender: str, image_url: str) -> None:
     """Persist a generated image to the shared pool (silent no-op on duplicate or error)."""
     try:
@@ -129,9 +144,9 @@ def get_cached_template_book(user_id: str, template_id: str, child_name: str, ge
 
 
 def save_template_book_to_cache(user_id: str, template_id: str, child_name: str, gender: str, age: int, book_data: Dict) -> None:
-    """Store a generated template book (with compressed images) in the MongoDB cache."""
+    """Store a generated template book (with compressed images) in the MongoDB cache and book_history."""
     try:
-        from mongo_client import book_cache_col
+        from mongo_client import book_cache_col, book_history_col
         book_to_store = json.loads(json.dumps(book_data))
         for page in book_to_store.get("pages", []):
             if page.get("image_url"):
@@ -145,6 +160,26 @@ def save_template_book_to_cache(user_id: str, template_id: str, child_name: str,
              "$setOnInsert": {"created_at": datetime.utcnow()}},
             upsert=True,
         )
+
+        # Also save to book_history for community gallery (only if all pages have images)
+        pages = book_to_store.get("pages", [])
+        all_have_images = all(p.get("image_url") for p in pages)
+        if all_have_images and pages:
+            images_list = [p["image_url"] for p in pages]
+            title = book_to_store.get("template_name", f"{child_name}'s Storybook")
+            book_history_col().update_one(
+                {"user_id": user_id, "template_id": template_id, "child_name": child_name},
+                {"$set": {
+                    "child_name": child_name,
+                    "images": images_list,
+                    "story_data": {"title": title, "pages": [{"text": p.get("text", "")} for p in pages]},
+                    "metadata": {"age": age, "gender": gender, "template_id": template_id},
+                    "is_private": False,
+                    "updated_at": datetime.utcnow(),
+                }, "$setOnInsert": {"created_at": datetime.utcnow()}},
+                upsert=True,
+            )
+
         logger.info(f"Template book cached for user {user_id}, template {template_id}, child {child_name}")
     except Exception as e:
         logger.warning(f"Could not save book to cache: {e}")
@@ -2065,13 +2100,13 @@ def render_template_book_form():
             ).sort("updated_at", -1).limit(5))
             if prev_entries:
                 st.markdown("---")
-                st.markdown("### 📚 Your Previously Generated Books")
+                st.markdown("#### Your saved books")
                 for entry in prev_entries:
                     ec1, ec2 = st.columns([4, 1])
                     with ec1:
-                        st.write(f"**{entry.get('child_name', '?')}** · {entry.get('gender', '')} · Age {entry.get('age', '')}")
+                        st.write(f"**{entry.get('child_name', '?')}** -- {entry.get('gender', '')} -- Age {entry.get('age', '')}")
                     with ec2:
-                        if st.button("Load", key=f"load_cached_tbf_{entry['_id']}", use_container_width=True, type="primary"):
+                        if st.button("View", key=f"load_cached_tbf_{entry['_id']}", use_container_width=True, type="secondary"):
                             cached = get_cached_template_book(
                                 user_id_tbf, selected_template_id,
                                 entry["child_name"], entry.get("gender", "Neutral"),
@@ -2081,7 +2116,7 @@ def render_template_book_form():
                                 st.session_state.template_generated_book = cached
                                 st.rerun()
                             else:
-                                st.warning("Cached book not found. Please generate it again.")
+                                st.warning("Book not found. Please generate it again.")
         except Exception:
             pass
 
@@ -2100,11 +2135,28 @@ def render_template_book_form():
     elif template_info:
         st.markdown(f"### {template_info['name']}")
 
-    with st.expander(f"📃 Preview all {len(template_pages)} pages", expanded=False):
+    with st.expander(f"Preview all {len(template_pages)} pages", expanded=False):
         for i, page in enumerate(template_pages):
             preview_text = personalize_template_text(page['text_template'], "your child", "Neutral")
-            st.markdown(f"**Page {page['page_number']}: {page['profession_title']}**")
-            st.write(preview_text)
+            pool_img = get_any_pool_image_for_page(selected_template_id, page['page_number'])
+            if pool_img:
+                img_col, txt_col = st.columns([1, 2])
+                with img_col:
+                    try:
+                        if pool_img.startswith("data:image"):
+                            import base64 as _b64p
+                            _raw = _b64p.b64decode(pool_img.split(",", 1)[1])
+                            st.image(_raw, use_container_width=True)
+                        else:
+                            st.image(pool_img, use_container_width=True)
+                    except Exception:
+                        pass
+                with txt_col:
+                    st.markdown(f"**Page {page['page_number']}: {page['profession_title']}**")
+                    st.write(preview_text)
+            else:
+                st.markdown(f"**Page {page['page_number']}: {page['profession_title']}**")
+                st.write(preview_text)
             if i < len(template_pages) - 1:
                 st.markdown("---")
 
