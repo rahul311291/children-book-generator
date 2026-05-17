@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { MongoClient } from "npm:mongodb@6.8.0";
+import { SMTPClient } from "npm:emailjs@4.0.3";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -29,6 +30,9 @@ Deno.serve(async (req: Request) => {
 
   try {
     const mongoUri = Deno.env.get("MONGODB_URI");
+    const gmailUser = Deno.env.get("GMAIL_USER");
+    const gmailPassword = Deno.env.get("GMAIL_APP_PASSWORD");
+
     if (!mongoUri) {
       return new Response(
         JSON.stringify({ error: "MONGODB_URI not configured" }),
@@ -36,7 +40,13 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const resendKey = Deno.env.get("RESEND_API_KEY");
+    if (!gmailUser || !gmailPassword) {
+      return new Response(
+        JSON.stringify({ error: "GMAIL_USER / GMAIL_APP_PASSWORD not configured" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const dbName = Deno.env.get("MONGODB_DB") || "children_book_generator";
 
     const client = new MongoClient(mongoUri);
@@ -45,11 +55,16 @@ Deno.serve(async (req: Request) => {
     const collection = db.collection<PendingPayment>("pending_payments");
 
     const now = new Date();
-
-    // Fetch all unpaid pending payments
     const pending = await collection.find({ paid: false }).toArray();
 
     let emailsSent = 0;
+
+    const smtpClient = new SMTPClient({
+      user: gmailUser,
+      password: gmailPassword,
+      host: "smtp.gmail.com",
+      ssl: true,
+    });
 
     for (const payment of pending) {
       const createdAt = new Date(payment.created_at);
@@ -79,19 +94,21 @@ Deno.serve(async (req: Request) => {
       }
 
       if (shouldSendReminder && payment.user_email) {
-        const emailSent = await sendReminderEmail(
-          resendKey,
-          payment.user_email,
-          reminderSubject,
-          reminderBody
-        );
+        try {
+          await smtpClient.sendAsync({
+            from: `Children's Book Generator <${gmailUser}>`,
+            to: payment.user_email,
+            subject: reminderSubject,
+            attachment: [{ data: reminderBody, alternative: true }],
+          });
 
-        if (emailSent) {
           await collection.updateOne(
             { _id: payment._id },
             { $set: { [reminderField]: true } }
           );
           emailsSent++;
+        } catch (err) {
+          console.error(`Failed to send email to ${payment.user_email}:`, err);
         }
       }
     }
@@ -122,23 +139,23 @@ function buildEmailBody(
 
   const messages: Record<string, string> = {
     "1hour": `
-      <h2>Your storybook is almost ready!</h2>
+      <h2 style="color:#1a73e8;">Your storybook is almost ready!</h2>
       <p>Hi there,</p>
       <p>The amazing personalized storybook for <strong>${childName}</strong> is waiting for you.
       We have already generated beautiful preview pages -- just complete your payment to unlock the full book.</p>
-      <p><a href="${paymentUrl}" style="display:inline-block;background:#2563eb;color:white;padding:12px 28px;border-radius:8px;font-weight:700;text-decoration:none;">Complete Payment (Rs.${amount})</a></p>
+      <p><a href="${paymentUrl}" style="display:inline-block;background:#1a73e8;color:white;padding:12px 28px;border-radius:8px;font-weight:700;text-decoration:none;">Complete Payment (Rs.${amount})</a></p>
       <p>Your child will love seeing themselves as the hero of their very own story!</p>
     `,
     "9hour": `
-      <h2>${childName}'s storybook is still waiting!</h2>
+      <h2 style="color:#1a73e8;">${childName}'s storybook is still waiting!</h2>
       <p>Hi there,</p>
       <p>We noticed you haven't completed the payment for <strong>${childName}</strong>'s personalized storybook yet.
       The book is ready and the beautiful AI-generated illustrations are waiting to be unlocked.</p>
-      <p><a href="${paymentUrl}" style="display:inline-block;background:#2563eb;color:white;padding:12px 28px;border-radius:8px;font-weight:700;text-decoration:none;">Unlock the Full Book (Rs.${amount})</a></p>
+      <p><a href="${paymentUrl}" style="display:inline-block;background:#1a73e8;color:white;padding:12px 28px;border-radius:8px;font-weight:700;text-decoration:none;">Unlock the Full Book (Rs.${amount})</a></p>
       <p>Don't miss out -- this will be a treasured keepsake for years to come.</p>
     `,
     "24hour": `
-      <h2>Last reminder: ${childName}'s book expires soon</h2>
+      <h2 style="color:#dc2626;">Last reminder: ${childName}'s book expires soon</h2>
       <p>Hi there,</p>
       <p>This is our final reminder about the personalized storybook for <strong>${childName}</strong>.
       The payment link will expire soon, and you'll need to start over if you don't complete it now.</p>
@@ -148,42 +165,11 @@ function buildEmailBody(
   };
 
   return `
-    <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;">
+    <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:32px;
+                border:1px solid #e0e0e0;border-radius:8px;">
       ${messages[stage]}
       <hr style="margin:24px 0;border:none;border-top:1px solid #eee;" />
-      <p style="color:#888;font-size:12px;">StoryBook Generator -- Personalized children's books</p>
+      <p style="color:#888;font-size:12px;">Children's Book Generator -- Personalized storybooks</p>
     </div>
   `;
-}
-
-async function sendReminderEmail(
-  resendKey: string | undefined,
-  email: string,
-  subject: string,
-  htmlBody: string
-): Promise<boolean> {
-  try {
-    if (!resendKey) {
-      console.log(`[payment-reminder] RESEND_API_KEY not set. Would send to ${email}: ${subject}`);
-      return true;
-    }
-
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${resendKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: "StoryBook <noreply@storybook-generator.app>",
-        to: [email],
-        subject: subject,
-        html: htmlBody,
-      }),
-    });
-    return res.ok;
-  } catch (err) {
-    console.error(`Failed to send email to ${email}:`, err);
-    return false;
-  }
 }
