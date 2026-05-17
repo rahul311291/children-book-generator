@@ -29,9 +29,13 @@ logger = logging.getLogger(__name__)
 FREE_IMAGES_PER_BOOK = 3
 PRICE_PER_PAGE_INR = 15  # kept for legacy per-page calc
 
-# Flat pricing
-CUSTOM_BOOK_PRICE_INR = 1100   # wizard-generated custom book with AI images
-TEMPLATE_BOOK_PRICE_INR = 500  # template book (pre-designed)
+# Flat pricing — two tiers
+PDF_PRICE_INR = 500     # digital PDF download
+PRINT_PRICE_INR = 1100  # printed physical copy shipped to address
+
+# Legacy aliases (used by existing code)
+CUSTOM_BOOK_PRICE_INR = PDF_PRICE_INR
+TEMPLATE_BOOK_PRICE_INR = PDF_PRICE_INR
 
 CF_API_VERSION = "2023-08-01"
 
@@ -127,6 +131,14 @@ def template_book_price_inr() -> int:
     return TEMPLATE_BOOK_PRICE_INR
 
 
+def pdf_price_inr() -> int:
+    return PDF_PRICE_INR
+
+
+def print_price_inr() -> int:
+    return PRINT_PRICE_INR
+
+
 def user_can_afford_book(user_id: str, page_count: int) -> bool:
     return get_user_balance_paise(user_id) >= book_price_paise(page_count)
 
@@ -172,8 +184,15 @@ def create_payment_link(
         r = requests.post(f"{c['base']}/pg/links", headers=_headers(), json=payload, timeout=30)
         data = r.json()
         if r.status_code in (200, 201) and data.get("link_url"):
-            # Store order in DB for later status checking
             _save_pending_order(user_id, link_id, amount_inr, purpose)
+            save_pending_payment_for_reminders(
+                user_id=user_id,
+                user_email=user_email,
+                amount_inr=amount_inr,
+                book_title=purpose,
+                payment_link_id=link_id,
+                payment_link_url=data["link_url"],
+            )
             return {"link_url": data["link_url"], "link_id": link_id}
         logger.error(f"Cashfree create link failed {r.status_code}: {data}")
         return None
@@ -196,6 +215,75 @@ def _save_pending_order(user_id: str, link_id: str, amount_inr: int, purpose: st
         })
     except Exception as e:
         logger.warning(f"_save_pending_order: {e}")
+
+
+def save_pending_payment_for_reminders(
+    user_id: str,
+    user_email: str,
+    amount_inr: int,
+    child_name: str = "",
+    book_title: str = "",
+    product_type: str = "pdf",
+    template_id: str = "",
+    payment_link_id: str = "",
+    payment_link_url: str = "",
+):
+    """Save pending payment to Supabase for automated email reminders."""
+    try:
+        supabase_url = os.getenv("VITE_SUPABASE_URL") or os.getenv("SUPABASE_URL", "")
+        supabase_key = os.getenv("VITE_SUPABASE_ANON_KEY") or os.getenv("SUPABASE_ANON_KEY", "")
+        if not supabase_url or not supabase_key:
+            logger.debug("Supabase not configured, skipping pending payment save")
+            return
+        response = requests.post(
+            f"{supabase_url}/rest/v1/pending_payments",
+            headers={
+                "apikey": supabase_key,
+                "Authorization": f"Bearer {supabase_key}",
+                "Content-Type": "application/json",
+                "Prefer": "return=minimal",
+            },
+            json={
+                "user_id": user_id,
+                "user_email": user_email,
+                "amount_inr": amount_inr,
+                "child_name": child_name,
+                "book_title": book_title,
+                "product_type": product_type,
+                "template_id": template_id,
+                "payment_link_id": payment_link_id,
+                "payment_link_url": payment_link_url,
+            },
+            timeout=10,
+        )
+        if response.status_code in (200, 201):
+            logger.info(f"Pending payment saved for reminders: {user_email}")
+        else:
+            logger.warning(f"Failed to save pending payment: {response.status_code} {response.text[:100]}")
+    except Exception as e:
+        logger.warning(f"save_pending_payment_for_reminders: {e}")
+
+
+def mark_payment_complete_for_reminders(payment_link_id: str):
+    """Mark a pending payment as paid in Supabase to stop reminders."""
+    try:
+        supabase_url = os.getenv("VITE_SUPABASE_URL") or os.getenv("SUPABASE_URL", "")
+        supabase_key = os.getenv("VITE_SUPABASE_ANON_KEY") or os.getenv("SUPABASE_ANON_KEY", "")
+        if not supabase_url or not supabase_key:
+            return
+        requests.patch(
+            f"{supabase_url}/rest/v1/pending_payments?payment_link_id=eq.{payment_link_id}",
+            headers={
+                "apikey": supabase_key,
+                "Authorization": f"Bearer {supabase_key}",
+                "Content-Type": "application/json",
+                "Prefer": "return=minimal",
+            },
+            json={"paid": True, "paid_at": datetime.utcnow().isoformat()},
+            timeout=10,
+        )
+    except Exception as e:
+        logger.warning(f"mark_payment_complete_for_reminders: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -250,6 +338,7 @@ def confirm_payment_and_credit(link_id: str, user_id: str) -> bool:
                 {"_id": link_id},
                 {"$set": {"status": "CREDITED", "credited_at": datetime.utcnow()}},
             )
+            mark_payment_complete_for_reminders(link_id)
             return True
         return False
     except Exception as e:
