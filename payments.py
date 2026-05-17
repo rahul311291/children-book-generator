@@ -228,59 +228,37 @@ def save_pending_payment_for_reminders(
     payment_link_id: str = "",
     payment_link_url: str = "",
 ):
-    """Save pending payment to Supabase for automated email reminders."""
+    """Save pending payment to MongoDB for automated email reminders."""
     try:
-        supabase_url = os.getenv("VITE_SUPABASE_URL") or os.getenv("SUPABASE_URL", "")
-        supabase_key = os.getenv("VITE_SUPABASE_ANON_KEY") or os.getenv("SUPABASE_ANON_KEY", "")
-        if not supabase_url or not supabase_key:
-            logger.debug("Supabase not configured, skipping pending payment save")
-            return
-        response = requests.post(
-            f"{supabase_url}/rest/v1/pending_payments",
-            headers={
-                "apikey": supabase_key,
-                "Authorization": f"Bearer {supabase_key}",
-                "Content-Type": "application/json",
-                "Prefer": "return=minimal",
-            },
-            json={
-                "user_id": user_id,
-                "user_email": user_email,
-                "amount_inr": amount_inr,
-                "child_name": child_name,
-                "book_title": book_title,
-                "product_type": product_type,
-                "template_id": template_id,
-                "payment_link_id": payment_link_id,
-                "payment_link_url": payment_link_url,
-            },
-            timeout=10,
-        )
-        if response.status_code in (200, 201):
-            logger.info(f"Pending payment saved for reminders: {user_email}")
-        else:
-            logger.warning(f"Failed to save pending payment: {response.status_code} {response.text[:100]}")
+        from mongo_client import get_db
+        get_db()["pending_payments"].insert_one({
+            "user_id": user_id,
+            "user_email": user_email,
+            "amount_inr": amount_inr,
+            "child_name": child_name,
+            "book_title": book_title,
+            "product_type": product_type,
+            "template_id": template_id,
+            "payment_link_id": payment_link_id,
+            "payment_link_url": payment_link_url,
+            "reminder_1h_sent": False,
+            "reminder_9h_sent": False,
+            "reminder_24h_sent": False,
+            "paid": False,
+            "created_at": datetime.utcnow(),
+        })
+        logger.info(f"Pending payment saved for reminders: {user_email}")
     except Exception as e:
         logger.warning(f"save_pending_payment_for_reminders: {e}")
 
 
 def mark_payment_complete_for_reminders(payment_link_id: str):
-    """Mark a pending payment as paid in Supabase to stop reminders."""
+    """Mark a pending payment as paid in MongoDB to stop reminders."""
     try:
-        supabase_url = os.getenv("VITE_SUPABASE_URL") or os.getenv("SUPABASE_URL", "")
-        supabase_key = os.getenv("VITE_SUPABASE_ANON_KEY") or os.getenv("SUPABASE_ANON_KEY", "")
-        if not supabase_url or not supabase_key:
-            return
-        requests.patch(
-            f"{supabase_url}/rest/v1/pending_payments?payment_link_id=eq.{payment_link_id}",
-            headers={
-                "apikey": supabase_key,
-                "Authorization": f"Bearer {supabase_key}",
-                "Content-Type": "application/json",
-                "Prefer": "return=minimal",
-            },
-            json={"paid": True, "paid_at": datetime.utcnow().isoformat()},
-            timeout=10,
+        from mongo_client import get_db
+        get_db()["pending_payments"].update_one(
+            {"payment_link_id": payment_link_id},
+            {"$set": {"paid": True, "paid_at": datetime.utcnow()}},
         )
     except Exception as e:
         logger.warning(f"mark_payment_complete_for_reminders: {e}")

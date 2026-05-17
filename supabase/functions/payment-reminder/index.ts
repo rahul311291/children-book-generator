@@ -1,5 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from "npm:@supabase/supabase-js@2";
+import { MongoClient } from "npm:mongodb@6.8.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -9,7 +9,7 @@ const corsHeaders = {
 };
 
 interface PendingPayment {
-  id: string;
+  _id: string;
   user_email: string;
   child_name: string;
   book_title: string;
@@ -19,7 +19,7 @@ interface PendingPayment {
   reminder_9h_sent: boolean;
   reminder_24h_sent: boolean;
   paid: boolean;
-  created_at: string;
+  created_at: Date;
 }
 
 Deno.serve(async (req: Request) => {
@@ -28,28 +28,30 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    const mongoUri = Deno.env.get("MONGODB_URI");
+    if (!mongoUri) {
+      return new Response(
+        JSON.stringify({ error: "MONGODB_URI not configured" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const resendKey = Deno.env.get("RESEND_API_KEY");
+    const dbName = Deno.env.get("MONGODB_DB") || "children_book_generator";
+
+    const client = new MongoClient(mongoUri);
+    await client.connect();
+    const db = client.db(dbName);
+    const collection = db.collection<PendingPayment>("pending_payments");
 
     const now = new Date();
 
     // Fetch all unpaid pending payments
-    const { data: pending, error } = await supabase
-      .from("pending_payments")
-      .select("*")
-      .eq("paid", false);
-
-    if (error) {
-      return new Response(JSON.stringify({ error: error.message }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    const pending = await collection.find({ paid: false }).toArray();
 
     let emailsSent = 0;
 
-    for (const payment of (pending as PendingPayment[]) || []) {
+    for (const payment of pending) {
       const createdAt = new Date(payment.created_at);
       const hoursSinceCreation =
         (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60);
@@ -77,39 +79,35 @@ Deno.serve(async (req: Request) => {
       }
 
       if (shouldSendReminder && payment.user_email) {
-        // Send email via Supabase Auth admin API (or a configured SMTP)
         const emailSent = await sendReminderEmail(
-          supabase,
+          resendKey,
           payment.user_email,
           reminderSubject,
           reminderBody
         );
 
         if (emailSent) {
-          await supabase
-            .from("pending_payments")
-            .update({ [reminderField]: true })
-            .eq("id", payment.id);
+          await collection.updateOne(
+            { _id: payment._id },
+            { $set: { [reminderField]: true } }
+          );
           emailsSent++;
         }
       }
     }
 
+    await client.close();
+
     return new Response(
       JSON.stringify({
-        message: `Processed ${(pending || []).length} pending payments, sent ${emailsSent} reminders`,
+        message: `Processed ${pending.length} pending payments, sent ${emailsSent} reminders`,
       }),
-      {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
     return new Response(
       JSON.stringify({ error: String(err) }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
@@ -159,41 +157,31 @@ function buildEmailBody(
 }
 
 async function sendReminderEmail(
-  supabase: any,
+  resendKey: string | undefined,
   email: string,
   subject: string,
   htmlBody: string
 ): Promise<boolean> {
   try {
-    // Use Supabase's built-in email sending via the auth.admin API
-    // This leverages the project's configured email provider
-    const { error } = await supabase.auth.admin.inviteUserByEmail(email, {
-      data: { reminder_only: true },
-      redirectTo: "https://placeholder.invalid",
-    }).catch(() => ({ error: "not supported" }));
-
-    // Fallback: use a simple fetch to a configured SMTP relay or Resend API
-    const resendKey = Deno.env.get("RESEND_API_KEY");
-    if (resendKey) {
-      const res = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${resendKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          from: "StoryBook <noreply@storybook-generator.app>",
-          to: [email],
-          subject: subject,
-          html: htmlBody,
-        }),
-      });
-      return res.ok;
+    if (!resendKey) {
+      console.log(`[payment-reminder] RESEND_API_KEY not set. Would send to ${email}: ${subject}`);
+      return true;
     }
 
-    // If no email provider configured, log and mark as sent to avoid infinite retries
-    console.log(`[payment-reminder] Would send to ${email}: ${subject}`);
-    return true;
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${resendKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: "StoryBook <noreply@storybook-generator.app>",
+        to: [email],
+        subject: subject,
+        html: htmlBody,
+      }),
+    });
+    return res.ok;
   } catch (err) {
     console.error(`Failed to send email to ${email}:`, err);
     return false;
