@@ -1487,13 +1487,20 @@ def create_pdf(
                        font_size_pt, TA_CENTER, "Helvetica-Bold")
 
         elif fmt_id == "spot_illustration":
-            # 8.5×11 portrait — small vignette image centred at top, text flows below
-            vig_w = pw * 0.58; vig_h = ph * 0.36
+            # 8.5×11 portrait — vignette image centred at top, text flows below
+            # Adaptive: short text gets a larger image (up to 70% of page)
+            text_len = len(text) if text else 0
+            if text_len < 200:
+                vig_w = pw * 0.82; vig_h = ph * 0.70
+            elif text_len < 400:
+                vig_w = pw * 0.75; vig_h = ph * 0.55
+            else:
+                vig_w = pw * 0.68; vig_h = ph * 0.45
             iw, ih = _fit(img, vig_w, vig_h)
             ix = (pw - iw) / 2
-            iy = ph - vig_h - 24 + (vig_h - ih) / 2
+            iy = ph - vig_h - 20 + (vig_h - ih) / 2
             _draw_image(img, ix, iy, iw, ih)
-            sep_y = ph - vig_h - 30
+            sep_y = ph - vig_h - 26
             c.setStrokeColor(HexColor("#BBBBBB"))
             c.setLineWidth(0.75)
             c.line(50, sep_y, pw - 50, sep_y)
