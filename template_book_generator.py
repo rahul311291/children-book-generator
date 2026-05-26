@@ -1939,12 +1939,6 @@ def render_template_book_form():
 
     templates = get_available_templates()
 
-    with st.expander("🔧 Debug: Template Status", expanded=False):
-        st.write(f"**Templates found:** {len(templates)}")
-        for t in templates:
-            st.write(f"- {t.get('name', 'Unknown')} (ID: {t.get('id', 'N/A')}, Pages: {t.get('total_pages', 'N/A')})")
-        st.caption("Expected: 8 templates (When I Grow Up, Snow White, Cricket, Cinderella, Sports Day, Space Adventure, World of Friends, ABC)")
-        st.caption("Templates are built-in — no database seeding required.")
 
     if not templates:
         st.warning("No templates available. Please contact support.")
@@ -2036,12 +2030,11 @@ def render_template_book_form():
                                 {desc}
                             </div>
                             <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
-                                <span style="font-size:20px;font-weight:800;color:#1a1a2e;">&#8377;500</span>
-                                <span style="background:#E8F5E9;color:#2E7D32;border-radius:999px;padding:2px 9px;font-size:11px;font-weight:700;">10% off</span>
-                                <span style="font-size:13px;color:#aaa;text-decoration:line-through;">&#8377;556</span>
+                                <span style="font-size:15px;color:#1a1a2e;font-weight:600;">From</span>
+                                <span style="font-size:20px;font-weight:800;color:#1a1a2e;">&#8377;149</span>
                             </div>
-                            <div style="font-size:12px;color:#7B5EA7;margin-bottom:12px;">
-                                &#10024; Add your child's photo to star in every page!
+                            <div style="font-size:12px;color:#2E86AB;margin-bottom:12px;">
+                                3 plans available — view details
                             </div>
                         </div>
                         """,
@@ -2051,90 +2044,56 @@ def render_template_book_form():
                     btn_col, _ = st.columns([4, 1])
                     with btn_col:
                         if st.button(
-                            "Personalize →",
+                            "View Book →",
                             key=f"use_template_{tmpl.get('id')}",
                             use_container_width=True,
                             type="primary",
                         ):
                             st.session_state.selected_template_id = tmpl.get("id")
                             st.session_state.selected_template_name = tmpl.get("name")
-                            st.session_state.scroll_to_details = True
+                            st.session_state.template_preview_mode = True
                             st.rerun()
 
                     st.markdown("</div>", unsafe_allow_html=True)
 
-    if not st.session_state.selected_template_id:
-        st.info("👆 Select a template above to continue creating your personalized book.")
+    if not st.session_state.get("selected_template_id") or not st.session_state.get("template_preview_mode"):
+        st.caption("Select a template above to preview and purchase.")
         return
 
+    # ══════════════════════════════════════════════════════════════════════
+    # TEMPLATE PREVIEW PAGE (shown after clicking "View Book")
+    # ══════════════════════════════════════════════════════════════════════
     selected_template_id = st.session_state.selected_template_id
     selected_template_name = st.session_state.selected_template_name
     template_info = next((t for t in templates if t["id"] == selected_template_id), None)
 
-    # Auto-scroll to details section when template is selected
-    if st.session_state.get("scroll_to_details"):
-        st.session_state.scroll_to_details = False
-        st.markdown('<div id="details-section"></div>', unsafe_allow_html=True)
-        st.components.v1.html(
-            """
-            <script>
-                setTimeout(function() {
-                    const element = window.parent.document.getElementById('details-section');
-                    if (element) {
-                        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                    }
-                }, 100);
-            </script>
-            """,
-            height=0
-        )
+    if not template_info:
+        st.error("Template not found.")
+        return
 
-    # --- Previously generated books for this template ---
-    user_id_tbf = st.session_state.get("auth_user", {}).get("id", "")
-    if user_id_tbf:
-        try:
-            from mongo_client import book_cache_col
-            prev_entries = list(book_cache_col().find(
-                {"user_id": user_id_tbf, "template_id": selected_template_id},
-                {"child_name": 1, "gender": 1, "age": 1, "updated_at": 1},
-            ).sort("updated_at", -1).limit(5))
-            if prev_entries:
-                st.markdown("---")
-                st.markdown("#### Your saved books")
-                for entry in prev_entries:
-                    ec1, ec2 = st.columns([4, 1])
-                    with ec1:
-                        st.write(f"**{entry.get('child_name', '?')}** -- {entry.get('gender', '')} -- Age {entry.get('age', '')}")
-                    with ec2:
-                        if st.button("View", key=f"load_cached_tbf_{entry['_id']}", use_container_width=True, type="secondary"):
-                            cached = get_cached_template_book(
-                                user_id_tbf, selected_template_id,
-                                entry["child_name"], entry.get("gender", "Neutral"),
-                                int(entry.get("age", 5) or 5),
-                            )
-                            if cached:
-                                st.session_state.template_generated_book = cached
-                                st.rerun()
-                            else:
-                                st.warning("Book not found. Please generate it again.")
-        except Exception:
-            pass
+    # Back button
+    if st.button("← Back to all templates"):
+        st.session_state.selected_template_id = None
+        st.session_state.template_preview_mode = False
+        st.rerun()
 
-    # --- Full book preview ---
-    st.markdown("---")
+    # Cover and info
     template_pages = get_template_pages(selected_template_id)
+    cover_img = template_info.get("cover_image", "")
 
-    if template_info and template_info.get("cover_image"):
-        col_cover, col_info = st.columns([1, 2])
-        with col_cover:
-            st.image(template_info["cover_image"], use_container_width=True)
-        with col_info:
-            st.markdown(f"### {template_info['name']}")
-            st.write(template_info.get("description", "").replace("{name}", "*your child*"))
-            st.write(f"📄 **{template_info.get('total_pages', len(template_pages))} pages**")
-    elif template_info:
-        st.markdown(f"### {template_info['name']}")
+    st.markdown("---")
+    col_cover, col_info = st.columns([1, 2])
+    with col_cover:
+        if cover_img:
+            st.image(cover_img, use_container_width=True)
+        else:
+            st.markdown('<div style="height:250px;background:#f0f4f8;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:48px;">📖</div>', unsafe_allow_html=True)
+    with col_info:
+        st.markdown(f"## {template_info['name']}")
+        st.write(template_info.get("description", "").replace("{name}", "*your child*"))
+        st.write(f"**{template_info.get('total_pages', len(template_pages))} pages**")
 
+    # Page preview
     with st.expander(f"Preview all {len(template_pages)} pages", expanded=False):
         for i, page in enumerate(template_pages):
             preview_text = personalize_template_text(page['text_template'], "your child", "Neutral")
@@ -2160,115 +2119,168 @@ def render_template_book_form():
             if i < len(template_pages) - 1:
                 st.markdown("---")
 
-    # --- Customize form ---
+    # ══════════════════════════════════════════════════════════════════════
+    # PRICING TIERS
+    # ══════════════════════════════════════════════════════════════════════
     st.markdown("---")
-    st.markdown("### ✏️ Customize for your child")
+    st.markdown("### Choose your plan")
 
-    col1, col2 = st.columns(2)
+    tier_cols = st.columns(3)
 
-    with col1:
-        child_name = st.text_input(
-            "Child's Name *",
-            placeholder="e.g., Emma, Jack, Alex",
-            help="The child's name that will appear throughout the book"
-        )
-        gender = st.selectbox(
-            "Gender *",
-            options=["Boy", "Girl", "Neutral"],
-            help="This affects pronouns used in the story (he/she/they)"
-        )
-
-    with col2:
-        age = st.number_input(
-            "Child's Age *",
-            min_value=1,
-            max_value=12,
-            value=5,
-            help="The child's age helps personalize the imagery"
-        )
-
-    st.markdown("### Upload Photos (Optional)")
-    st.caption("Upload up to 3 photos of the child to personalize the images. You can select multiple at once.")
-
-    uploaded_files = st.file_uploader(
-        "Upload photos",
-        type=['png', 'jpg', 'jpeg'],
-        accept_multiple_files=True,
-        key="template_photos_multi",
-        help="Select up to 3 photos — hold Ctrl/Cmd to pick multiple files",
-    )
-    photos = list(uploaded_files or [])[:3]
-    if photos:
-        photo_cols = st.columns(min(len(photos), 3))
-        for i, (col, photo) in enumerate(zip(photo_cols, photos)):
-            with col:
-                st.image(photo, caption=f"Photo {i + 1}", use_container_width=True)
-
-    # Photo-to-hero demo panel
-    st.markdown(
-        """
-        <div style="
-            background: linear-gradient(135deg, #f8f0ff 0%, #e8f4fd 100%);
-            border-radius: 16px;
-            padding: 24px 28px;
-            margin: 16px 0 20px 0;
-            display: flex;
-            align-items: center;
-            gap: 0;
-        ">
-            <div style="display:flex;align-items:center;justify-content:center;gap:24px;width:100%;">
-                <div style="text-align:center;">
-                    <div style="
-                        width: 90px; height: 90px;
-                        border: 3px dashed #9B59B6;
-                        border-radius: 50%;
-                        display: flex; align-items: center; justify-content: center;
-                        background: #fff;
-                        margin: 0 auto 8px auto;
-                        font-size: 32px;
-                    ">&#128247;</div>
-                    <div style="font-size:13px;color:#555;font-weight:600;">Your child's photo</div>
-                </div>
-                <div style="font-size:28px;color:#9B59B6;font-weight:700;padding: 0 8px;">&#8594;</div>
-                <div style="text-align:center;">
-                    <div style="
-                        width: 90px; height: 90px;
-                        border: 3px solid #F1C40F;
-                        border-radius: 50%;
-                        display: flex; align-items: center; justify-content: center;
-                        background: #fffde7;
-                        margin: 0 auto 8px auto;
-                        font-size: 32px;
-                    ">&#11088;</div>
-                    <div style="font-size:13px;color:#555;font-weight:600;">Becomes the hero!</div>
-                </div>
+    with tier_cols[0]:
+        st.markdown("""
+        <div style="border:2px solid #e0e0e0;border-radius:16px;padding:24px 18px;text-align:center;background:#fff;min-height:320px;">
+            <div style="font-size:14px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Basic</div>
+            <div style="font-size:36px;font-weight:900;color:#1a1a2e;margin-bottom:4px;">&#8377;149</div>
+            <div style="font-size:12px;color:#999;margin-bottom:16px;">Download as-is</div>
+            <div style="text-align:left;padding:0 8px;">
+                <div style="font-size:13px;color:#444;margin-bottom:6px;">&#10003; Full template book PDF</div>
+                <div style="font-size:13px;color:#444;margin-bottom:6px;">&#10003; High quality pages</div>
+                <div style="font-size:13px;color:#444;margin-bottom:6px;">&#10003; Instant download</div>
+                <div style="font-size:13px;color:#aaa;margin-bottom:6px;">&#10007; No personalization</div>
+                <div style="font-size:13px;color:#aaa;margin-bottom:6px;">&#10007; No custom images</div>
             </div>
         </div>
-        <div style="text-align:center;font-size:13px;color:#7B5EA7;margin-bottom:16px;">
-            Upload your child's photo and watch them become the star of every page
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    st.markdown("---")
-
-    if st.button("✨ Generate My Personalized Book", type="primary", use_container_width=True):
-        if not child_name:
-            st.error("⚠️ Please enter the child's name")
-            return
-
-        with st.spinner("Creating your personalized book..."):
-            st.session_state.template_book_data = {
-                'template_id': selected_template_id,
-                'template_name': selected_template_name,
-                'child_name': child_name,
-                'gender': gender,
-                'age': age,
-                'photos': photos,
-            }
-            st.session_state.generate_template_book = True
+        """, unsafe_allow_html=True)
+        if st.button("Download Template - Rs.149", key="tier_basic", use_container_width=True):
+            st.session_state.template_purchase_tier = "basic"
+            st.session_state.template_purchase_amount = 149
+            st.session_state.template_purchase_trigger = True
             st.rerun()
+
+    with tier_cols[1]:
+        st.markdown("""
+        <div style="border:2px solid #2E86AB;border-radius:16px;padding:24px 18px;text-align:center;background:#f0f9ff;min-height:320px;position:relative;">
+            <div style="position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:#2E86AB;color:#fff;padding:3px 14px;border-radius:999px;font-size:11px;font-weight:700;">POPULAR</div>
+            <div style="font-size:14px;font-weight:700;color:#2E86AB;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Personalized</div>
+            <div style="font-size:36px;font-weight:900;color:#1a1a2e;margin-bottom:4px;">&#8377;249</div>
+            <div style="font-size:12px;color:#999;margin-bottom:16px;">Customized with AI images</div>
+            <div style="text-align:left;padding:0 8px;">
+                <div style="font-size:13px;color:#444;margin-bottom:6px;">&#10003; Child's name throughout</div>
+                <div style="font-size:13px;color:#444;margin-bottom:6px;">&#10003; AI-generated illustrations</div>
+                <div style="font-size:13px;color:#444;margin-bottom:6px;">&#10003; Upload child's photo</div>
+                <div style="font-size:13px;color:#444;margin-bottom:6px;">&#10003; Instant PDF download</div>
+                <div style="font-size:13px;color:#aaa;margin-bottom:6px;">&#10007; No printed copy</div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button("Personalize - Rs.249", key="tier_personalized", use_container_width=True, type="primary"):
+            st.session_state.template_purchase_tier = "personalized"
+            st.session_state.template_purchase_amount = 249
+            st.session_state.template_show_form = True
+            st.rerun()
+
+    with tier_cols[2]:
+        st.markdown("""
+        <div style="border:2px solid #F4A261;border-radius:16px;padding:24px 18px;text-align:center;background:#fffcf5;min-height:320px;">
+            <div style="font-size:14px;font-weight:700;color:#E76F51;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Premium</div>
+            <div style="font-size:36px;font-weight:900;color:#1a1a2e;margin-bottom:4px;">&#8377;699</div>
+            <div style="font-size:12px;color:#999;margin-bottom:16px;">Personalized + Printed copy</div>
+            <div style="text-align:left;padding:0 8px;">
+                <div style="font-size:13px;color:#444;margin-bottom:6px;">&#10003; Everything in Personalized</div>
+                <div style="font-size:13px;color:#444;margin-bottom:6px;">&#10003; Printed hardcover book</div>
+                <div style="font-size:13px;color:#444;margin-bottom:6px;">&#10003; Delivered to your door</div>
+                <div style="font-size:13px;color:#444;margin-bottom:6px;">&#10003; Premium paper quality</div>
+                <div style="font-size:13px;color:#444;margin-bottom:6px;">&#10003; Gift-ready packaging</div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button("Personalize + Print - Rs.699", key="tier_premium", use_container_width=True):
+            st.session_state.template_purchase_tier = "premium"
+            st.session_state.template_purchase_amount = 699
+            st.session_state.template_show_form = True
+            st.rerun()
+
+    # ══════════════════════════════════════════════════════════════════════
+    # BASIC TIER: Just pay and download
+    # ══════════════════════════════════════════════════════════════════════
+    if st.session_state.get("template_purchase_trigger") and st.session_state.get("template_purchase_tier") == "basic":
+        st.session_state.template_purchase_trigger = False
+        st.markdown("---")
+        st.markdown("### Complete your purchase")
+        st.write(f"**{template_info['name']}** — Template PDF download")
+        st.write("Amount: **Rs.149**")
+        from payments import create_payment_link
+        user_id_pay = st.session_state.get("auth_user", {}).get("id", "")
+        user_email_pay = st.session_state.get("auth_user", {}).get("email", "")
+        if user_id_pay:
+            link_result = create_payment_link(user_id_pay, user_email_pay, 149, f"Template: {selected_template_name}")
+            if link_result and link_result.get("link_url"):
+                st.markdown(f'<a href="{link_result["link_url"]}" target="_blank" style="display:inline-block;background:#2E86AB;color:#fff;padding:12px 32px;border-radius:8px;text-decoration:none;font-weight:600;">Pay Rs.149 & Download</a>', unsafe_allow_html=True)
+            else:
+                error_msg = link_result.get("error", "Could not generate payment link.") if link_result else "Could not generate payment link."
+                st.error(error_msg)
+        else:
+            st.warning("Please log in to purchase.")
+
+    # ══════════════════════════════════════════════════════════════════════
+    # PERSONALIZED / PREMIUM: Show customize form
+    # ══════════════════════════════════════════════════════════════════════
+    if st.session_state.get("template_show_form") and st.session_state.get("template_purchase_tier") in ("personalized", "premium"):
+        tier_label = "Personalized" if st.session_state.template_purchase_tier == "personalized" else "Premium (Print + Digital)"
+        amount = st.session_state.get("template_purchase_amount", 249)
+
+        st.markdown("---")
+        st.markdown(f"### Customize your book ({tier_label} — Rs.{amount})")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            child_name = st.text_input(
+                "Child's Name *",
+                placeholder="e.g., Emma, Jack, Alex",
+                help="The child's name that will appear throughout the book"
+            )
+            gender = st.selectbox(
+                "Gender *",
+                options=["Boy", "Girl", "Neutral"],
+                help="This affects pronouns used in the story (he/she/they)"
+            )
+        with col2:
+            age = st.number_input(
+                "Child's Age *",
+                min_value=1,
+                max_value=12,
+                value=5,
+                help="The child's age helps personalize the imagery"
+            )
+
+        st.markdown("#### Upload Photos (Optional)")
+        st.caption("Upload up to 3 photos of the child to personalize the illustrations.")
+
+        uploaded_files = st.file_uploader(
+            "Upload photos",
+            type=['png', 'jpg', 'jpeg'],
+            accept_multiple_files=True,
+            key="template_photos_multi",
+            help="Select up to 3 photos",
+        )
+        photos = list(uploaded_files or [])[:3]
+        if photos:
+            photo_cols = st.columns(min(len(photos), 3))
+            for i, (col, photo) in enumerate(zip(photo_cols, photos)):
+                with col:
+                    st.image(photo, caption=f"Photo {i + 1}", use_container_width=True)
+
+        st.markdown("---")
+
+        if st.button(f"Generate My Personalized Book (Rs.{amount})", type="primary", use_container_width=True):
+            if not child_name:
+                st.error("Please enter the child's name")
+                return
+
+            with st.spinner("Creating your personalized book..."):
+                st.session_state.template_book_data = {
+                    'template_id': selected_template_id,
+                    'template_name': selected_template_name,
+                    'child_name': child_name,
+                    'gender': gender,
+                    'age': age,
+                    'photos': photos,
+                    'tier': st.session_state.template_purchase_tier,
+                    'amount': amount,
+                }
+                st.session_state.generate_template_book = True
+                st.rerun()
 
 
 def generate_template_book(api_key: str, book_data: Dict):
