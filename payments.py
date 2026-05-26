@@ -156,11 +156,11 @@ def create_payment_link(
 ) -> Optional[dict]:
     """
     Create a Cashfree Payment Link. Returns dict with 'link_url' and 'link_id',
-    or None on failure.
+    or None on failure. Returns dict with 'error' key on configuration issues.
     """
     if not is_cashfree_configured():
-        logger.error("Cashfree not configured")
-        return None
+        logger.error("Cashfree not configured — CASHFREE_APP_ID or CASHFREE_SECRET_KEY missing")
+        return {"error": "Payment gateway not configured. Please contact support."}
     c = _cf_cfg()
     link_id = f"cbg_{user_id[:8]}_{uuid.uuid4().hex[:8]}"
     payload = {
@@ -169,7 +169,7 @@ def create_payment_link(
         "link_currency": "INR",
         "link_purpose": purpose,
         "customer_details": {
-            "customer_phone": "9999999999",  # required by Cashfree; user may update later
+            "customer_phone": "9999999999",
             "customer_email": user_email,
             "customer_name": user_email.split("@")[0],
         },
@@ -194,11 +194,15 @@ def create_payment_link(
                 payment_link_url=data["link_url"],
             )
             return {"link_url": data["link_url"], "link_id": link_id}
+        error_msg = data.get("message", "") or data.get("error", "")
         logger.error(f"Cashfree create link failed {r.status_code}: {data}")
-        return None
+        return {"error": f"Payment service error: {error_msg}" if error_msg else "Payment link creation failed. Please try again."}
+    except requests.exceptions.Timeout:
+        logger.error("Cashfree request timed out")
+        return {"error": "Payment service timed out. Please try again."}
     except Exception as e:
         logger.error(f"create_payment_link error: {e}")
-        return None
+        return {"error": "Could not connect to payment service. Please try again later."}
 
 
 def _save_pending_order(user_id: str, link_id: str, amount_inr: int, purpose: str):

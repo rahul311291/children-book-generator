@@ -345,7 +345,7 @@ def call_gemini_image(
                                 "instances": [{"prompt": imagen_prompt}],
                                 "parameters": {
                                     "sampleCount": 1,
-                                    "aspectRatio": "1:1",
+                                    "aspectRatio": "3:4",
                                 },
                             },
                             timeout=180,
@@ -399,7 +399,7 @@ def call_gemini_image(
                     "temperature": 0.4,
                     "topK": 32,
                     "topP": 1,
-                    "imageConfig": {"aspectRatio": "1:1", "imageSize": "2K"},
+                    "imageConfig": {"aspectRatio": "3:4", "imageSize": "2K"},
                 },
             },
             params={"key": api_key},

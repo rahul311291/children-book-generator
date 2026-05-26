@@ -222,7 +222,7 @@ def _assemble_image_prompt(page: dict, visual_anchor: str, book_format: dict = N
         "montage_sequence", "environment_only", "scene",
     }
 
-    parts = []
+    parts = ["PORTRAIT ORIENTATION (3:4 ratio, taller than wide). Ensure full subject is visible vertically — do NOT crop heads, feet, or key elements at top/bottom."]
     if directive:
         parts.append(directive)
     if primary_subject and primary_subject.lower() not in raw.lower():
@@ -1314,7 +1314,7 @@ def generate_image_with_imagen(
             st.session_state.image_generation_errors[image_index] = error_details
 
         st.error(f"❌ Failed to generate image after retries: {str(e)[:200]}")
-        return Image.new('RGB', (512, 512), color=(200, 200, 200))
+        return Image.new('RGB', (384, 512), color=(200, 200, 200))
 
 
 def generate_image_with_openrouter(openrouter_key: str, prompt: str, image_style: str = None) -> Optional[Image.Image]:
@@ -3127,7 +3127,7 @@ def main():
                 if st.button("⏭️ Skip to PDF (No Images)", type="secondary", use_container_width=True):
                     # Create placeholder images so PDF can be generated
                     from PIL import Image
-                    placeholder = Image.new('RGB', (512, 512), color=(240, 240, 240))
+                    placeholder = Image.new('RGB', (384, 512), color=(240, 240, 240))
                     st.session_state.generated_images = [placeholder] * total_pages
                     st.rerun()
         else:
@@ -3249,7 +3249,7 @@ def main():
                                         user_id_pay, user_email_pay, _pdf_p,
                                         f"PDF storybook for {child_name_pay} – {total_pages} pages"
                                     )
-                                if result:
+                                if result and result.get("link_url"):
                                     save_pending_payment_for_reminders(
                                         user_id=user_id_pay, user_email=user_email_pay,
                                         amount_inr=_pdf_p, child_name=child_name_pay,
@@ -3263,7 +3263,7 @@ def main():
                                     st.session_state.current_book_payment_status = "pending"
                                     st.rerun()
                                 else:
-                                    st.error("Could not create payment link.")
+                                    st.error(result.get("error", "Could not create payment link.") if result else "Could not create payment link.")
                         with col_print:
                             if st.button(f"Printed Book -- Rs.{_print_p}", use_container_width=True, key="custom_pay_print"):
                                 with st.spinner("Creating payment link..."):
@@ -3271,7 +3271,7 @@ def main():
                                         user_id_pay, user_email_pay, _print_p,
                                         f"Printed storybook for {child_name_pay} – {total_pages} pages"
                                     )
-                                if result:
+                                if result and result.get("link_url"):
                                     save_pending_payment_for_reminders(
                                         user_id=user_id_pay, user_email=user_email_pay,
                                         amount_inr=_print_p, child_name=child_name_pay,
@@ -3285,7 +3285,7 @@ def main():
                                     st.session_state.current_book_payment_status = "pending"
                                     st.rerun()
                                 else:
-                                    st.error("Could not create payment link.")
+                                    st.error(result.get("error", "Could not create payment link.") if result else "Could not create payment link.")
                 else:
                     # Cashfree not configured — admin bypass button
                     st.warning("Payment gateway not configured. Admin override available.")
