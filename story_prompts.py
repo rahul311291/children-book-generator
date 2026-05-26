@@ -416,7 +416,17 @@ VISUAL CONSISTENCY RULES:
    - Use this EXACT description on every page where {child_name} is the focus
    - NEVER change the outfit, hairstyle, or features between pages
 
-2. SCENE-FOCUSED PAGES (grand vistas, crowds, events, panoramas):
+2. SECONDARY CHARACTER CONSISTENCY (CRITICAL):
+   - If the story has ANY recurring characters (friends, siblings, parents, pets, etc.),
+     you MUST define a "secondary_characters" array in your JSON output
+   - Each secondary character MUST have a fixed visual description: name, age/type,
+     gender, hair style and color, skin tone, clothing, and one distinguishing feature
+   - Use the EXACT SAME description every time that character appears in a visual_description
+   - NEVER change a secondary character's hairstyle, clothing, or features between pages
+   - Example: if Maya has "long straight black hair in two braids, wearing a green kurta",
+     she must ALWAYS have that exact appearance in every illustration
+
+3. SCENE-FOCUSED PAGES (grand vistas, crowds, events, panoramas):
    - Use image_type = "scene" for these pages
    - {child_name} may appear SMALL in the scene, as one figure among many
    - Do NOT make {child_name} the visual centre of a scene page
@@ -424,12 +434,12 @@ VISUAL CONSISTENCY RULES:
    - Example: an Olympic arena filled with hundreds of animals — {child_name} is a
      small figure watching from the stands or participating in a crowd
 
-3. CHARACTER CLOSE-UP PAGES:
+4. CHARACTER CLOSE-UP PAGES:
    - Use image_type = "character" for these pages
    - {child_name} fills most of the frame; scene is supporting background
    - Full visual_anchor description required
 
-4. FAMOUS CHARACTER COMPANION (Only if specified):
+5. FAMOUS CHARACTER COMPANION (Only if specified):
    - If {character_companion} is provided, include them in relevant pages
    - They should have dialogue and appear in illustrations
 """
@@ -443,13 +453,20 @@ OUTPUT FORMAT (Return as JSON only):
 {{
   "title": "Creative title using the EXACT name '{child_name}' if relevant",
   "visual_anchor": "Concise consistent appearance of {child_name}: age, gender, skin tone, hair, eye color, ONE specific outfit. ~25 words. Used on character-focused pages only.",
+  "secondary_characters": [
+    {{
+      "name": "Character name",
+      "description": "Fixed visual description: age, gender, hair style+color, skin tone, clothing, one distinguishing feature. ~20 words. NEVER changes between pages."
+    }}
+  ],
   "pages": [
     {{
       "page_number": 1,
       "text": "Story text for this page (use exact name '{child_name}')",
       "shot_type": "ONE OF: wide_establishing | aerial_panorama | crowd_ensemble | action_dynamic | mid_shot_character | close_up_emotion | montage_sequence | environment_only",
       "primary_subject": "ONE short sentence stating WHAT THIS IMAGE PRIMARILY SHOWS. For scene shots this is the environment/event/crowd, NOT the protagonist.",
-      "visual_description": "RICH 3-5 sentence cinematic description following the structure in the rules below."
+      "characters_in_scene": ["list of secondary character names appearing in this page's illustration"],
+      "visual_description": "RICH 3-5 sentence cinematic description following the structure in the rules below. Include exact visual descriptions of ALL secondary characters appearing."
     }}
   ]
 }}

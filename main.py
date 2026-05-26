@@ -180,7 +180,7 @@ def _resolve_book_format() -> dict:
     return None
 
 
-def _assemble_image_prompt(page: dict, visual_anchor: str, book_format: dict = None) -> str:
+def _assemble_image_prompt(page: dict, visual_anchor: str, book_format: dict = None, secondary_characters: list = None) -> str:
     """
     Build the final image prompt for one page.
 
@@ -190,7 +190,8 @@ def _assemble_image_prompt(page: dict, visual_anchor: str, book_format: dict = N
       3. For scene/wide/crowd shots, do NOT append visual_anchor (it just makes
          the model paint a single character in a stadium)
       4. For character close-ups, append visual_anchor if not already present
-      5. If book_format is provided, wrap in its image_prompt_template
+      5. Append secondary character descriptions for consistency
+      6. If book_format is provided, wrap in its image_prompt_template
     """
     raw = (page.get("image_prompt") or page.get("visual_description", "")).strip()
     shot_type = (page.get("shot_type") or page.get("image_type", "")).lower()
@@ -231,6 +232,17 @@ def _assemble_image_prompt(page: dict, visual_anchor: str, book_format: dict = N
     if visual_anchor and not is_scene_shot and visual_anchor not in raw:
         parts.append(f"Character appearing in this scene: {visual_anchor}.")
 
+    # Inject secondary character descriptions for consistency
+    if secondary_characters and not is_scene_shot:
+        chars_in_scene = page.get("characters_in_scene", [])
+        if chars_in_scene:
+            for sc in secondary_characters:
+                sc_name = sc.get("name", "")
+                if sc_name and sc_name.lower() in [c.lower() for c in chars_in_scene]:
+                    sc_desc = sc.get("description", "")
+                    if sc_desc and sc_desc.lower() not in raw.lower():
+                        parts.append(f"Also appearing: {sc_name} — {sc_desc}.")
+
     final = " ".join(parts)
 
     # Apply book format's image template wrapping if provided
@@ -267,6 +279,21 @@ def compress_pil_images_for_storage(images: list, max_size: int = 768, quality: 
             logger.warning(f"Image compression failed: {e}")
             result.append(None)
     return result
+
+
+def _make_cover_thumbnail(img, max_size: int = 300, quality: int = 70) -> str:
+    """Create a small base64 JPEG thumbnail from a PIL Image for cover display."""
+    if img is None:
+        return ""
+    try:
+        buf = io.BytesIO()
+        img_copy = img.convert("RGB")
+        img_copy.thumbnail((max_size, max_size), Image.LANCZOS)
+        img_copy.save(buf, format="JPEG", quality=quality, optimize=True)
+        b64 = base64.b64encode(buf.getvalue()).decode()
+        return f"data:image/jpeg;base64,{b64}"
+    except Exception:
+        return ""
 
 
 def decode_stored_images(images_data: list) -> list:
@@ -404,10 +431,14 @@ def save_story(story_data: Dict, child_name: str, metadata: Dict = None):
                 if existing_id:
                     # Use only _id in filter — user_id mismatch would cause silent no-op.
                     # Use dot-notation $set so we don't wipe existing metadata fields.
+                    # Generate cover thumbnail from first image
+                    gen_imgs = st.session_state.get("generated_images", [])
+                    cover_thumb = _make_cover_thumbnail(gen_imgs[0]) if gen_imgs and gen_imgs[0] else ""
                     fields_to_set = {
                         "user_id": user_id,
                         "story_data": story_for_db,
                         "images": images_for_db,
+                        "cover_thumbnail": cover_thumb,
                         "metadata.timestamp": timestamp,
                         "metadata.journey_state": journey_state,
                     }
@@ -416,9 +447,8 @@ def save_story(story_data: Dict, child_name: str, metadata: Dict = None):
                             fields_to_set[f"metadata.{k}"] = v
                     result = col.update_one({"_id": existing_id}, {"$set": fields_to_set})
                     if result.matched_count == 0:
-                        # Document missing — insert it fresh
                         logger.warning(f"Update matched 0 docs for id={existing_id}, inserting new")
-                        existing_id = None  # fall through to insert below
+                        existing_id = None
                     else:
                         logger.info(f"Story updated in MongoDB doc {existing_id}, images={len(images_for_db)}")
                 if not existing_id:
@@ -427,12 +457,15 @@ def save_story(story_data: Dict, child_name: str, metadata: Dict = None):
                         (metadata or {}).get("has_reference_photo")
                         or st.session_state.get("wiz_reference_photos_b64")
                     )
+                    gen_imgs = st.session_state.get("generated_images", [])
+                    cover_thumb = _make_cover_thumbnail(gen_imgs[0]) if gen_imgs and gen_imgs[0] else ""
                     col.insert_one({
                         "_id": doc_id,
                         "user_id": user_id,
                         "child_name": child_name,
                         "title": story_data.get("title", f"{child_name}'s Story"),
                         "book_type": "custom",
+                        "cover_thumbnail": cover_thumb,
                         "story_data": story_for_db,
                         "images": images_for_db,
                         "is_private": has_ref_photo,
@@ -443,7 +476,7 @@ def save_story(story_data: Dict, child_name: str, metadata: Dict = None):
                     logger.info(f"Story inserted to MongoDB, id={doc_id}, images={len(images_for_db)}, private={has_ref_photo}")
             except Exception as db_err:
                 logger.warning(f"MongoDB save failed: {db_err}")
-                st.toast(f"⚠️ Cloud save failed: {str(db_err)[:80]}", icon="⚠️")
+                st.toast("Cloud save failed. Your story is saved locally.", icon="⚠️")
 
         # --- Local file fallback ---
         filename = f"{child_name}_{timestamp}.json"
@@ -489,12 +522,23 @@ def save_template_book_to_history(book_data: Dict):
                 import uuid as _uuid
                 col = book_history_col()
                 has_ref_photo = bool(book_data.get("reference_image_base64"))
+                cover_thumb = book_data.get("cover_image", "")
+                tpl_pages = book_data.get("pages", [])
+                if tpl_pages and tpl_pages[0].get("image_url"):
+                    first_img_url = tpl_pages[0]["image_url"]
+                    if first_img_url.startswith("data:image"):
+                        try:
+                            img_data = base64.b64decode(first_img_url.split(",", 1)[1])
+                            cover_thumb = _make_cover_thumbnail(Image.open(io.BytesIO(img_data)))
+                        except Exception:
+                            pass
                 col.insert_one({
                     "_id": str(_uuid.uuid4()),
                     "user_id": user_id,
                     "child_name": child_name,
                     "title": f"{template_name} - {child_name}",
                     "book_type": "template",
+                    "cover_thumbnail": cover_thumb,
                     "template_id": template_id,
                     "template_name": template_name,
                     "story_data": story_payload,
@@ -598,7 +642,7 @@ def get_story_history():
             rows = list(col.find(
                 {"user_id": user_id},
                 {"_id": 1, "child_name": 1, "title": 1, "book_type": 1,
-                 "template_id": 1, "template_name": 1, "created_at": 1, "metadata": 1}
+                 "template_id": 1, "template_name": 1, "created_at": 1, "metadata": 1, "cover_thumbnail": 1}
             ).sort("created_at", DESCENDING).limit(100))
             for row in rows:
                 created = row.get("created_at")
@@ -612,6 +656,7 @@ def get_story_history():
                     "book_type": row.get("book_type", "custom"),
                     "template_id": row.get("template_id"),
                     "template_name": row.get("template_name"),
+                    "cover_thumbnail": row.get("cover_thumbnail", ""),
                 })
             if stories:
                 logger.info(f"Loaded {len(stories)} stories from MongoDB")
@@ -786,12 +831,13 @@ CRITICAL: Output ONLY the JSON, no additional text before or after."""
 
         # Handle format mapping and ensure visual anchor
         visual_anchor = story_data.get("visual_anchor", existing_visual_anchor)
+        secondary_chars = story_data.get("secondary_characters", existing_story.get("secondary_characters", []))
         book_format = _resolve_book_format()
         for page in story_data.get("pages", []):
             if "visual_description" in page and "image_prompt" not in page:
                 page["image_prompt"] = page["visual_description"]
-            page["image_prompt"] = _assemble_image_prompt(page, visual_anchor, book_format)
-        
+            page["image_prompt"] = _assemble_image_prompt(page, visual_anchor, book_format, secondary_chars)
+
         # Verify we got a valid story structure
         if not story_data.get("pages") or len(story_data.get("pages", [])) == 0:
             error_msg = "Regenerated story has no pages"
@@ -922,12 +968,13 @@ Return ONLY the modified JSON. Every page's "text" field should reflect the requ
         
         # Handle format mapping
         visual_anchor = story_data.get("visual_anchor", existing_visual_anchor)
+        secondary_chars = story_data.get("secondary_characters", existing_story.get("secondary_characters", []))
         book_format = _resolve_book_format()
         for page in story_data.get("pages", []):
             if "visual_description" in page and "image_prompt" not in page:
                 page["image_prompt"] = page["visual_description"]
-            page["image_prompt"] = _assemble_image_prompt(page, visual_anchor, book_format)
-        
+            page["image_prompt"] = _assemble_image_prompt(page, visual_anchor, book_format, secondary_chars)
+
         # Verify we got a valid story structure
         if not story_data.get("pages") or len(story_data.get("pages", [])) == 0:
             error_msg = "Refined story has no pages"
@@ -1041,12 +1088,13 @@ Output ONLY valid JSON, no markdown, no explanations."""
         
         # Handle format mapping and ensure visual anchor
         visual_anchor = story_data.get("visual_anchor", existing_visual_anchor)
+        secondary_chars = story_data.get("secondary_characters", existing_story.get("secondary_characters", []))
         book_format = _resolve_book_format()
         for page in story_data.get("pages", []):
             if "visual_description" in page and "image_prompt" not in page:
                 page["image_prompt"] = page["visual_description"]
-            page["image_prompt"] = _assemble_image_prompt(page, visual_anchor, book_format)
-        
+            page["image_prompt"] = _assemble_image_prompt(page, visual_anchor, book_format, secondary_chars)
+
         # Verify structure
         if not story_data.get("pages") or len(story_data.get("pages", [])) != len(existing_pages):
             error_msg = f"Regenerated story has {len(story_data.get('pages', []))} pages, expected {len(existing_pages)}"
@@ -1115,16 +1163,17 @@ def generate_story_with_gemini(api_key: str, child_name: str, age: int, gender: 
             response_text = response_text.split("```")[1].split("```")[0].strip()
 
         story_data = json.loads(response_text)
-        
+
         # Handle new format: map "visual_description" to "image_prompt" for compatibility
         visual_anchor = story_data.get("visual_anchor", visual_anchor)
+        secondary_chars = story_data.get("secondary_characters", [])
         for page in story_data.get("pages", []):
             # If using new format with "visual_description", map it to "image_prompt"
             if "visual_description" in page and "image_prompt" not in page:
                 page["image_prompt"] = page["visual_description"]
             # Ensure visual anchor is in image prompt
-            page["image_prompt"] = _assemble_image_prompt(page, visual_anchor, book_format)
-        
+            page["image_prompt"] = _assemble_image_prompt(page, visual_anchor, book_format, secondary_chars)
+
         return story_data
         
     except json.JSONDecodeError as e:
@@ -1401,13 +1450,49 @@ def create_pdf(
                 para.drawOn(c, x, vy)
                 return
 
-    # ── Dedication page ────────────────────────────────────────────────
-    title_fs = min(28, int(pw / inch * 3.3))
-    name_fs  = min(36, int(pw / inch * 4.2))
+    # ── Cover page (illustrated) ──────────────────────────────────────
+    book_title = story_data.get("title", f"{child_name}'s Storybook")
+    cover_img = images[0] if images else None
+    if cover_img:
+        iw, ih = _fit(cover_img, pw, ph)
+        ix = (pw - iw) / 2
+        iy = (ph - ih) / 2
+        _draw_image(cover_img, ix, iy, iw, ih)
+        # Dark gradient overlay at bottom for text readability
+        c.saveState()
+        c.setFillColor(HexColor("#000000"))
+        c.setFillAlpha(0.55)
+        c.rect(0, 0, pw, ph * 0.38, fill=1, stroke=0)
+        c.restoreState()
+    else:
+        c.setFillColor(HexColor("#1a1a2e"))
+        c.rect(0, 0, pw, ph, fill=1, stroke=0)
+    # Title text
+    title_fs = min(32, int(pw / inch * 3.8))
+    name_fs = min(20, int(pw / inch * 2.4))
+    c.setFillColor(white)
     c.setFont("Helvetica-Bold", title_fs)
-    c.drawCentredString(pw / 2, ph / 2 + 40, "This book belongs to")
-    c.setFont("Helvetica-Bold", name_fs)
-    c.drawCentredString(pw / 2, ph / 2 - 20, child_name)
+    # Word-wrap the title
+    title_lines = []
+    words = book_title.split()
+    line = ""
+    for w in words:
+        test = f"{line} {w}".strip()
+        if c.stringWidth(test, "Helvetica-Bold", title_fs) < pw - 60:
+            line = test
+        else:
+            if line:
+                title_lines.append(line)
+            line = w
+    if line:
+        title_lines.append(line)
+    text_y = ph * 0.22
+    for tl in reversed(title_lines):
+        c.drawCentredString(pw / 2, text_y, tl)
+        text_y += title_fs + 6
+    c.setFont("Helvetica", name_fs)
+    c.setFillColor(HexColor("#EEEEEE"))
+    c.drawCentredString(pw / 2, ph * 0.12, f"A story for {child_name}")
     c.showPage()
 
     pages = story_data.get("pages", [])
@@ -1710,13 +1795,12 @@ def render_gallery():
     try:
         from mongo_client import book_history_col
         col = book_history_col()
-        # Only show public books (is_private != True) that have valid images
         books = list(col.find(
             {
                 "images": {"$elemMatch": {"$type": "string", "$regex": "^data:image"}},
                 "is_private": {"$ne": True},
             },
-            {"_id": 1, "child_name": 1, "story_data": 1, "metadata": 1, "created_at": 1}
+            {"_id": 1, "child_name": 1, "story_data": 1, "metadata": 1, "created_at": 1, "cover_thumbnail": 1, "title": 1}
         ).sort("created_at", -1).limit(48))
     except Exception as _ge:
         import logging as _log
@@ -1727,7 +1811,7 @@ def render_gallery():
         st.markdown(
             "<p style='color:#999;text-align:center;padding:2rem;'>"
             "No completed books in the gallery yet — finish generating images for your story "
-            "to see it appear here! 🌟"
+            "to see it appear here!"
             "</p>",
             unsafe_allow_html=True,
         )
@@ -1737,26 +1821,31 @@ def render_gallery():
     for i, book in enumerate(books):
         with cols[i % 4]:
             doc_id = book.get("_id", "")
-            title = (book.get("story_data") or {}).get("title", "Untitled Story")
+            title = book.get("title") or (book.get("story_data") or {}).get("title", "Untitled Story")
             child = book.get("child_name", "")
             meta = book.get("metadata") or {}
             age = meta.get("age", "")
             lang = meta.get("language", "")
             created = book.get("created_at")
             date_str = created.strftime("%b %Y") if created else ""
-            emojis = ["📖", "🌟", "🦋", "🌈", "🚀", "🌙", "🦁", "🐬"]
-            emoji = emojis[i % len(emojis)]
+            cover = book.get("cover_thumbnail", "")
+            if cover and cover.startswith("data:image"):
+                cover_html = f'<img src="{cover}" style="width:100%;height:140px;object-fit:cover;border-radius:10px 10px 0 0;">'
+            else:
+                cover_html = '<div style="width:100%;height:140px;background:linear-gradient(135deg,#e8f4fd,#f0e6ff);border-radius:10px 10px 0 0;display:flex;align-items:center;justify-content:center;font-size:40px;">📖</div>'
             st.markdown(f"""
-            <div style="background:#f8f9ff;border-radius:12px;padding:14px 12px;margin-bottom:4px;
-                 border:1px solid #e0e7ff;">
-              <div style="font-size:28px;text-align:center;margin-bottom:6px;">{emoji}</div>
-              <div style="font-weight:600;font-size:13px;color:#1a1a2e;line-height:1.3;
-                   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="{title}">{title}</div>
-              <div style="color:#666;font-size:12px;margin-top:3px;">For {child}{", age "+str(age) if age else ""}</div>
-              <div style="color:#aaa;font-size:11px;margin-top:2px;">{lang+"  · " if lang else ""}{date_str}</div>
+            <div style="background:#fff;border-radius:12px;margin-bottom:4px;
+                 border:1px solid #e0e7ff;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.06);">
+              {cover_html}
+              <div style="padding:10px 12px 12px;">
+                <div style="font-weight:600;font-size:13px;color:#1a1a2e;line-height:1.3;
+                     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="{title}">{title}</div>
+                <div style="color:#666;font-size:12px;margin-top:3px;">For {child}{", age "+str(age) if age else ""}</div>
+                <div style="color:#aaa;font-size:11px;margin-top:2px;">{lang+"  · " if lang else ""}{date_str}</div>
+              </div>
             </div>
             """, unsafe_allow_html=True)
-            if doc_id and st.button("Read Story →", key=f"gallery_view_{doc_id}_{i}", use_container_width=True):
+            if doc_id and st.button("Read Story", key=f"gallery_view_{doc_id}_{i}", use_container_width=True):
                 _load_gallery_book(doc_id)
                 st.rerun()
 
@@ -2167,6 +2256,14 @@ def main():
 
     init_auth_state()
 
+    # CookieManager often returns empty on the very first render.
+    # Allow one rerun for the JS component to hydrate.
+    if not is_authenticated() and not _cookie_token:
+        if not st.session_state.get("_cookie_retry_done"):
+            st.session_state._cookie_retry_done = True
+            import time; time.sleep(0.3)
+            st.rerun()
+
     # Try to restore session from cookie if not already authenticated
     if not is_authenticated() and _cookie_token:
         if restore_session_from_token(_cookie_token):
@@ -2245,42 +2342,33 @@ def main():
         
         history = get_story_history()
 
-        # Developer: verify where data is saved
-        with st.expander("🔧 Developer: verify saves & storage"):
-            stories_dir = st.session_state.stories_dir
-            st.markdown("**Primary storage:** MongoDB Atlas `book_history` collection (persists across sessions).")
-            st.markdown("**Fallback storage:** Local JSON files (lost on server restart).")
-            st.code(str(stories_dir), language="text")
-            if stories_dir.exists():
-                files = sorted(stories_dir.glob("*.json"), reverse=True)
-                st.write(f"**{len(files)}** local JSON file(s):")
-                for f in files[:10]:
-                    st.caption(f"• {f.name}")
-                if len(files) > 10:
-                    st.caption(f"… and {len(files) - 10} more")
-            else:
-                st.caption("No local files yet.")
-            st.markdown("---")
-            st.markdown("**MongoDB collections:** `users`, `book_history`, `book_cache`, `image_pool`.")
-        
         if history:
-            st.info(f"Found {len(history)} saved stories. These are your backups - you can load any story to view, edit, and regenerate images or PDF.")
-            st.markdown("**Note:** When you load a story, you'll need to regenerate images since they're not saved. The story text and prompts are preserved.")
-            
+            st.caption(f"{len(history)} saved stories")
+
             for idx, story_info in enumerate(history):
-                display_name = f"{story_info['child_name']} - {story_info['title']}"
+                display_name = story_info['title'] or f"{story_info['child_name']}'s Story"
                 timestamp_display = story_info['timestamp'].replace('_', ' ')[:16] if story_info['timestamp'] else ""
-                
+                cover = story_info.get("cover_thumbnail", "")
+
                 with st.container():
-                    col1, col2 = st.columns([3, 1])
-                    with col1:
+                    col_cover, col_info, col_action = st.columns([1, 3, 1])
+                    with col_cover:
+                        if cover and cover.startswith("data:image"):
+                            st.markdown(
+                                f'<img src="{cover}" style="width:80px;height:80px;object-fit:cover;border-radius:8px;">',
+                                unsafe_allow_html=True,
+                            )
+                        else:
+                            st.markdown(
+                                '<div style="width:80px;height:80px;background:#f0f4ff;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:28px;">📖</div>',
+                                unsafe_allow_html=True,
+                            )
+                    with col_info:
                         st.write(f"**{display_name}**")
-                        st.caption(f"Saved: {timestamp_display}")
-                        source = "Cloud" if story_info.get("db_id") else "Local"
                         book_type_label = "Template" if story_info.get("book_type") == "template" else "Custom"
-                        st.caption(f"{book_type_label} · {source}")
-                    with col2:
-                        if st.button("📖 Load Story", key=f"load_history_{idx}", use_container_width=True):
+                        st.caption(f"For {story_info['child_name']} · {book_type_label} · {timestamp_display}")
+                    with col_action:
+                        if st.button("Load", key=f"load_history_{idx}", use_container_width=True):
                             # Load from MongoDB if we have a db_id, else from local file
                             loaded_data = None
                             if story_info.get("db_id"):
@@ -2562,24 +2650,24 @@ def main():
 
                 from vertex_client import is_vertex_configured, _token, _cfg
                 if is_vertex_configured():
-                    st.caption(f"Vertex AI ready · project: {st.session_state.vertex_project_id}")
+                    st.caption("Vertex AI configured and ready")
                     if st.button("Test Vertex AI connection", key="test_vertex_btn", use_container_width=True):
                         with st.spinner("Testing Vertex AI..."):
                             try:
                                 tok = _token(raise_on_error=True)
                                 if tok:
-                                    st.success(f"Auth OK — token acquired ({len(tok)} chars)")
+                                    st.success("Authentication successful")
                                     from vertex_client import call_gemini_text
                                     result = call_gemini_text("Say 'Vertex OK' and nothing else.", api_key="")
                                     if result:
-                                        st.success(f"Text generation OK: {result[:80]}")
+                                        st.success("Vertex AI is working correctly")
                                     else:
-                                        cfg = _cfg()
-                                        st.error(f"Auth succeeded but text call returned nothing. Project: {cfg['project']}, Location: {cfg['location']}")
+                                        st.error("Authentication succeeded but text generation failed. Please check your project configuration.")
                                 else:
                                     st.error("Could not obtain auth token. Check your Service Account JSON.")
                             except Exception as ex:
-                                st.error(f"Vertex error: {ex}")
+                                logger.warning(f"Vertex test error: {ex}")
+                                st.error("Connection test failed. Please verify your credentials.")
                 else:
                     st.caption("Vertex AI not configured — Gemini API only.")
 
