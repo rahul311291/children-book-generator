@@ -1,71 +1,41 @@
-# Print-on-Demand Children's Book Generator
+# 📚 Storytime Studio
 
-A Streamlit web application that generates personalized children's storybooks in real-time using Google Gemini AI for text generation and Imagen for image generation.
+Personalized children's storybooks, sold direct to parents. Built with Streamlit, MongoDB, Gemini/Vertex AI image generation, and Cashfree payments.
 
-## Features
+## What customers get
 
-- 📝 Interactive form to collect child details (name, age, gender, physical description)
-- 🎨 AI-powered story generation with consistent character appearance
-- 🖼️ Automatic image generation for each page
-- 📄 PDF generation with professional layout (8.5x8.5 inches)
-- 📱 Mobile-friendly interface
-- 🌍 Support for English and Hindi languages
+- **Story Library** — pre-rendered template books (e.g. *When I Grow Up*, fairy-tale retellings). Personalized with the child's name on every page. Two tiers:
+  - **Digital Book (₹149)** — instant, assembled from pre-rendered assets at zero generation cost
+  - **Photo Personalized (₹249)** — upload a photo; every page is re-illustrated with the child as the hero
+- **Custom Story** — fully bespoke AI-generated story and illustrations (₹500 PDF / ₹1100 printed)
 
-## Setup
+## How it works
 
-1. **Install dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   ```
+```
+auth.py                  Passwordless sign-in: Google OIDC (st.login) + email OTP
+payments.py              Cashfree Payment Links + purchases/entitlements + credits
+template_store.py        Pre-rendered template assets ("create once, sell many")
+template_flow.py         Customer storefront + admin Template Studio
+template_book_generator  Legacy template engine, PDF builder, image generation
+main.py                  App shell, routing, custom-story wizard
+mongo_client.py          MongoDB collections + indexes
+```
 
-2. **Get Google Gemini API Key:**
-   - Visit https://makersuite.google.com/app/apikey
-   - Create a new API key
-   - Copy the key
+### Pre-rendered assets
+Template page images are generated **once** per (gender × age-group) variant in the admin **🎨 Template Studio** and stored in Mongo (`template_assets`). Customer purchases assemble books instantly — no per-customer AI cost on the basic tier.
 
-3. **Run the application:**
-   ```bash
-   streamlit run main.py
-   ```
+### Payments
+Cashfree Payment Links (v2023-08-01). The environment is derived from `CASHFREE_ENV` — **keys and environment must match** (production keys + `CASHFREE_ENV="production"`). Paid links are recorded in `purchases` as permanent entitlements; customers can re-open their books without paying again. The admin sidebar has a **💳 Payments health** panel to diagnose configuration.
 
-4. **Access the app:**
-   - Open your browser to the URL shown in the terminal (usually http://localhost:8501)
-   - Enter your API key in the sidebar
-   - Fill in the child's details
-   - Click "Generate Story"
+### Auth
+No passwords. Google sign-in (Streamlit native OIDC, needs `[auth]` in secrets) and/or email one-time codes over SMTP. Sessions persist 7 days via a cookie-backed token.
 
-## Usage
+## Run locally
 
-1. Enter your Google Gemini API key in the sidebar
-2. Fill in the child's information:
-   - Name (required)
-   - Age (2-16 years)
-   - Gender
-   - Physical description (skin tone, hair, eyes, outfit)
-   - Problem/Theme for the story (required)
-   - Language preference
-3. Click "Generate Story"
-4. Wait for the story, images, and PDF to be generated
-5. Download the PDF and print it on 8.5x8.5 inch paper
+```bash
+pip install -r requirements.txt
+cp .streamlit/secrets.toml.example .streamlit/secrets.toml   # fill in values
+streamlit run main.py
+```
 
-## Technical Details
-
-- **Frontend:** Streamlit
-- **Text Generation:** Google Gemini 3.0 Pro
-- **Image Generation:** Gemini 3 Pro Image Preview (Nano Banana Pro)
-- **PDF Generation:** ReportLab
-- **Page Size:** 8.5 x 8.5 inches (square format)
-- **Layout:** 70% image (top), 30% text (bottom)
-
-## Notes
-
-- The app uses a "visual anchor" mechanism to ensure the main character looks consistent across all pages
-- Images are generated with a 3D Pixar-style children's book aesthetic
-- The PDF includes a dedication page at the beginning
-- All generated content is stored temporarily and can be downloaded
-
-## Troubleshooting
-
-- If image generation fails, the app will retry once before using a placeholder
-- Ensure you have a stable internet connection for API calls
-- Make sure your API key has access to both Gemini and Imagen APIs
+See **DEPLOYMENT.md** for the full production checklist.

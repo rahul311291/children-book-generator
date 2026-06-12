@@ -65,6 +65,16 @@ def otps_col() -> Collection:
     return get_db()["otps"]
 
 
+def purchases_col() -> Collection:
+    """Paid entitlements: one doc per confirmed purchase."""
+    return get_db()["purchases"]
+
+
+def template_assets_col() -> Collection:
+    """Pre-rendered template page images: one doc per (template_id, page_number)."""
+    return get_db()["template_assets"]
+
+
 def ensure_indexes() -> None:
     """Create indexes on first startup (idempotent)."""
     try:
@@ -78,5 +88,10 @@ def ensure_indexes() -> None:
         sessions_col().create_index("expires_at", expireAfterSeconds=0)
         otps_col().create_index("expires_at", expireAfterSeconds=0)
         otps_col().create_index("email")
+        purchases_col().create_index([("user_id", 1), ("template_id", 1)])
+        purchases_col().create_index("link_id", unique=True)
+        template_assets_col().create_index(
+            [("template_id", 1), ("page_number", 1)], unique=True
+        )
     except Exception:
         pass

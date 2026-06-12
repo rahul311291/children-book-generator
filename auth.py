@@ -1,3 +1,16 @@
+"""
+Authentication for Storytime Studio.
+
+Passwordless auth with two paths:
+  1. Google sign-in (Streamlit native OIDC via st.login / st.user)
+  2. Email + one-time code (OTP) sent over SMTP
+
+Sessions persist across reloads via a signed token stored in a browser
+cookie (handled in main.py) and mirrored in the `sessions` collection.
+
+No passwords are ever stored.
+"""
+
 import streamlit as st
 import os
 import hashlib
@@ -6,16 +19,27 @@ import uuid
 import random
 import smtplib
 import logging
+import re
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from pathlib import Path
-from datetime import datetime, timedelta
-from typing import Optional
+from datetime import datetime, timedelta, timezone
+from typing import Optional, Tuple
 from dotenv import load_dotenv
+
+from mongo_client import users_col, sessions_col, otps_col
 
 logger = logging.getLogger(__name__)
 
+APP_NAME = "Storytime Studio"
 ADMIN_EMAILS = {"rahul.31.shah@gmail.com"}
+
+OTP_TTL_MINUTES = 10
+OTP_RESEND_SECONDS = 60
+MAX_OTP_ATTEMPTS = 5
+SESSION_DAYS = 7
+
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 env_path = Path(__file__).parent / ".env"
 if env_path.exists():
@@ -25,206 +49,97 @@ else:
 
 
 # ---------------------------------------------------------------------------
-# Internal helpers
+# Config helpers
 # ---------------------------------------------------------------------------
 
-def _users():
-    from mongo_client import users_col
-    return users_col()
-
-
-def _hash_password(password: str) -> tuple:
-    salt = secrets.token_hex(16)
-    dk = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 200_000)
-    return dk.hex(), salt
-
-
-def _verify_password(password: str, stored_hash: str, salt: str) -> bool:
-    dk = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 200_000)
-    return dk.hex() == stored_hash
-
-
-# ---------------------------------------------------------------------------
-# OTP generation and email delivery
-# ---------------------------------------------------------------------------
-
-def _otps():
-    from mongo_client import otps_col
-    return otps_col()
-
-
-def _generate_and_store_otp(email: str) -> str:
-    """Create a 6-digit OTP, store its hash in MongoDB (TTL 10 min), return the plain OTP."""
-    otp = str(random.randint(100000, 999999))
-    otp_hash = hashlib.sha256(otp.encode()).hexdigest()
-    expires = datetime.utcnow() + timedelta(minutes=10)
-    _otps().delete_many({"email": email})
-    _otps().insert_one({"email": email, "otp_hash": otp_hash, "expires_at": expires,
-                        "created_at": datetime.utcnow()})
-    return otp
-
-
-def _send_otp_email(to_email: str, otp: str, child_name: str = "") -> bool:
-    """Send OTP via Gmail SMTP. Requires GMAIL_USER + GMAIL_APP_PASSWORD env vars."""
-    gmail_user = os.getenv("GMAIL_USER", "")
-    gmail_password = os.getenv("GMAIL_APP_PASSWORD", "")
-    if not gmail_user or not gmail_password:
-        try:
-            import streamlit as st
-            gmail_user = gmail_user or str(st.secrets.get("GMAIL_USER", "") or "")
-            gmail_password = gmail_password or str(st.secrets.get("GMAIL_APP_PASSWORD", "") or "")
-        except Exception:
-            pass
-    if not gmail_user or not gmail_password:
-        logger.error("Gmail credentials not set (GMAIL_USER / GMAIL_APP_PASSWORD)")
-        return False
+def _conf(key: str, default: str = "") -> str:
+    """Env var first, then Streamlit secrets."""
+    val = os.getenv(key, "")
+    if val:
+        return val
     try:
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = "Your Children's Book Generator verification code"
-        msg["From"] = f"Children's Book Generator <{gmail_user}>"
-        msg["To"] = to_email
-        html = f"""
-        <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:32px;
-                    border:1px solid #e0e0e0;border-radius:8px;">
-          <h2 style="color:#1a73e8;margin-top:0;">Verify your email</h2>
-          <p style="color:#444;">Use this code to verify your account:</p>
-          <div style="background:#f5f5f5;border-radius:8px;padding:24px;text-align:center;
-                      letter-spacing:12px;font-size:36px;font-weight:bold;color:#1a73e8;">
-            {otp}
-          </div>
-          <p style="color:#888;font-size:13px;margin-top:20px;">
-            This code expires in <strong>10 minutes</strong>.
-            If you didn't request this, you can ignore this email.
-          </p>
-        </div>"""
-        msg.attach(MIMEText(html, "html"))
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(gmail_user, gmail_password)
-            server.sendmail(gmail_user, to_email, msg.as_string())
-        logger.info(f"OTP email sent to {to_email}")
-        return True
-    except Exception as e:
-        logger.error(f"Failed to send OTP email to {to_email}: {e}")
-        return False
-
-
-def send_otp(email: str) -> tuple[bool, str]:
-    """Generate OTP, store it, and email it. Returns (email_sent, otp_code)."""
-    try:
-        otp = _generate_and_store_otp(email)
-        sent = _send_otp_email(email, otp)
-        return sent, otp
-    except Exception as e:
-        logger.error(f"send_otp error: {e}")
-        return False, ""
-
-
-def verify_otp(email: str, otp: str) -> bool:
-    """Check OTP against stored hash. On success, marks user as email_verified."""
-    try:
-        email = email.strip().lower()
-        record = _otps().find_one({"email": email, "expires_at": {"$gt": datetime.utcnow()}})
-        if not record:
-            return False
-        if hashlib.sha256(otp.strip().encode()).hexdigest() != record["otp_hash"]:
-            return False
-        _users().update_one({"email": email}, {"$set": {"email_verified": True}})
-        _otps().delete_many({"email": email})
-        return True
-    except Exception as e:
-        logger.error(f"verify_otp error: {e}")
-        return False
-
-
-def is_email_verified(email: str) -> bool:
-    try:
-        user = _users().find_one({"email": email}, {"email_verified": 1})
-        return bool((user or {}).get("email_verified", False))
+        return str(st.secrets.get(key, default))
     except Exception:
-        return False
+        return default
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _hash(value: str) -> str:
+    return hashlib.sha256(value.encode()).hexdigest()
 
 
 # ---------------------------------------------------------------------------
-# Persistent session tokens (7-day login)
+# Users
 # ---------------------------------------------------------------------------
 
-def _sessions():
-    from mongo_client import sessions_col
-    return sessions_col()
+def _get_or_create_user(email: str, verified: bool = True, via: str = "email") -> dict:
+    email = email.strip().lower()
+    user = users_col().find_one({"email": email})
+    if user is None:
+        user = {
+            "user_id": str(uuid.uuid4()),
+            "email": email,
+            "email_verified": verified,
+            "auth_provider": via,
+            "created_at": _now(),
+            "last_login_at": _now(),
+        }
+        users_col().insert_one(user)
+    else:
+        updates = {"last_login_at": _now()}
+        if verified and not user.get("email_verified"):
+            updates["email_verified"] = True
+        users_col().update_one({"email": email}, {"$set": updates})
+        user.update(updates)
+    return user
 
+
+# ---------------------------------------------------------------------------
+# Session tokens (cookie-backed persistence)
+# ---------------------------------------------------------------------------
 
 def _create_session_token(user_id: str) -> str:
-    """Generate a 64-char hex token, store it in MongoDB, return it."""
-    token = secrets.token_hex(32)
-    expires = datetime.utcnow() + timedelta(days=7)
-    try:
-        _sessions().insert_one({
-            "_id": token,
+    token = secrets.token_urlsafe(32)
+    sessions_col().insert_one(
+        {
+            "token_hash": _hash(token),
             "user_id": user_id,
-            "expires_at": expires,
-            "created_at": datetime.utcnow(),
-        })
-    except Exception as e:
-        logger.error(f"Could not create session token: {e}")
+            "created_at": _now(),
+            "expires_at": _now() + timedelta(days=SESSION_DAYS),
+        }
+    )
     return token
 
 
 def _delete_session_token(token: str) -> None:
-    if not token:
-        return
     try:
-        _sessions().delete_one({"_id": token})
-    except Exception as e:
-        logger.error(f"Could not delete session token: {e}")
+        sessions_col().delete_one({"token_hash": _hash(token)})
+    except Exception:
+        pass
 
 
 def restore_session_from_token(token: str) -> bool:
-    """Validate a cookie token and restore auth_user if valid. Returns True on success."""
+    """Restore a login from a cookie token. Returns True on success."""
     if not token:
         return False
     try:
-        session = _sessions().find_one(
-            {"_id": token, "expires_at": {"$gt": datetime.utcnow()}}
-        )
-        if not session:
+        doc = sessions_col().find_one({"token_hash": _hash(token)})
+        if not doc:
             return False
-        user = _users().find_one(
-            {"_id": session["user_id"]},
-            {"email": 1, "gemini_api_key": 1, "openrouter_api_key": 1,
-             "vertex_project_id": 1, "vertex_location": 1, "vertex_sa_json": 1},
-        )
+        expires = doc.get("expires_at")
+        if expires is not None and expires.replace(tzinfo=timezone.utc) < _now():
+            sessions_col().delete_one({"_id": doc["_id"]})
+            return False
+        user = users_col().find_one({"user_id": doc["user_id"]})
         if not user:
             return False
-        st.session_state.auth_user = {"id": session["user_id"], "email": user["email"]}
-        if user.get("gemini_api_key"):
-            st.session_state.api_key = user["gemini_api_key"]
-        if user.get("openrouter_api_key"):
-            st.session_state.openrouter_api_key = user["openrouter_api_key"]
-        if user.get("vertex_project_id"):
-            st.session_state.vertex_project_id = user["vertex_project_id"]
-        if user.get("vertex_location"):
-            st.session_state.vertex_location = user["vertex_location"]
-        if user.get("vertex_sa_json"):
-            st.session_state.vertex_sa_json = user["vertex_sa_json"]
-
-        # Fall back to admin Vertex credentials for non-admin users with no config
-        if user["email"] not in ADMIN_EMAILS and not user.get("vertex_sa_json"):
-            admin_cfg = get_admin_vertex_config()
-            if admin_cfg:
-                if not st.session_state.get("vertex_project_id") and admin_cfg.get("project_id"):
-                    st.session_state.vertex_project_id = admin_cfg["project_id"]
-                if not st.session_state.get("vertex_location"):
-                    st.session_state.vertex_location = admin_cfg.get("location", "us-central1")
-                if not st.session_state.get("vertex_sa_json") and admin_cfg.get("sa_json"):
-                    st.session_state.vertex_sa_json = admin_cfg["sa_json"]
-                if not st.session_state.get("api_key") and admin_cfg.get("gemini_api_key"):
-                    st.session_state.api_key = admin_cfg["gemini_api_key"]
-                if not st.session_state.get("openrouter_api_key") and admin_cfg.get("openrouter_api_key"):
-                    st.session_state.openrouter_api_key = admin_cfg["openrouter_api_key"]
-
+        _load_user_into_session(user, new_session_token=False)
         return True
     except Exception as e:
-        logger.error(f"Session restore failed: {e}")
+        logger.warning(f"Session restore failed: {e}")
         return False
 
 
@@ -232,440 +147,414 @@ def restore_session_from_token(token: str) -> bool:
 # Session state
 # ---------------------------------------------------------------------------
 
-def init_auth_state():
-    if "auth_user" not in st.session_state:
-        st.session_state.auth_user = None
-    if "auth_error" not in st.session_state:
-        st.session_state.auth_error = None
-    if "auth_success" not in st.session_state:
-        st.session_state.auth_success = None
-    if "auth_mode" not in st.session_state:
-        st.session_state.auth_mode = "login"
-    if "otp_pending_email" not in st.session_state:
-        st.session_state.otp_pending_email = None
-    if "otp_last_sent_at" not in st.session_state:
-        st.session_state.otp_last_sent_at = None
+def init_auth_state() -> None:
+    defaults = {
+        "authenticated": False,
+        "user_id": None,
+        "user_email": None,
+        "is_admin": False,
+        "auth_stage": "login",  # login | otp
+        "otp_email": "",
+        "otp_sent_at": None,
+        "_pending_session_token": None,
+    }
+    for k, v in defaults.items():
+        if k not in st.session_state:
+            st.session_state[k] = v
 
 
 def is_authenticated() -> bool:
-    return st.session_state.get("auth_user") is not None
+    return bool(st.session_state.get("authenticated"))
 
 
-def get_current_user_id() -> str:
-    user = st.session_state.get("auth_user")
-    return user.get("id", "") if user else ""
+def get_current_user_id() -> Optional[str]:
+    return st.session_state.get("user_id")
 
 
-# ---------------------------------------------------------------------------
-# Auth operations
-# ---------------------------------------------------------------------------
+def _load_user_into_session(user: dict, new_session_token: bool = True) -> None:
+    st.session_state.authenticated = True
+    st.session_state.user_id = user["user_id"]
+    st.session_state.user_email = user["email"]
+    # Legacy shape used across main.py / template_book_generator.py
+    st.session_state.auth_user = {"id": user["user_id"], "email": user["email"]}
+    st.session_state.is_admin = user["email"] in ADMIN_EMAILS
+    st.session_state.auth_stage = "login"
+    if new_session_token:
+        st.session_state._pending_session_token = _create_session_token(user["user_id"])
+    _hydrate_keys_into_session(user)
 
-def sign_up(email: str, password: str) -> bool:
+
+def sign_out() -> None:
+    token = st.session_state.get("_session_token") or st.session_state.get(
+        "_pending_session_token"
+    )
+    if token:
+        _delete_session_token(token)
+        # main.py watches this key to clear the browser cookie
+        st.session_state._token_to_delete = token
+    for key in [
+        "authenticated",
+        "user_id",
+        "user_email",
+        "auth_user",
+        "is_admin",
+        "_session_token",
+        "_pending_session_token",
+        "otp_email",
+        "otp_sent_at",
+        "api_key",
+        "openrouter_key",
+        "openrouter_api_key",
+        "vertex_config",
+    ]:
+        st.session_state.pop(key, None)
+    st.session_state.auth_stage = "login"
+    # Also end Google OIDC session if active
     try:
-        email = email.strip().lower()
-        if _users().find_one({"email": email}):
-            st.session_state.auth_error = "This email is already registered. Please log in instead."
+        if hasattr(st, "user") and getattr(st.user, "is_logged_in", False):
+            st.logout()
+    except Exception:
+        pass
+
+
+# ---------------------------------------------------------------------------
+# Google sign-in (Streamlit native OIDC)
+# ---------------------------------------------------------------------------
+
+def google_auth_available() -> bool:
+    """True when [auth] is configured in Streamlit secrets."""
+    if not hasattr(st, "login"):
+        return False
+    try:
+        auth_cfg = st.secrets.get("auth", {})
+        return bool(auth_cfg.get("client_id"))
+    except Exception:
+        return False
+
+
+def sync_google_session() -> bool:
+    """If the user just completed Google login, mirror it into our session."""
+    try:
+        if not hasattr(st, "user"):
             return False
-        pw_hash, salt = _hash_password(password)
-        user_id = str(uuid.uuid4())
-        is_admin = email in ADMIN_EMAILS
-        _users().insert_one({
-            "_id": user_id,
+        if not getattr(st.user, "is_logged_in", False):
+            return False
+        if is_authenticated():
+            return True
+        email = getattr(st.user, "email", None)
+        if not email:
+            return False
+        user = _get_or_create_user(email, verified=True, via="google")
+        _load_user_into_session(user)
+        return True
+    except Exception as e:
+        logger.warning(f"Google session sync failed: {e}")
+        return False
+
+
+# ---------------------------------------------------------------------------
+# Email OTP
+# ---------------------------------------------------------------------------
+
+def _send_otp_email(to_email: str, otp_code: str) -> bool:
+    smtp_host = _conf("SMTP_HOST", "smtp.gmail.com")
+    smtp_port = int(_conf("SMTP_PORT", "587") or 587)
+    smtp_user = _conf("SMTP_USER")
+    smtp_password = _conf("SMTP_PASSWORD")
+    from_email = _conf("SMTP_FROM", smtp_user)
+
+    if not smtp_user or not smtp_password:
+        logger.warning("SMTP not configured; OTP email not sent.")
+        return False
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = f"{otp_code} is your {APP_NAME} sign-in code"
+    msg["From"] = from_email
+    msg["To"] = to_email
+    html = f"""
+    <div style="font-family:Arial,sans-serif;max-width:440px;margin:0 auto;padding:24px;">
+      <h2 style="color:#FF6B6B;margin-bottom:4px;">{APP_NAME}</h2>
+      <p>Use this code to sign in. It expires in {OTP_TTL_MINUTES} minutes.</p>
+      <div style="font-size:32px;font-weight:bold;letter-spacing:8px;
+                  background:#FFF4F4;border-radius:12px;padding:16px;
+                  text-align:center;margin:16px 0;">{otp_code}</div>
+      <p style="color:#888;font-size:12px;">If you didn't request this, you can ignore this email.</p>
+    </div>
+    """
+    msg.attach(MIMEText(html, "html"))
+    try:
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as server:
+            server.starttls()
+            server.login(smtp_user, smtp_password)
+            server.sendmail(from_email, [to_email], msg.as_string())
+        return True
+    except Exception as e:
+        logger.error(f"OTP email failed: {e}")
+        return False
+
+
+def _issue_otp(email: str) -> Tuple[bool, str]:
+    """Create + email an OTP. Returns (ok, error_message)."""
+    email = email.strip().lower()
+    otp_code = f"{random.SystemRandom().randint(0, 999999):06d}"
+    otps_col().delete_many({"email": email})
+    otps_col().insert_one(
+        {
             "email": email,
-            "password_hash": pw_hash,
-            "salt": salt,
-            "gemini_api_key": "",
-            "openrouter_api_key": "",
-            "email_verified": is_admin,
-            "credits": 0,
-            "created_at": datetime.utcnow(),
-        })
-        st.session_state.auth_error = None
-        if is_admin:
-            user = _users().find_one({"_id": user_id})
-            _load_user_into_session(user_id, email, user)
-            st.session_state.auth_success = "Admin account created and logged in."
-            return True
-        # Non-admin: require OTP verification
-        st.session_state.otp_pending_email = email
-        st.session_state.otp_last_sent_at = datetime.utcnow()
-        sent, otp_code = send_otp(email)
-        if sent:
-            st.session_state.auth_success = f"Account created! A 6-digit code was sent to {email}."
-        else:
-            # Email not configured — show the code directly so user can proceed
-            st.session_state.auth_success = (
-                f"Account created! Email delivery is not configured. "
-                f"Your verification code is: **{otp_code}**"
-            )
-        return True
-    except Exception as e:
-        st.session_state.auth_error = f"Sign up failed: {e}"
-        logger.error(f"Sign up error: {e}")
-        return False
+            "otp_hash": _hash(otp_code),
+            "attempts": 0,
+            "created_at": _now(),
+            "expires_at": _now() + timedelta(minutes=OTP_TTL_MINUTES),
+        }
+    )
+    sent = _send_otp_email(email, otp_code)
+    allow_dev = _conf("ALLOW_DEV_OTP", "").lower() == "true"
+    if not sent and allow_dev:
+        st.session_state["_dev_otp"] = otp_code
+        return True, ""
+    if not sent:
+        return False, "Could not send the sign-in code. Please try again in a minute."
+    return True, ""
 
 
-def sign_in(email: str, password: str) -> bool:
-    try:
-        email = email.strip().lower()
-        user = _users().find_one({"email": email})
-        if not user or not _verify_password(password, user["password_hash"], user["salt"]):
-            st.session_state.auth_error = "Invalid email or password."
-            return False
-        # Admin bypasses OTP entirely
-        if email in ADMIN_EMAILS:
-            if not user.get("email_verified", False):
-                _users().update_one({"_id": user["_id"]}, {"$set": {"email_verified": True}})
-                user["email_verified"] = True
-            user_id = str(user["_id"])
-            _load_user_into_session(user_id, email, user)
-            return True
-        # Block unverified non-admin accounts
-        if not user.get("email_verified", False):
-            st.session_state.otp_pending_email = email
-            st.session_state.otp_last_sent_at = datetime.utcnow()
-            sent, otp_code = send_otp(email)
-            st.session_state.auth_error = None
-            if sent:
-                st.session_state.auth_success = f"Please verify your email — a code was sent to {email}."
-            else:
-                st.session_state.auth_success = (
-                    f"Please verify your email. Email delivery is not configured. "
-                    f"Your verification code is: **{otp_code}**"
-                )
-            return False  # Not yet authenticated; OTP screen will handle next step
-        user_id = str(user["_id"])
-        _load_user_into_session(user_id, email, user)
-        return True
-    except Exception as e:
-        st.session_state.auth_error = f"Login failed: {e}"
-        logger.error(f"Sign in error: {e}")
-        return False
+def start_email_login(email: str) -> Tuple[bool, str]:
+    """Begin email OTP flow. Returns (ok, error_message)."""
+    email = (email or "").strip().lower()
+    if not EMAIL_RE.match(email):
+        return False, "Please enter a valid email address."
+    last_sent = st.session_state.get("otp_sent_at")
+    if last_sent and (_now() - last_sent).total_seconds() < OTP_RESEND_SECONDS:
+        return False, f"Please wait a moment before requesting another code."
+    ok, err = _issue_otp(email)
+    if not ok:
+        return False, err
+    st.session_state.otp_email = email
+    st.session_state.otp_sent_at = _now()
+    st.session_state.auth_stage = "otp"
+    return True, ""
 
 
-def get_admin_vertex_config() -> dict:
-    """Return the Vertex AI credentials stored for the admin account (used as shared fallback)."""
-    try:
-        for admin_email in ADMIN_EMAILS:
-            admin = _users().find_one(
-                {"email": admin_email},
-                {"vertex_project_id": 1, "vertex_location": 1, "vertex_sa_json": 1,
-                 "gemini_api_key": 1, "openrouter_api_key": 1},
-            )
-            if admin and admin.get("vertex_sa_json"):
-                return {
-                    "project_id": admin.get("vertex_project_id", ""),
-                    "location": admin.get("vertex_location", "us-central1"),
-                    "sa_json": admin.get("vertex_sa_json", ""),
-                    "gemini_api_key": admin.get("gemini_api_key", ""),
-                    "openrouter_api_key": admin.get("openrouter_api_key", ""),
-                }
-    except Exception as e:
-        logger.warning(f"Could not load admin Vertex config: {e}")
-    return {}
+def verify_otp(email: str, otp_code: str) -> Tuple[bool, str]:
+    """Check an OTP. Returns (ok, error_message)."""
+    email = (email or "").strip().lower()
+    otp_code = (otp_code or "").strip()
+    if not otp_code.isdigit() or len(otp_code) != 6:
+        return False, "The code is 6 digits."
+    doc = otps_col().find_one({"email": email})
+    if not doc:
+        return False, "Code expired or not found. Request a new one."
+    if doc.get("expires_at") and doc["expires_at"].replace(
+        tzinfo=timezone.utc
+    ) < _now():
+        otps_col().delete_one({"_id": doc["_id"]})
+        return False, "That code has expired. Request a new one."
+    if doc.get("attempts", 0) >= MAX_OTP_ATTEMPTS:
+        otps_col().delete_one({"_id": doc["_id"]})
+        return False, "Too many attempts. Request a new code."
+    if _hash(otp_code) != doc["otp_hash"]:
+        otps_col().update_one({"_id": doc["_id"]}, {"$inc": {"attempts": 1}})
+        return False, "That code isn't right. Check and try again."
+    otps_col().delete_one({"_id": doc["_id"]})
+    return True, ""
 
 
-def _load_user_into_session(user_id: str, email: str, user: dict):
-    """Set all session state fields after successful auth."""
-    st.session_state.auth_user = {"id": user_id, "email": email}
-    st.session_state.auth_error = None
-    st.session_state.auth_success = None
-    st.session_state.otp_pending_email = None
-    if user.get("gemini_api_key"):
-        st.session_state.api_key = user["gemini_api_key"]
-    if user.get("openrouter_api_key"):
-        st.session_state.openrouter_api_key = user["openrouter_api_key"]
-    if user.get("vertex_project_id"):
-        st.session_state.vertex_project_id = user["vertex_project_id"]
-    if user.get("vertex_location"):
-        st.session_state.vertex_location = user["vertex_location"]
-    if user.get("vertex_sa_json"):
-        st.session_state.vertex_sa_json = user["vertex_sa_json"]
-
-    # For non-admin users with no Vertex config, fall back to admin's shared credentials
-    if email not in ADMIN_EMAILS and not user.get("vertex_sa_json"):
-        admin_cfg = get_admin_vertex_config()
-        if admin_cfg:
-            if not st.session_state.get("vertex_project_id") and admin_cfg.get("project_id"):
-                st.session_state.vertex_project_id = admin_cfg["project_id"]
-            if not st.session_state.get("vertex_location"):
-                st.session_state.vertex_location = admin_cfg.get("location", "us-central1")
-            if not st.session_state.get("vertex_sa_json") and admin_cfg.get("sa_json"):
-                st.session_state.vertex_sa_json = admin_cfg["sa_json"]
-            if not st.session_state.get("api_key") and admin_cfg.get("gemini_api_key"):
-                st.session_state.api_key = admin_cfg["gemini_api_key"]
-            if not st.session_state.get("openrouter_api_key") and admin_cfg.get("openrouter_api_key"):
-                st.session_state.openrouter_api_key = admin_cfg["openrouter_api_key"]
-
-    st.session_state._pending_session_token = _create_session_token(user_id)
-
-
-def sign_out():
-    # Mark current session token for deletion (main.py will clear the cookie)
-    current_token = st.session_state.get("_session_token", "")
-    if current_token:
-        st.session_state._token_to_delete = current_token
-    st.session_state.auth_user = None
-    st.session_state.auth_error = None
-    st.session_state.auth_success = None
-    st.session_state.api_key = ""
-    st.session_state.openrouter_api_key = ""
-    st.session_state._session_token = ""
-    st.session_state.otp_pending_email = None
-
-
-def complete_otp_verification(email: str, otp_code: str) -> bool:
-    """Verify OTP entered by user and log them in on success."""
-    if not verify_otp(email, otp_code):
-        st.session_state.auth_error = "Incorrect or expired code. Please try again."
-        return False
-    user = _users().find_one({"email": email})
-    if not user:
-        st.session_state.auth_error = "Account not found."
-        return False
-    _load_user_into_session(str(user["_id"]), email, user)
-    return True
+def complete_otp_verification(email: str, otp_code: str) -> Tuple[bool, str]:
+    ok, err = verify_otp(email, otp_code)
+    if not ok:
+        return False, err
+    user = _get_or_create_user(email, verified=True, via="email")
+    _load_user_into_session(user)
+    st.session_state.pop("_dev_otp", None)
+    return True, ""
 
 
 # ---------------------------------------------------------------------------
-# API key persistence
+# Per-user API keys (BYO keys for admins / power users)
 # ---------------------------------------------------------------------------
 
-def save_user_api_key(user_id: str, api_key: str) -> bool:
-    try:
-        _users().update_one({"_id": user_id}, {"$set": {"gemini_api_key": api_key}})
-        return True
-    except Exception as e:
-        logger.error(f"Error saving API key: {e}")
-        return False
+def save_user_api_key(user_id: str, api_key: str) -> None:
+    users_col().update_one({"user_id": user_id}, {"$set": {"gemini_api_key": api_key}})
 
 
-def load_user_api_key(user_id: str) -> str:
-    try:
-        user = _users().find_one({"_id": user_id}, {"gemini_api_key": 1})
-        return (user or {}).get("gemini_api_key", "")
-    except Exception as e:
-        logger.error(f"Error loading API key: {e}")
-        return ""
+def load_user_api_key(user_id: str) -> Optional[str]:
+    user = users_col().find_one({"user_id": user_id})
+    return user.get("gemini_api_key") if user else None
 
 
-def save_user_openrouter_key(user_id: str, api_key: str) -> bool:
-    try:
-        _users().update_one({"_id": user_id}, {"$set": {"openrouter_api_key": api_key}})
-        return True
-    except Exception as e:
-        logger.error(f"Error saving OpenRouter API key: {e}")
-        return False
+def save_user_openrouter_key(user_id: str, api_key: str) -> None:
+    users_col().update_one(
+        {"user_id": user_id}, {"$set": {"openrouter_api_key": api_key}}
+    )
 
 
-def load_user_openrouter_key(user_id: str) -> str:
-    try:
-        user = _users().find_one({"_id": user_id}, {"openrouter_api_key": 1})
-        return (user or {}).get("openrouter_api_key", "")
-    except Exception as e:
-        logger.error(f"Error loading OpenRouter API key: {e}")
-        return ""
+def load_user_openrouter_key(user_id: str) -> Optional[str]:
+    user = users_col().find_one({"user_id": user_id})
+    return user.get("openrouter_api_key") if user else None
 
 
-def save_user_vertex_config(user_id: str, project_id: str, location: str, sa_json: str) -> bool:
-    try:
-        _users().update_one({"_id": user_id}, {"$set": {
-            "vertex_project_id": project_id,
-            "vertex_location": location or "us-central1",
-            "vertex_sa_json": sa_json,
-        }})
-        return True
-    except Exception as e:
-        logger.error(f"Error saving Vertex config: {e}")
-        return False
+def save_user_vertex_config(user_id: str, config: dict) -> None:
+    users_col().update_one({"user_id": user_id}, {"$set": {"vertex_config": config}})
 
 
-def load_user_vertex_config(user_id: str) -> dict:
-    try:
-        user = _users().find_one({"_id": user_id}, {"vertex_project_id": 1, "vertex_location": 1, "vertex_sa_json": 1})
-        if user:
-            return {
-                "project_id": user.get("vertex_project_id", ""),
-                "location": user.get("vertex_location", "us-central1"),
-                "sa_json": user.get("vertex_sa_json", ""),
-            }
-    except Exception as e:
-        logger.error(f"Error loading Vertex config: {e}")
-    return {"project_id": "", "location": "us-central1", "sa_json": ""}
+def load_user_vertex_config(user_id: str) -> Optional[dict]:
+    user = users_col().find_one({"user_id": user_id})
+    return user.get("vertex_config") if user else None
+
+
+def get_admin_vertex_config() -> Optional[dict]:
+    """Shared Vertex config from the admin account — customers fall back to this."""
+    for admin_email in ADMIN_EMAILS:
+        admin = users_col().find_one({"email": admin_email})
+        if admin and admin.get("vertex_config"):
+            return admin["vertex_config"]
+    return None
+
+
+def _hydrate_keys_into_session(user: dict) -> None:
+    """Load API keys into session. Customers fall back to the admin's keys."""
+    api_key = user.get("gemini_api_key")
+    openrouter_key = user.get("openrouter_api_key")
+    vertex_config = user.get("vertex_config")
+
+    if user["email"] not in ADMIN_EMAILS:
+        if not vertex_config:
+            vertex_config = get_admin_vertex_config()
+        if not api_key or not openrouter_key:
+            for admin_email in ADMIN_EMAILS:
+                admin = users_col().find_one({"email": admin_email})
+                if admin:
+                    api_key = api_key or admin.get("gemini_api_key")
+                    openrouter_key = openrouter_key or admin.get("openrouter_api_key")
+                    break
+
+    if api_key:
+        st.session_state.api_key = api_key
+    if openrouter_key:
+        st.session_state.openrouter_key = openrouter_key
+        st.session_state.openrouter_api_key = openrouter_key
+    if vertex_config:
+        st.session_state.vertex_config = vertex_config
+        st.session_state.vertex_project_id = vertex_config.get("project_id", "")
+        st.session_state.vertex_location = vertex_config.get("location", "us-central1")
+        st.session_state.vertex_sa_json = vertex_config.get("sa_json", "")
 
 
 # ---------------------------------------------------------------------------
-# Auth page UI
+# UI
 # ---------------------------------------------------------------------------
 
-def render_otp_page():
-    """Show the OTP verification form. Returns True once verified and logged in."""
-    email = st.session_state.get("otp_pending_email", "")
-    # Admin never needs OTP — auto-complete verification
-    if email in ADMIN_EMAILS:
-        user = _users().find_one({"email": email})
-        if user:
-            _users().update_one({"_id": user["_id"]}, {"$set": {"email_verified": True}})
-            _load_user_into_session(str(user["_id"]), email, user)
-            st.rerun()
-        return
-    col_left, col_center, col_right = st.columns([1, 2, 1])
-    with col_center:
+_AUTH_CSS = """
+<style>
+.auth-hero { text-align:center; padding: 8px 0 4px 0; }
+.auth-hero h1 { font-size: 2.2rem; margin-bottom: 0.2rem; }
+.auth-hero p { color: #777; font-size: 1.05rem; margin-top: 0; }
+.auth-divider { display:flex; align-items:center; color:#aaa; margin: 12px 0; }
+.auth-divider::before, .auth-divider::after {
+  content:""; flex:1; height:1px; background:#e3e3e3;
+}
+.auth-divider span { padding: 0 12px; font-size: 0.85rem; }
+</style>
+"""
+
+
+def render_auth_page() -> None:
+    """Sign-in screen: Google button + email OTP."""
+    st.markdown(_AUTH_CSS, unsafe_allow_html=True)
+    _, center, _ = st.columns([1, 1.4, 1])
+    with center:
         st.markdown(
-            "<h1 style='text-align:center;margin-bottom:0.2rem;'>Verify your email</h1>",
+            f"""
+            <div class="auth-hero">
+              <div style="font-size:3rem;">&#128214;</div>
+              <h1>{APP_NAME}</h1>
+              <p>Personalized storybooks your child will treasure.</p>
+            </div>
+            """,
             unsafe_allow_html=True,
         )
-        st.markdown(
-            f"<p style='text-align:center;color:#666;'>We sent a 6-digit code to <strong>{email}</strong></p>",
-            unsafe_allow_html=True,
-        )
-
-        if st.session_state.get("auth_error"):
-            st.error(st.session_state.auth_error)
-            st.session_state.auth_error = None
-        if st.session_state.get("auth_success"):
-            st.success(st.session_state.auth_success)
-            st.session_state.auth_success = None
-
-        with st.form("otp_form", clear_on_submit=True):
-            otp_input = st.text_input(
-                "Enter 6-digit code",
-                placeholder="123456",
-                max_chars=6,
-                key="otp_input_field",
-            )
-            submitted = st.form_submit_button("Verify", type="primary", use_container_width=True)
-            if submitted:
-                if not otp_input or len(otp_input.strip()) != 6:
-                    st.session_state.auth_error = "Please enter the full 6-digit code."
-                    st.rerun()
-                else:
-                    if complete_otp_verification(email, otp_input.strip()):
-                        st.rerun()
-                    else:
-                        st.rerun()
-
         st.write("")
-        # Resend — rate-limited to once per 60 seconds
-        last_sent = st.session_state.get("otp_last_sent_at")
-        can_resend = (
-            last_sent is None
-            or (datetime.utcnow() - last_sent).total_seconds() >= 60
-        )
-        if can_resend:
-            if st.button("Resend code", use_container_width=True):
-                sent, otp_code = send_otp(email)
-                st.session_state.otp_last_sent_at = datetime.utcnow()
-                if sent:
-                    st.session_state.auth_success = "A new code was sent."
-                else:
-                    st.session_state.auth_success = (
-                        f"Email delivery not configured. Your code is: **{otp_code}**"
-                    )
+
+        if google_auth_available():
+            if st.button(
+                "Continue with Google",
+                use_container_width=True,
+                type="primary",
+                key="google_login_btn",
+            ):
+                st.login()
+            st.markdown(
+                '<div class="auth-divider"><span>or</span></div>',
+                unsafe_allow_html=True,
+            )
+
+        with st.form("email_login_form", border=False):
+            email = st.text_input(
+                "Email address",
+                placeholder="you@example.com",
+                label_visibility="collapsed",
+            )
+            submitted = st.form_submit_button(
+                "Continue with email", use_container_width=True
+            )
+        if submitted:
+            ok, err = start_email_login(email)
+            if ok:
                 st.rerun()
-        else:
-            remaining = 60 - int((datetime.utcnow() - last_sent).total_seconds())
-            st.caption(f"Resend available in {remaining}s")
+            else:
+                st.error(err)
 
-        if st.button("← Back to login", use_container_width=True):
-            st.session_state.otp_pending_email = None
-            st.rerun()
+        st.caption(
+            "We'll email you a one-time code — no password needed. "
+            "By continuing you agree to our terms of use."
+        )
 
 
-def render_auth_page():
-    col_left, col_center, col_right = st.columns([1, 2, 1])
-
-    with col_center:
+def render_otp_page() -> None:
+    """Code-entry screen after an OTP has been emailed."""
+    st.markdown(_AUTH_CSS, unsafe_allow_html=True)
+    email = st.session_state.get("otp_email", "")
+    _, center, _ = st.columns([1, 1.4, 1])
+    with center:
         st.markdown(
-            "<h1 style='text-align: center; margin-bottom: 0.2rem;'>Children's Book Generator</h1>",
+            f"""
+            <div class="auth-hero">
+              <div style="font-size:3rem;">&#128231;</div>
+              <h1>Check your email</h1>
+              <p>We sent a 6-digit code to <b>{email}</b></p>
+            </div>
+            """,
             unsafe_allow_html=True,
         )
-        st.markdown(
-            "<p style='text-align: center; color: #666; margin-bottom: 2rem;'>Create personalized storybooks for children</p>",
-            unsafe_allow_html=True,
-        )
 
+        dev_otp = st.session_state.get("_dev_otp")
+        if dev_otp:
+            st.info(f"Dev mode — your code is **{dev_otp}**")
 
-        if st.session_state.auth_error:
-            st.error(st.session_state.auth_error)
-            st.session_state.auth_error = None
+        with st.form("otp_form", border=False):
+            otp_code = st.text_input(
+                "6-digit code",
+                max_chars=6,
+                placeholder="123456",
+                label_visibility="collapsed",
+            )
+            submitted = st.form_submit_button("Sign in", use_container_width=True)
+        if submitted:
+            ok, err = complete_otp_verification(email, otp_code)
+            if ok:
+                st.rerun()
+            else:
+                st.error(err)
 
-        if st.session_state.auth_success:
-            st.success(st.session_state.auth_success)
-            st.session_state.auth_success = None
-
-        mode = st.radio(
-            "Choose an option",
-            ["Log In", "Sign Up"],
-            horizontal=True,
-            key="auth_mode_radio",
-        )
-
-        if mode == "Log In":
-            with st.form("login_form", clear_on_submit=False):
-                st.markdown("#### Welcome back")
-                login_email = st.text_input(
-                    "Email",
-                    placeholder="you@example.com",
-                    key="login_email",
-                )
-                login_password = st.text_input(
-                    "Password",
-                    type="password",
-                    placeholder="Enter your password",
-                    key="login_password",
-                )
-                login_submitted = st.form_submit_button(
-                    "Log In",
-                    type="primary",
-                    use_container_width=True,
-                )
-                if login_submitted:
-                    if not login_email or not login_password:
-                        st.session_state.auth_error = "Please enter both email and password."
-                        st.rerun()
-                    else:
-                        if sign_in(login_email, login_password):
-                            st.rerun()
-                        else:
-                            st.rerun()
-        else:
-            with st.form("signup_form", clear_on_submit=False):
-                st.markdown("#### Create your account")
-                signup_email = st.text_input(
-                    "Email",
-                    placeholder="you@example.com",
-                    key="signup_email",
-                )
-                signup_password = st.text_input(
-                    "Password",
-                    type="password",
-                    placeholder="Choose a password (min 6 characters)",
-                    key="signup_password",
-                )
-                signup_confirm = st.text_input(
-                    "Confirm Password",
-                    type="password",
-                    placeholder="Confirm your password",
-                    key="signup_confirm",
-                )
-                signup_submitted = st.form_submit_button(
-                    "Create Account",
-                    type="primary",
-                    use_container_width=True,
-                )
-                if signup_submitted:
-                    if not signup_email or not signup_password:
-                        st.session_state.auth_error = "Please fill in all fields."
-                        st.rerun()
-                    elif len(signup_password) < 6:
-                        st.session_state.auth_error = "Password must be at least 6 characters."
-                        st.rerun()
-                    elif signup_password != signup_confirm:
-                        st.session_state.auth_error = "Passwords do not match."
-                        st.rerun()
-                    else:
-                        if sign_up(signup_email, signup_password):
-                            st.rerun()
-                        else:
-                            st.rerun()
+        col_a, col_b = st.columns(2)
+        with col_a:
+            if st.button("Resend code", use_container_width=True):
+                ok, err = start_email_login(email)
+                if ok:
+                    st.success("New code sent.")
+                else:
+                    st.error(err)
+        with col_b:
+            if st.button("Use a different email", use_container_width=True):
+                st.session_state.auth_stage = "login"
+                st.session_state.otp_email = ""
+                st.rerun()

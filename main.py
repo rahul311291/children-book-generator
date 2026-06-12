@@ -30,6 +30,7 @@ from auth import (
     render_auth_page,
     render_otp_page,
     restore_session_from_token,
+    sync_google_session,
     ADMIN_EMAILS,
     get_admin_vertex_config,
 )
@@ -45,6 +46,13 @@ try:
     TEMPLATE_BOOKS_AVAILABLE = True
 except ImportError:
     TEMPLATE_BOOKS_AVAILABLE = False
+
+# New asset-backed template flow (pre-rendered images, instant books)
+try:
+    from template_flow import render_template_mode, render_template_studio
+    TEMPLATE_FLOW_AVAILABLE = True
+except ImportError:
+    TEMPLATE_FLOW_AVAILABLE = False
 
 # Import book formats (8 layouts based on bestselling India + global picture books)
 from book_formats import BOOK_FORMATS, DEFAULT_FORMAT, get_format_by_id, get_page_count
@@ -75,7 +83,7 @@ import time
 
 # Page configuration
 st.set_page_config(
-    page_title="Children's Book Generator",
+    page_title="Storytime Studio — Personalized Books for Kids",
     page_icon="📚",
     layout="wide",
     initial_sidebar_state="auto"
@@ -1859,10 +1867,10 @@ def render_landing():
            background:linear-gradient(135deg,#667eea,#f093fb);
            -webkit-background-clip:text;-webkit-text-fill-color:transparent;
            background-clip:text;margin-bottom:0.3rem;">
-        Children's Book Generator
+        Storytime Studio
       </h1>
       <p style="font-size:1.15rem;color:#666;margin:0;">
-        Create magical personalized storybooks in minutes ✨
+        Beautiful storybooks where <b>your child</b> is the hero ✨
       </p>
     </div>
     """, unsafe_allow_html=True)
@@ -1872,41 +1880,41 @@ def render_landing():
 
     with col1:
         st.markdown("""
+        <div style="background:linear-gradient(135deg,#f093fb 0%,#f5576c 100%);
+             border-radius:20px;padding:36px 28px;text-align:center;color:white;
+             box-shadow:0 8px 32px rgba(240,147,251,0.3);min-height:200px;">
+          <div style="font-size:56px;margin-bottom:12px;">📚</div>
+          <h2 style="margin:0 0 8px;font-size:1.6rem;font-weight:800;">Story Library</h2>
+          <p style="opacity:0.92;font-size:0.95rem;margin:0;line-height:1.5;">
+            Ready-made bestsellers personalized with your child's name —
+            instant books, with optional photo personalization.
+          </p>
+        </div>
+        """, unsafe_allow_html=True)
+        if TEMPLATE_BOOKS_AVAILABLE or TEMPLATE_FLOW_AVAILABLE:
+            if st.button("Browse the Library →", key="pick_template", use_container_width=True, type="primary"):
+                st.session_state.book_mode = "template"
+                st.rerun()
+        else:
+            st.caption("Template books are not available in this deployment.")
+
+    with col2:
+        st.markdown("""
         <div style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);
              border-radius:20px;padding:36px 28px;text-align:center;color:white;
              box-shadow:0 8px 32px rgba(102,126,234,0.3);min-height:200px;">
           <div style="font-size:56px;margin-bottom:12px;">✨</div>
           <h2 style="margin:0 0 8px;font-size:1.6rem;font-weight:800;">Custom Story</h2>
           <p style="opacity:0.92;font-size:0.95rem;margin:0;line-height:1.5;">
-            Craft a unique story starring your child — choose their look,
+            Craft a one-of-a-kind story — choose your child's look,
             personality, and the adventure they'll embark on.
           </p>
         </div>
         """, unsafe_allow_html=True)
-        if st.button("Start Custom Story →", key="pick_custom", use_container_width=True, type="primary"):
+        if st.button("Start Custom Story →", key="pick_custom", use_container_width=True):
             st.session_state.book_mode = "custom"
             st.session_state.wizard_step = 1
             st.rerun()
-
-    with col2:
-        st.markdown("""
-        <div style="background:linear-gradient(135deg,#f093fb 0%,#f5576c 100%);
-             border-radius:20px;padding:36px 28px;text-align:center;color:white;
-             box-shadow:0 8px 32px rgba(240,147,251,0.3);min-height:200px;">
-          <div style="font-size:56px;margin-bottom:12px;">📚</div>
-          <h2 style="margin:0 0 8px;font-size:1.6rem;font-weight:800;">Template Book</h2>
-          <p style="opacity:0.92;font-size:0.95rem;margin:0;line-height:1.5;">
-            Pick from beautifully designed profession templates —
-            doctor, astronaut, chef and more — tailored to your child.
-          </p>
-        </div>
-        """, unsafe_allow_html=True)
-        if TEMPLATE_BOOKS_AVAILABLE:
-            if st.button("Browse Templates →", key="pick_template", use_container_width=True):
-                st.session_state.book_mode = "template"
-                st.rerun()
-        else:
-            st.caption("Template books are not available in this deployment.")
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -2288,18 +2296,43 @@ def main():
         except Exception:
             pass
 
-    # OTP gate: intercept if email verification is pending
-    if st.session_state.get("otp_pending_email"):
+    # Google OIDC: mirror st.user into our session after st.login()
+    if not is_authenticated():
+        if sync_google_session():
+            st.rerun()
+
+    # OTP gate: intercept if a sign-in code is pending
+    if not is_authenticated() and st.session_state.get("auth_stage") == "otp":
         render_otp_page()
         return
 
-    # Auth gate: show login/signup if not authenticated
+    # Auth gate: show sign-in if not authenticated
     if not is_authenticated():
         render_auth_page()
         return
 
+    # Payment return: Cashfree sends the customer back with ?cf_link_id=...
+    _cf_link_id = st.query_params.get("cf_link_id")
+    if _cf_link_id:
+        try:
+            from payments import confirm_payment_and_credit as _confirm
+            if _confirm(_cf_link_id, get_current_user_id()):
+                st.toast("Payment received — thank you!", icon="✅")
+                # Unlock whichever flow created this link
+                if st.session_state.get("tpl_payment_link_id") == _cf_link_id:
+                    st.session_state.pop("tpl_payment_link_id", None)
+                    st.session_state.pop("tpl_payment_url", None)
+                    st.session_state.tpl_payment_confirmed = _cf_link_id
+                if st.session_state.get("pending_payment_link_id") == _cf_link_id:
+                    st.session_state.current_book_payment_status = "paid"
+                    st.session_state.pending_payment_link_id = None
+                    st.session_state.pending_payment_url = None
+        except Exception as _e:
+            logger.warning(f"Payment-return verification failed: {_e}")
+        st.query_params.pop("cf_link_id", None)
+
     # Ensure non-admin users always have Vertex credentials (admin's credentials as shared backend)
-    _session_email = (st.session_state.get("auth_user") or {}).get("email", "")
+    _session_email = st.session_state.get("user_email") or ""
     if _session_email not in ADMIN_EMAILS and not st.session_state.get("vertex_sa_json"):
         _admin_cfg = get_admin_vertex_config()
         if _admin_cfg:
@@ -2566,6 +2599,23 @@ def main():
                 st.session_state.show_history = False
                 st.rerun()
 
+            # Template Studio (pre-render template assets)
+            if TEMPLATE_FLOW_AVAILABLE:
+                if st.button("🎨 Template Studio", use_container_width=True, type="secondary"):
+                    st.session_state.show_template_studio = True
+                    st.session_state.show_history = False
+                    st.session_state.show_community = False
+                    st.rerun()
+
+            # Payment gateway health
+            with st.expander("💳 Payments health"):
+                try:
+                    from payments import cashfree_diagnostics
+                    for _k, _v in cashfree_diagnostics().items():
+                        st.write(f"**{_k}:** {_v}")
+                except Exception as _e:
+                    st.error(f"Diagnostics unavailable: {_e}")
+
             st.divider()
 
             # API Key Input - persisted per user
@@ -2682,7 +2732,20 @@ def main():
         display_template_book_preview(st.session_state.template_generated_book, api_key=api_key)
         return
 
-    # Template mode
+    # Admin Template Studio (pre-render assets once)
+    if st.session_state.get("show_template_studio") and TEMPLATE_FLOW_AVAILABLE:
+        if st.button("← Back to Main", key="back_from_studio"):
+            st.session_state.show_template_studio = False
+            st.rerun()
+        render_template_studio(api_key)
+        return
+
+    # Template mode — asset-backed storefront flow
+    if st.session_state.book_mode == "template" and TEMPLATE_FLOW_AVAILABLE:
+        render_template_mode(api_key, save_history_cb=save_template_book_to_history)
+        return
+
+    # Legacy template mode (fallback if template_flow unavailable)
     if st.session_state.book_mode == "template" and TEMPLATE_BOOKS_AVAILABLE:
         if st.session_state.get("generate_template_book", False):
             st.session_state.generate_template_book = False
@@ -3241,13 +3304,24 @@ def main():
                     else:
                         user_email_pay = (st.session_state.get("auth_user") or {}).get("email", "user@example.com")
                         child_name_pay = st.session_state.get("current_child_name", "")
+                        from payments import is_valid_phone as _is_valid_phone
+                        pay_phone = st.text_input(
+                            "Mobile number (for payment receipt)",
+                            max_chars=10, placeholder="10-digit mobile", key="pay_phone",
+                        )
                         col_pdf, col_print = st.columns(2)
                         with col_pdf:
                             if st.button(f"PDF Download -- Rs.{_pdf_p}", type="primary", use_container_width=True, key="custom_pay_pdf"):
+                                if not _is_valid_phone(pay_phone):
+                                    st.error("Please enter a valid 10-digit mobile number.")
+                                    st.stop()
                                 with st.spinner("Creating payment link..."):
                                     result = create_payment_link(
                                         user_id_pay, user_email_pay, _pdf_p,
-                                        f"PDF storybook for {child_name_pay} – {total_pages} pages"
+                                        f"PDF storybook for {child_name_pay} – {total_pages} pages",
+                                        customer_phone=pay_phone,
+                                        metadata={"book_kind": "custom", "product": "pdf",
+                                                  "child_name": child_name_pay},
                                     )
                                 if result and result.get("link_url"):
                                     save_pending_payment_for_reminders(
@@ -3266,10 +3340,16 @@ def main():
                                     st.error(result.get("error", "Could not create payment link.") if result else "Could not create payment link.")
                         with col_print:
                             if st.button(f"Printed Book -- Rs.{_print_p}", use_container_width=True, key="custom_pay_print"):
+                                if not _is_valid_phone(pay_phone):
+                                    st.error("Please enter a valid 10-digit mobile number.")
+                                    st.stop()
                                 with st.spinner("Creating payment link..."):
                                     result = create_payment_link(
                                         user_id_pay, user_email_pay, _print_p,
-                                        f"Printed storybook for {child_name_pay} – {total_pages} pages"
+                                        f"Printed storybook for {child_name_pay} – {total_pages} pages",
+                                        customer_phone=pay_phone,
+                                        metadata={"book_kind": "custom", "product": "print",
+                                                  "child_name": child_name_pay},
                                     )
                                 if result and result.get("link_url"):
                                     save_pending_payment_for_reminders(
@@ -3287,11 +3367,14 @@ def main():
                                 else:
                                     st.error(result.get("error", "Could not create payment link.") if result else "Could not create payment link.")
                 else:
-                    # Cashfree not configured — admin bypass button
-                    st.warning("Payment gateway not configured. Admin override available.")
-                    if st.button("🔓 Unlock (no payment gateway)", help="Only when Cashfree is not configured"):
-                        st.session_state.current_book_payment_status = "paid"
-                        st.rerun()
+                    # Cashfree not configured
+                    if _is_admin_user:
+                        st.warning("Payment gateway not configured. Admin override available.")
+                        if st.button("🔓 Unlock (no payment gateway)", help="Only when Cashfree is not configured"):
+                            st.session_state.current_book_payment_status = "paid"
+                            st.rerun()
+                    else:
+                        st.info("Checkout is temporarily unavailable. Please try again shortly.")
 
                 # Show the free preview cards + blurred/locked remaining pages
                 st.divider()

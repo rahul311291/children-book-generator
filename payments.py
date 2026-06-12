@@ -5,11 +5,13 @@ Configure via env vars or Streamlit secrets:
   CASHFREE_APP_ID      — App ID (Key ID)
   CASHFREE_SECRET_KEY  — Secret Key
   CASHFREE_ENV         — "sandbox" (default) or "production"
+  APP_BASE_URL         — public URL of the app (used as payment return URL)
 
-Pricing: FREE_IMAGES_PER_BOOK images free; full book = PRICE_PER_PAGE × page_count INR.
+Pricing tiers (INR): basic template 149, personalized 249, premium print 699.
 """
 
 import os
+import re
 import uuid
 import logging
 import requests
@@ -29,9 +31,14 @@ logger = logging.getLogger(__name__)
 FREE_IMAGES_PER_BOOK = 3
 PRICE_PER_PAGE_INR = 15  # kept for legacy per-page calc
 
-# Flat pricing — two tiers
-PDF_PRICE_INR = 500     # digital PDF download
+# Flat pricing
+PDF_PRICE_INR = 500     # digital PDF download (custom books)
 PRINT_PRICE_INR = 1100  # printed physical copy shipped to address
+
+# Template tiers
+TEMPLATE_BASIC_INR = 149
+TEMPLATE_PERSONALIZED_INR = 249
+TEMPLATE_PREMIUM_INR = 699
 
 # Legacy aliases (used by existing code)
 CUSTOM_BOOK_PRICE_INR = PDF_PRICE_INR
@@ -44,24 +51,47 @@ CF_API_VERSION = "2023-08-01"
 # Config helpers
 # ---------------------------------------------------------------------------
 
+def _conf(key: str, default: str = "") -> str:
+    """Read a config value from env vars first, then Streamlit secrets."""
+    val = os.getenv(key, "")
+    if not val:
+        try:
+            import streamlit as st
+            val = str(st.secrets.get(key, "") or "")
+        except Exception:
+            val = ""
+    return (val or default).strip()
+
+
 def _cf_cfg() -> dict:
-    app_id = os.getenv("CASHFREE_APP_ID", "")
-    secret = os.getenv("CASHFREE_SECRET_KEY", "")
-    env = os.getenv("CASHFREE_ENV", "sandbox")
-    try:
-        import streamlit as st
-        app_id = app_id or str(st.secrets.get("CASHFREE_APP_ID", "") or "")
-        secret = secret or str(st.secrets.get("CASHFREE_SECRET_KEY", "") or "")
-        env = env or str(st.secrets.get("CASHFREE_ENV", "sandbox") or "sandbox")
-    except Exception:
-        pass
+    app_id = _conf("CASHFREE_APP_ID")
+    secret = _conf("CASHFREE_SECRET_KEY")
+    env = _conf("CASHFREE_ENV", "sandbox").lower()
+    if env not in ("sandbox", "production"):
+        env = "sandbox"
     base = "https://api.cashfree.com" if env == "production" else "https://sandbox.cashfree.com"
-    return {"app_id": app_id, "secret": secret, "base": base}
+    return {"app_id": app_id, "secret": secret, "env": env, "base": base}
+
+
+def app_base_url() -> str:
+    return _conf("APP_BASE_URL").rstrip("/")
 
 
 def is_cashfree_configured() -> bool:
     c = _cf_cfg()
     return bool(c["app_id"] and c["secret"])
+
+
+def cashfree_diagnostics() -> dict:
+    """Admin-facing config health check (never exposes secret values)."""
+    c = _cf_cfg()
+    return {
+        "app_id_set": bool(c["app_id"]),
+        "secret_set": bool(c["secret"]),
+        "environment": c["env"],
+        "api_base": c["base"],
+        "app_base_url": app_base_url() or "(not set — return-to-app redirect disabled)",
+    }
 
 
 def _headers() -> dict:
@@ -72,6 +102,19 @@ def _headers() -> dict:
         "x-api-version": CF_API_VERSION,
         "Content-Type": "application/json",
     }
+
+
+def normalize_phone(phone: str) -> str:
+    """Strip a phone number to digits (keeps last 10 for Indian numbers)."""
+    digits = re.sub(r"\D", "", phone or "")
+    if len(digits) > 10 and digits.startswith("91"):
+        digits = digits[-10:]
+    return digits
+
+
+def is_valid_phone(phone: str) -> bool:
+    digits = normalize_phone(phone)
+    return len(digits) == 10 and digits[0] in "6789"
 
 
 # ---------------------------------------------------------------------------
@@ -144,6 +187,54 @@ def user_can_afford_book(user_id: str, page_count: int) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Purchases (entitlements) — survive sessions, unlock content after payment
+# ---------------------------------------------------------------------------
+
+def record_purchase(user_id: str, link_id: str, amount_inr: int, metadata: dict) -> None:
+    try:
+        from mongo_client import purchases_col
+        purchases_col().update_one(
+            {"link_id": link_id},
+            {"$setOnInsert": {
+                "user_id": user_id,
+                "link_id": link_id,
+                "amount_inr": amount_inr,
+                "template_id": (metadata or {}).get("template_id", ""),
+                "tier": (metadata or {}).get("tier", ""),
+                "child_name": (metadata or {}).get("child_name", ""),
+                "book_kind": (metadata or {}).get("book_kind", "template"),
+                "purpose": (metadata or {}).get("purpose", ""),
+                "paid_at": datetime.utcnow(),
+            }},
+            upsert=True,
+        )
+    except Exception as e:
+        logger.error(f"record_purchase: {e}")
+
+
+def has_purchased_template(user_id: str, template_id: str, child_name: str = "") -> Optional[dict]:
+    """Return the purchase doc if user already bought this template (optionally for this child)."""
+    try:
+        from mongo_client import purchases_col
+        q = {"user_id": user_id, "template_id": template_id}
+        if child_name:
+            q["child_name"] = child_name
+        return purchases_col().find_one(q, sort=[("paid_at", -1)])
+    except Exception as e:
+        logger.error(f"has_purchased_template: {e}")
+        return None
+
+
+def get_user_purchases(user_id: str) -> list:
+    try:
+        from mongo_client import purchases_col
+        return list(purchases_col().find({"user_id": user_id}).sort("paid_at", -1))
+    except Exception as e:
+        logger.error(f"get_user_purchases: {e}")
+        return []
+
+
+# ---------------------------------------------------------------------------
 # Payment link creation
 # ---------------------------------------------------------------------------
 
@@ -153,38 +244,56 @@ def create_payment_link(
     amount_inr: int,
     purpose: str,
     return_url: str = "",
+    customer_phone: str = "",
+    metadata: Optional[dict] = None,
 ) -> Optional[dict]:
     """
-    Create a Cashfree Payment Link. Returns dict with 'link_url' and 'link_id',
-    or None on failure. Returns dict with 'error' key on configuration issues.
+    Create a Cashfree Payment Link.
+    Returns {'link_url', 'link_id'} on success, or {'error': msg} on failure.
     """
     if not is_cashfree_configured():
         logger.error("Cashfree not configured — CASHFREE_APP_ID or CASHFREE_SECRET_KEY missing")
         return {"error": "Payment gateway not configured. Please contact support."}
+
+    phone = normalize_phone(customer_phone)
+    if not is_valid_phone(phone):
+        return {"error": "A valid 10-digit mobile number is required for payment."}
+
     c = _cf_cfg()
     link_id = f"cbg_{user_id[:8]}_{uuid.uuid4().hex[:8]}"
+
+    if not return_url:
+        base = app_base_url()
+        if base:
+            return_url = f"{base}/?cf_link_id={link_id}"
+
     payload = {
         "link_id": link_id,
         "link_amount": float(amount_inr),
         "link_currency": "INR",
-        "link_purpose": purpose,
+        "link_purpose": purpose[:500],
         "customer_details": {
-            "customer_phone": "9999999999",
+            "customer_phone": phone,
             "customer_email": user_email,
             "customer_name": user_email.split("@")[0],
         },
         "link_expiry_time": (datetime.utcnow() + timedelta(hours=24)).strftime(
             "%Y-%m-%dT%H:%M:%SZ"
         ),
-        "link_notify": {"send_sms": False, "send_email": False},
+        "link_notify": {"send_sms": False, "send_email": True},
+        "link_auto_reminders": True,
     }
     if return_url:
         payload["link_meta"] = {"return_url": return_url}
+
     try:
         r = requests.post(f"{c['base']}/pg/links", headers=_headers(), json=payload, timeout=30)
-        data = r.json()
+        try:
+            data = r.json()
+        except ValueError:
+            data = {}
         if r.status_code in (200, 201) and data.get("link_url"):
-            _save_pending_order(user_id, link_id, amount_inr, purpose)
+            _save_pending_order(user_id, link_id, amount_inr, purpose, metadata)
             save_pending_payment_for_reminders(
                 user_id=user_id,
                 user_email=user_email,
@@ -195,7 +304,13 @@ def create_payment_link(
             )
             return {"link_url": data["link_url"], "link_id": link_id}
         error_msg = data.get("message", "") or data.get("error", "")
-        logger.error(f"Cashfree create link failed {r.status_code}: {data}")
+        logger.error(f"Cashfree create link failed {r.status_code} [{c['env']}]: {data}")
+        if r.status_code == 401:
+            return {"error": (
+                "Payment gateway authentication failed. The API keys do not match the "
+                f"configured environment ('{c['env']}'). If you are using production keys, "
+                "set CASHFREE_ENV=production in your secrets."
+            )}
         return {"error": f"Payment service error: {error_msg}" if error_msg else "Payment link creation failed. Please try again."}
     except requests.exceptions.Timeout:
         logger.error("Cashfree request timed out")
@@ -205,7 +320,8 @@ def create_payment_link(
         return {"error": "Could not connect to payment service. Please try again later."}
 
 
-def _save_pending_order(user_id: str, link_id: str, amount_inr: int, purpose: str):
+def _save_pending_order(user_id: str, link_id: str, amount_inr: int, purpose: str,
+                        metadata: Optional[dict] = None):
     try:
         from mongo_client import get_db
         get_db()["payment_orders"].insert_one({
@@ -214,11 +330,21 @@ def _save_pending_order(user_id: str, link_id: str, amount_inr: int, purpose: st
             "amount_inr": amount_inr,
             "amount_paise": amount_inr * 100,
             "purpose": purpose,
+            "metadata": metadata or {},
             "status": "PENDING",
             "created_at": datetime.utcnow(),
         })
     except Exception as e:
         logger.warning(f"_save_pending_order: {e}")
+
+
+def get_order(link_id: str) -> Optional[dict]:
+    try:
+        from mongo_client import get_db
+        return get_db()["payment_orders"].find_one({"_id": link_id})
+    except Exception as e:
+        logger.error(f"get_order: {e}")
+        return None
 
 
 def save_pending_payment_for_reminders(
@@ -273,9 +399,7 @@ def mark_payment_complete_for_reminders(payment_link_id: str):
 # ---------------------------------------------------------------------------
 
 def check_payment_status(link_id: str) -> str:
-    """
-    Returns 'PAID', 'PENDING', 'EXPIRED', or 'ERROR'.
-    """
+    """Returns 'PAID', 'PENDING', 'EXPIRED', or 'ERROR'."""
     if not is_cashfree_configured():
         return "ERROR"
     c = _cf_cfg()
@@ -286,13 +410,13 @@ def check_payment_status(link_id: str) -> str:
         data = r.json()
         if r.status_code == 200:
             status = data.get("link_status", "ACTIVE")
-            # PAID → link fully paid; ACTIVE → waiting; EXPIRED → timed out
             if status == "PAID":
                 return "PAID"
             elif status in ("ACTIVE", "PARTIALLY_PAID"):
                 return "PENDING"
             else:
                 return "EXPIRED"
+        logger.warning(f"check_payment_status {link_id}: HTTP {r.status_code} {data}")
         return "ERROR"
     except Exception as e:
         logger.error(f"check_payment_status {link_id}: {e}")
@@ -301,8 +425,8 @@ def check_payment_status(link_id: str) -> str:
 
 def confirm_payment_and_credit(link_id: str, user_id: str) -> bool:
     """
-    Poll Cashfree for payment status. On PAID, add credits and mark order complete.
-    Returns True if payment confirmed and credits added.
+    Poll Cashfree for payment status. On PAID: add credits, record the purchase
+    entitlement, and mark order complete. Idempotent.
     """
     try:
         from mongo_client import get_db
@@ -320,6 +444,9 @@ def confirm_payment_and_credit(link_id: str, user_id: str) -> bool:
                 {"_id": link_id},
                 {"$set": {"status": "CREDITED", "credited_at": datetime.utcnow()}},
             )
+            meta = dict(order.get("metadata") or {})
+            meta.setdefault("purpose", order.get("purpose", ""))
+            record_purchase(user_id, link_id, order.get("amount_inr", 0), meta)
             mark_payment_complete_for_reminders(link_id)
             return True
         return False
