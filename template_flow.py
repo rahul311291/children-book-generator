@@ -1,0 +1,496 @@
+"""
+Customer-facing template flow + admin Template Studio.
+
+Customer journey:
+  Gallery → Preview (3 free pages, rest locked) → Customize (name, gender,
+  age, phone, optional photo) → Pay (Cashfree link) → Instant book from
+  pre-rendered assets (basic) or photo-personalized re-render (personalized).
+
+Entitlements live in the `purchases` collection — once paid, the customer
+can always rebuild/download their book without paying again.
+
+NOTE: this module must never import main (circular). main.py passes
+save_history_cb into render_template_mode.
+"""
+
+import logging
+from typing import Callable, Optional
+
+import streamlit as st
+
+import template_store
+from template_store import (
+    build_book_from_assets,
+    personalize_book_with_photo,
+    template_coverage,
+    generate_assets_for_template,
+    asset_status,
+    AGE_GROUPS,
+    GENDERS,
+)
+from template_book_generator import (
+    get_available_templates,
+    get_template_pages,
+    display_template_book_preview,
+    convert_uploaded_file_to_base64,
+)
+from payments import (
+    create_payment_link,
+    confirm_payment_and_credit,
+    check_payment_status,
+    has_purchased_template,
+    is_valid_phone,
+    cashfree_diagnostics,
+    TEMPLATE_BASIC_INR,
+    TEMPLATE_PERSONALIZED_INR,
+)
+
+logger = logging.getLogger(__name__)
+
+FREE_PREVIEW_PAGES = 3
+
+TIERS = {
+    "basic": {
+        "label": "Digital Book",
+        "price": TEMPLATE_BASIC_INR,
+        "desc": "Instant personalized e-book with your child's name woven into every page.",
+    },
+    "personalized": {
+        "label": "Photo Personalized",
+        "price": TEMPLATE_PERSONALIZED_INR,
+        "desc": "Upload a photo — we illustrate your child as the hero of the story.",
+    },
+}
+
+_GALLERY_CSS = """
+<style>
+.tpl-card { border: 1px solid #eee; border-radius: 16px; overflow: hidden;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.06); margin-bottom: 8px; background: #fff; }
+.tpl-card img { width: 100%; height: 180px; object-fit: cover; }
+.tpl-card-body { padding: 12px 14px; }
+.tpl-card-body h4 { margin: 0 0 4px 0; font-size: 1.05rem; }
+.tpl-card-body p { color: #777; font-size: 0.85rem; margin: 0 0 8px 0;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.tpl-price { color: #FF6B6B; font-weight: 700; }
+.tpl-locked { position: relative; filter: blur(6px); }
+</style>
+"""
+
+
+def _reset_flow(keep_template: bool = False):
+    for k in [
+        "tpl_book_data", "tpl_payment_link_id", "tpl_payment_url",
+        "tpl_tier", "tpl_form", "tpl_building",
+    ]:
+        st.session_state.pop(k, None)
+    if not keep_template:
+        st.session_state.pop("tpl_selected_id", None)
+
+
+# ---------------------------------------------------------------------------
+# Customer flow
+# ---------------------------------------------------------------------------
+
+def render_template_mode(api_key: str, save_history_cb: Optional[Callable] = None):
+    """Entry point for the template experience (called from main.py)."""
+    st.markdown(_GALLERY_CSS, unsafe_allow_html=True)
+
+    # Finished book → preview screen
+    if st.session_state.get("tpl_book_data"):
+        _render_finished_book(api_key, save_history_cb)
+        return
+
+    template_id = st.session_state.get("tpl_selected_id")
+    if not template_id:
+        _render_gallery()
+        return
+
+    _render_template_detail(template_id, api_key, save_history_cb)
+
+
+def _render_gallery():
+    st.markdown("## Pick a story")
+    st.caption("Every book is personalized with your child's name — and optionally their photo.")
+    templates = get_available_templates()
+    if not templates:
+        st.warning("No templates available right now. Please check back soon.")
+        return
+    cols_per_row = 3
+    for row_start in range(0, len(templates), cols_per_row):
+        cols = st.columns(cols_per_row)
+        for i, col in enumerate(cols):
+            idx = row_start + i
+            if idx >= len(templates):
+                continue
+            t = templates[idx]
+            with col:
+                st.markdown(
+                    f"""
+                    <div class="tpl-card">
+                      <img src="{t.get('cover_image','')}" alt="{t['name']}">
+                      <div class="tpl-card-body">
+                        <h4>{t['name']}</h4>
+                        <p>{t.get('description','').replace('{name}', 'your child')}</p>
+                        <span class="tpl-price">From ₹{TEMPLATE_BASIC_INR}</span>
+                        · {t.get('total_pages', '?')} pages
+                      </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+                if st.button("Preview this book", key=f"tpl_pick_{t['id']}",
+                             use_container_width=True):
+                    _reset_flow()
+                    st.session_state.tpl_selected_id = t["id"]
+                    st.rerun()
+
+
+def _render_template_detail(template_id: str, api_key: str,
+                            save_history_cb: Optional[Callable]):
+    templates = get_available_templates()
+    template = next((t for t in templates if t["id"] == template_id), None)
+    if not template:
+        _reset_flow()
+        st.rerun()
+        return
+
+    # Returned from Cashfree with a verified payment (set in main.py)
+    if st.session_state.get("tpl_payment_confirmed"):
+        st.session_state.pop("tpl_payment_confirmed", None)
+        form = st.session_state.get("tpl_form", {})
+        if form.get("child_name"):
+            _build_and_show(
+                template_id,
+                form["child_name"], form.get("gender", "boy"),
+                int(form.get("age", 5)), tier=form.get("tier", "basic"),
+                api_key=api_key, photo_b64=form.get("photo_b64"),
+                save_history_cb=save_history_cb,
+            )
+            return
+
+    if st.button("← All stories"):
+        _reset_flow()
+        st.rerun()
+
+    st.markdown(f"## {template['name']}")
+    st.caption(template.get("description", "").replace("{name}", "your child"))
+
+    # ---- Free preview: first N pages from pre-rendered assets ----
+    pages = get_template_pages(template_id)
+    preview_gender = st.session_state.get("tpl_form", {}).get("gender", "boy")
+    preview_age = st.session_state.get("tpl_form", {}).get("age", 5)
+    with st.expander("📖 Sneak peek", expanded=True):
+        prev_cols = st.columns(FREE_PREVIEW_PAGES)
+        shown = 0
+        for page in pages[:FREE_PREVIEW_PAGES]:
+            img = template_store.get_asset(
+                template_id, page["page_number"], preview_gender, preview_age
+            )
+            with prev_cols[shown]:
+                if img:
+                    st.image(img, use_container_width=True)
+                else:
+                    st.markdown(
+                        f"<div style='height:140px;border-radius:12px;background:#FFF4F4;"
+                        f"display:flex;align-items:center;justify-content:center;"
+                        f"font-size:2rem;'>📄</div>",
+                        unsafe_allow_html=True,
+                    )
+                st.caption(
+                    page.get("text_template", "")[:90].replace("{name}", "your child")
+                    .replace("{He_She}", "They").replace("{he_she}", "they")
+                    .replace("{him_her}", "them").replace("{his_her}", "their") + "…"
+                )
+            shown += 1
+        if len(pages) > FREE_PREVIEW_PAGES:
+            st.caption(
+                f"🔒 {len(pages) - FREE_PREVIEW_PAGES} more pages unlock after purchase."
+            )
+
+    st.divider()
+
+    # ---- Already purchased? ----
+    user_id = st.session_state.get("user_id")
+    prior = has_purchased_template(user_id, template_id) if user_id else None
+    if prior:
+        st.success(
+            f"You already own this book for **{prior.get('metadata', {}).get('child_name', 'your child')}**."
+        )
+        if st.button("Open my book", type="primary"):
+            meta = prior.get("metadata", {})
+            _build_and_show(
+                template_id,
+                meta.get("child_name", "Child"),
+                meta.get("gender", "boy"),
+                int(meta.get("age", 5)),
+                tier=meta.get("tier", "basic"),
+                api_key=api_key,
+                photo_b64=None,
+                save_history_cb=save_history_cb,
+            )
+            return
+        st.caption("Or order another copy for a different child below.")
+
+    # ---- Pending payment? ----
+    if st.session_state.get("tpl_payment_link_id"):
+        _render_payment_pending(template_id, api_key, save_history_cb)
+        return
+
+    # ---- Customize + buy form ----
+    st.markdown("### Make it theirs")
+    tier = st.radio(
+        "Choose your book",
+        options=list(TIERS.keys()),
+        format_func=lambda k: f"{TIERS[k]['label']} — ₹{TIERS[k]['price']}",
+        captions=[TIERS[k]["desc"] for k in TIERS],
+        key="tpl_tier",
+        horizontal=False,
+    )
+
+    with st.form("tpl_customize"):
+        c1, c2, c3 = st.columns([2, 1, 1])
+        with c1:
+            child_name = st.text_input("Child's name *", placeholder="Aarav")
+        with c2:
+            gender = st.selectbox("Gender *", ["boy", "girl"])
+        with c3:
+            age = st.number_input("Age *", min_value=1, max_value=12, value=5)
+        phone = st.text_input(
+            "Mobile number * (for payment receipt)", placeholder="10-digit mobile",
+            max_chars=10,
+        )
+        photo_file = None
+        if tier == "personalized":
+            photo_file = st.file_uploader(
+                "Child's photo (clear face, good light)", type=["png", "jpg", "jpeg"]
+            )
+        submitted = st.form_submit_button(
+            f"Continue to payment — ₹{TIERS[tier]['price']}",
+            type="primary", use_container_width=True,
+        )
+
+    if submitted:
+        if not child_name.strip():
+            st.error("Please enter your child's name.")
+            return
+        if not is_valid_phone(phone):
+            st.error("Please enter a valid 10-digit mobile number.")
+            return
+        if tier == "personalized" and photo_file is None:
+            st.error("Please upload a photo for the personalized book.")
+            return
+        photo_b64 = convert_uploaded_file_to_base64(photo_file) if photo_file else None
+        st.session_state.tpl_form = {
+            "child_name": child_name.strip(),
+            "gender": gender,
+            "age": int(age),
+            "phone": phone,
+            "photo_b64": photo_b64,
+            "tier": tier,
+        }
+        result = create_payment_link(
+            user_id=user_id,
+            user_email=st.session_state.get("user_email", ""),
+            amount_inr=TIERS[tier]["price"],
+            purpose=f"{template['name']} ({TIERS[tier]['label']}) for {child_name.strip()}",
+            customer_phone=phone,
+            metadata={
+                "book_kind": "template",
+                "template_id": template_id,
+                "tier": tier,
+                "child_name": child_name.strip(),
+                "gender": gender,
+                "age": int(age),
+            },
+        )
+        if result.get("error"):
+            st.error(result["error"])
+            return
+        st.session_state.tpl_payment_link_id = result["link_id"]
+        st.session_state.tpl_payment_url = result["link_url"]
+        st.rerun()
+
+
+def _render_payment_pending(template_id: str, api_key: str,
+                            save_history_cb: Optional[Callable]):
+    link_id = st.session_state.tpl_payment_link_id
+    url = st.session_state.get("tpl_payment_url", "")
+    form = st.session_state.get("tpl_form", {})
+    tier = form.get("tier", "basic")
+
+    st.info(
+        f"**Almost there!** Complete the ₹{TIERS[tier]['price']} payment for "
+        f"**{form.get('child_name','')}**'s book, then come back here."
+    )
+    if url:
+        st.link_button("Pay securely with Cashfree →", url, type="primary",
+                       use_container_width=True)
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("I've paid — unlock my book", use_container_width=True):
+            with st.spinner("Verifying payment…"):
+                paid = confirm_payment_and_credit(link_id, st.session_state.get("user_id"))
+            if paid:
+                st.session_state.pop("tpl_payment_link_id", None)
+                st.session_state.pop("tpl_payment_url", None)
+                _build_and_show(
+                    template_id,
+                    form.get("child_name", "Child"),
+                    form.get("gender", "boy"),
+                    int(form.get("age", 5)),
+                    tier=tier,
+                    api_key=api_key,
+                    photo_b64=form.get("photo_b64"),
+                    save_history_cb=save_history_cb,
+                )
+            else:
+                status = check_payment_status(link_id)
+                if status == "EXPIRED":
+                    st.error("That payment link expired. Please start again.")
+                    _reset_flow(keep_template=True)
+                else:
+                    st.warning(
+                        "We haven't received the payment yet. If you just paid, "
+                        "wait a few seconds and try again."
+                    )
+    with c2:
+        if st.button("Cancel", use_container_width=True):
+            _reset_flow(keep_template=True)
+            st.rerun()
+
+
+def _build_and_show(template_id: str, child_name: str, gender: str, age: int,
+                    tier: str, api_key: str, photo_b64: Optional[str],
+                    save_history_cb: Optional[Callable]):
+    """Assemble the book (instant for basic; re-render for personalized)."""
+    with st.spinner("Putting your book together…"):
+        book = build_book_from_assets(template_id, child_name, gender, age)
+    if not book:
+        st.error("Sorry — this template isn't available right now.")
+        return
+
+    missing = [p for p in book["pages"] if not p.get("image_url")]
+    openrouter_key = st.session_state.get("openrouter_key", "") or st.session_state.get(
+        "openrouter_api_key", ""
+    )
+
+    # Fill any missing assets live (rare; only if studio pre-render incomplete)
+    if missing and api_key:
+        from template_book_generator import generate_page_image, compress_image_for_storage
+        prog = st.progress(0.0, text="Illustrating a few pages…")
+        for i, page in enumerate(missing):
+            try:
+                img = generate_page_image(api_key, page["image_prompt"], None,
+                                          openrouter_key=openrouter_key)
+                if img:
+                    img = compress_image_for_storage(img)
+                    page["image_url"] = img
+                    template_store.save_asset(
+                        template_id, page["page_number"], gender,
+                        template_store._age_to_group(age), img,
+                    )
+            except Exception:
+                pass
+            prog.progress((i + 1) / len(missing))
+        prog.empty()
+
+    if tier == "personalized" and photo_b64 and api_key:
+        prog = st.progress(0.0, text="Illustrating your child into the story…")
+        book = personalize_book_with_photo(
+            book, api_key, photo_b64, openrouter_key=openrouter_key,
+            progress_cb=lambda msg, frac: prog.progress(min(frac, 1.0), text=msg),
+        )
+        prog.empty()
+
+    st.session_state.tpl_book_data = book
+    # Purchase verified — unlock the legacy preview's payment gate
+    st.session_state.current_book_payment_status = "paid"
+    if save_history_cb:
+        try:
+            save_history_cb(book)
+        except Exception as e:
+            logger.warning(f"History save failed: {e}")
+    st.balloons()
+    st.rerun()
+
+
+def _render_finished_book(api_key: str, save_history_cb: Optional[Callable]):
+    book = st.session_state.tpl_book_data
+    c1, c2 = st.columns([1, 5])
+    with c1:
+        if st.button("← All stories"):
+            _reset_flow()
+            st.rerun()
+    st.success(f"🎉 **{book.get('child_name','')}**'s book is ready!")
+    display_template_book_preview(book, api_key=api_key)
+
+
+# ---------------------------------------------------------------------------
+# Admin: Template Studio
+# ---------------------------------------------------------------------------
+
+def render_template_studio(api_key: str):
+    """Admin tool: pre-render template assets once, monitor coverage."""
+    st.markdown("## 🎨 Template Studio")
+    st.caption(
+        "Pre-render every template page once per gender/age variant. "
+        "Customers then get instant books at zero generation cost."
+    )
+
+    diag = cashfree_diagnostics()
+    with st.expander("💳 Payment gateway health"):
+        for k, v in diag.items():
+            st.write(f"**{k}:** {v}")
+
+    templates = get_available_templates()
+    template = st.selectbox(
+        "Template", templates,
+        format_func=lambda t: f"{t['name']} ({t.get('total_pages','?')} pages)",
+    )
+    if not template:
+        return
+    template_id = template["id"]
+
+    # Coverage matrix
+    pages = get_template_pages(template_id)
+    status = asset_status(template_id)
+    st.markdown("#### Coverage")
+    rows = []
+    for gender in GENDERS:
+        for group in AGE_GROUPS:
+            vk = f"{gender}_{group}"
+            done = sum(1 for p in pages if vk in status.get(p["page_number"], []))
+            rows.append({"Variant": vk, "Rendered": f"{done}/{len(pages)}",
+                         "Complete": "✅" if done == len(pages) else "⏳"})
+    st.dataframe(rows, use_container_width=True, hide_index=True)
+
+    st.markdown("#### Generate")
+    c1, c2 = st.columns(2)
+    with c1:
+        sel_genders = st.multiselect("Genders", GENDERS, default=GENDERS)
+    with c2:
+        sel_groups = st.multiselect("Age groups", AGE_GROUPS, default=["4-6"])
+    overwrite = st.checkbox("Overwrite existing assets", value=False)
+
+    if st.button("🚀 Pre-render assets", type="primary"):
+        if not api_key:
+            st.error("Configure a Gemini API key first (sidebar).")
+            return
+        openrouter_key = st.session_state.get("openrouter_key", "") or st.session_state.get(
+            "openrouter_api_key", ""
+        )
+        prog = st.progress(0.0, text="Starting…")
+        result = generate_assets_for_template(
+            template_id, api_key, openrouter_key=openrouter_key,
+            genders=sel_genders, age_groups=sel_groups, overwrite=overwrite,
+            progress_cb=lambda msg, frac: prog.progress(min(frac, 1.0), text=msg),
+        )
+        prog.empty()
+        if result.get("error"):
+            st.error(result["error"])
+        else:
+            st.success(
+                f"Rendered {result['rendered']} images "
+                f"({result['failed']} failed, {result['total_jobs']} queued)."
+            )
+            st.rerun()
