@@ -31,9 +31,13 @@ logger = logging.getLogger(__name__)
 FREE_IMAGES_PER_BOOK = 3
 PRICE_PER_PAGE_INR = 15  # kept for legacy per-page calc
 
-# Flat pricing
-PDF_PRICE_INR = 500     # digital PDF download (custom books)
-PRINT_PRICE_INR = 1100  # printed physical copy shipped to address
+# Custom story — two-gate pricing
+CUSTOM_STORY_PRICE_INR = 350    # Gate 1: pay to unlock full story generation
+CUSTOM_DOWNLOAD_PRICE_INR = 650  # Gate 2: pay to download PDF or order print
+
+# Legacy flat pricing (kept for any existing references)
+PDF_PRICE_INR = CUSTOM_DOWNLOAD_PRICE_INR
+PRINT_PRICE_INR = CUSTOM_DOWNLOAD_PRICE_INR
 
 # Template tiers
 TEMPLATE_BASIC_INR = 149
@@ -41,8 +45,8 @@ TEMPLATE_PERSONALIZED_INR = 249
 TEMPLATE_PREMIUM_INR = 699
 
 # Legacy aliases (used by existing code)
-CUSTOM_BOOK_PRICE_INR = PDF_PRICE_INR
-TEMPLATE_BOOK_PRICE_INR = PDF_PRICE_INR
+CUSTOM_BOOK_PRICE_INR = CUSTOM_STORY_PRICE_INR
+TEMPLATE_BOOK_PRICE_INR = TEMPLATE_BASIC_INR
 
 CF_API_VERSION = "2023-08-01"
 
@@ -180,6 +184,16 @@ def pdf_price_inr() -> int:
 
 def print_price_inr() -> int:
     return PRINT_PRICE_INR
+
+
+def custom_story_price_inr() -> int:
+    """Gate 1 — unlock full story generation (all pages + images)."""
+    return CUSTOM_STORY_PRICE_INR
+
+
+def custom_download_price_inr() -> int:
+    """Gate 2 — download PDF or order a printed copy."""
+    return CUSTOM_DOWNLOAD_PRICE_INR
 
 
 def user_can_afford_book(user_id: str, page_count: int) -> bool:
