@@ -2341,9 +2341,14 @@ def main():
                     st.session_state.pop("tpl_payment_url", None)
                     st.session_state.tpl_payment_confirmed = _cf_link_id
                 if st.session_state.get("pending_payment_link_id") == _cf_link_id:
-                    st.session_state.current_book_payment_status = "paid"
+                    # Map to the correct new gate status
+                    _cf_gate = st.session_state.get("pending_payment_gate", "story")
+                    st.session_state.current_book_payment_status = (
+                        "download_paid" if _cf_gate == "download" else "story_paid"
+                    )
                     st.session_state.pending_payment_link_id = None
                     st.session_state.pending_payment_url = None
+                    st.session_state.pending_payment_gate = None
         except Exception as _e:
             logger.warning(f"Payment-return verification failed: {_e}")
         st.query_params.pop("cf_link_id", None)
@@ -2793,6 +2798,129 @@ def main():
 
     # --- Generate story from wizard values ---
     if st.session_state.wiz_generate_trigger:
+        # ── Gate 1: non-admin users must pay ₹350 before generating ──────
+        _wiz_email = st.session_state.get("user_email") or (st.session_state.get("auth_user") or {}).get("email", "")
+        _wiz_is_admin = _wiz_email in ADMIN_EMAILS
+        _wiz_status = st.session_state.get("current_book_payment_status")
+        _wiz_story_paid = _wiz_is_admin or _wiz_status in ("story_paid", "download_paid")
+
+        if not _wiz_story_paid:
+            # Show payment gate instead of generating
+            from payments import (
+                custom_story_price_inr as _wiz_price_fn,
+                create_payment_link as _wiz_cpl,
+                confirm_payment_and_credit as _wiz_cpc,
+                is_cashfree_configured as _wiz_cf_ok,
+                save_pending_payment_for_reminders as _wiz_spp,
+                is_valid_phone as _wiz_vph,
+            )
+            _wiz_p = _wiz_price_fn()
+            _wiz_uid = get_current_user_id()
+            _wiz_child = st.session_state.get("wiz_child_name", "")
+
+            st.title("✨ Almost there!")
+            st.markdown(
+                f"Pay **₹{_wiz_p}** to generate your personalised story for **{_wiz_child}** "
+                f"with full illustrations. You'll get a complete book you can read on any device, "
+                f"and can order a printed copy for an additional ₹650."
+            )
+
+            _wiz_pending_id = st.session_state.get("pending_payment_link_id")
+            _wiz_pending_gate = st.session_state.get("pending_payment_gate")
+            if _wiz_pending_id and _wiz_pending_gate != "story":
+                _wiz_pending_id = None
+                st.session_state.pending_payment_link_id = None
+                st.session_state.pending_payment_url = None
+
+            if _wiz_cf_ok():
+                if _wiz_pending_id:
+                    col_chk, col_new = st.columns(2)
+                    with col_chk:
+                        if st.button("✅ I've paid — generate my story", type="primary",
+                                     use_container_width=True, key="wiz_gate1_confirm"):
+                            if _wiz_cpc(_wiz_pending_id, _wiz_uid):
+                                st.session_state.current_book_payment_status = "story_paid"
+                                st.session_state.pending_payment_link_id = None
+                                st.session_state.pending_payment_url = None
+                                st.session_state.pending_payment_gate = None
+                                # Keep wiz_generate_trigger=True so generation runs next render
+                                st.session_state.wiz_generate_trigger = True
+                                st.success("Payment confirmed! Generating your story now…")
+                                st.rerun()
+                            else:
+                                st.error("Payment not confirmed yet. Complete the payment and try again.")
+                    with col_new:
+                        if st.button("🔄 New payment link", use_container_width=True,
+                                     key="wiz_gate1_newlink"):
+                            st.session_state.pending_payment_link_id = None
+                            st.session_state.pending_payment_url = None
+                            st.session_state.pending_payment_gate = None
+                            st.rerun()
+                    _wiz_pu = st.session_state.get("pending_payment_url", "")
+                    if _wiz_pu:
+                        st.markdown(
+                            f'<a href="{_wiz_pu}" target="_blank" style="display:inline-block;'
+                            f'background:#2563eb;color:white;padding:12px 28px;border-radius:8px;'
+                            f'font-weight:700;text-decoration:none;margin-top:8px;">Open payment page ↗</a>',
+                            unsafe_allow_html=True,
+                        )
+                    if st.button("← Back to wizard", use_container_width=True, key="wiz_gate1_back"):
+                        st.session_state.wiz_generate_trigger = False
+                        st.session_state.pending_payment_link_id = None
+                        st.session_state.pending_payment_url = None
+                        st.session_state.pending_payment_gate = None
+                        st.rerun()
+                else:
+                    _wiz_phone = st.text_input(
+                        "Mobile number (for receipt)",
+                        max_chars=10, placeholder="10-digit mobile", key="wiz_gate1_phone",
+                    )
+                    col_pay, col_back = st.columns(2)
+                    with col_pay:
+                        if st.button(f"Pay ₹{_wiz_p} & Generate Story", type="primary",
+                                     use_container_width=True, key="wiz_gate1_pay"):
+                            if not _wiz_vph(_wiz_phone):
+                                st.error("Please enter a valid 10-digit mobile number.")
+                                st.stop()
+                            with st.spinner("Creating payment link…"):
+                                res = _wiz_cpl(
+                                    _wiz_uid, _wiz_email, _wiz_p,
+                                    f"Custom storybook for {_wiz_child}",
+                                    customer_phone=_wiz_phone,
+                                    metadata={"book_kind": "custom", "product": "story",
+                                              "gate": "story", "child_name": _wiz_child},
+                                )
+                            if res and res.get("link_url"):
+                                _wiz_spp(user_id=_wiz_uid, user_email=_wiz_email, amount_inr=_wiz_p,
+                                         child_name=_wiz_child, book_title=f"{_wiz_child}'s Story",
+                                         product_type="story", payment_link_id=res["link_id"],
+                                         payment_link_url=res["link_url"])
+                                st.session_state.pending_payment_link_id = res["link_id"]
+                                st.session_state.pending_payment_url = res["link_url"]
+                                st.session_state.pending_payment_gate = "story"
+                                st.session_state.current_book_payment_status = "pending"
+                                st.rerun()
+                            else:
+                                st.error((res or {}).get("error", "Could not create payment link."))
+                    with col_back:
+                        if st.button("← Back to wizard", use_container_width=True,
+                                     key="wiz_gate1_back2"):
+                            st.session_state.wiz_generate_trigger = False
+                            st.rerun()
+            else:
+                if _wiz_is_admin:
+                    st.warning("Payment gateway not configured. Admin override available.")
+                    if st.button("🔓 Unlock & generate (admin)", key="wiz_admin_unlock"):
+                        st.session_state.current_book_payment_status = "story_paid"
+                        st.session_state.wiz_generate_trigger = True
+                        st.rerun()
+                else:
+                    st.info("Checkout is temporarily unavailable. Please try again shortly.")
+                    if st.button("← Back to wizard", use_container_width=True, key="wiz_cf_back"):
+                        st.session_state.wiz_generate_trigger = False
+                        st.rerun()
+            return  # don't process wiz_generate_trigger until paid
+
         st.session_state.wiz_generate_trigger = False
 
         # Build values from wizard session state
@@ -3258,159 +3386,21 @@ def main():
                             st.session_state.all_images_approved = True
                     st.rerun()
 
-            # ── Two-gate payment check ─────────────────────────────────────────
-            # Gate 1 (₹350): unlock full story generation after 3 free previews.
-            # Gate 2 (₹650): unlock PDF download / print after full book is ready.
-            # Admin always bypasses both gates.
-            from payments import (
-                FREE_IMAGES_PER_BOOK,
-                custom_story_price_inr, custom_download_price_inr,
-                create_payment_link, confirm_payment_and_credit,
-                is_cashfree_configured, save_pending_payment_for_reminders,
-                is_valid_phone,
-            )
-            _is_valid_phone = is_valid_phone
-            user_id_pay = get_current_user_id()
+            # ── Payment context (used by image display + Step 3) ──────────────
+            # Gate 1 is now enforced at wizard submit — any user reaching here has paid.
+            # We still track status so Step 3 Gate 2 (download) knows what's paid.
             _current_user_email = st.session_state.get("user_email") or (st.session_state.get("auth_user") or {}).get("email", "")
-            user_email_pay = _current_user_email or "user@example.com"
-            child_name_pay = st.session_state.get("current_child_name", "")
             _is_admin_user = _current_user_email in ADMIN_EMAILS
-
             _pay_status = st.session_state.get("current_book_payment_status")
             story_paid = _is_admin_user or _pay_status in ("story_paid", "download_paid")
-            download_paid = _is_admin_user or _pay_status == "download_paid"
+            # Safety net: if somehow reached without payment, treat as paid for image gen
+            # (shouldn't happen — wizard gate blocks non-payers)
+            needs_story_payment = False  # gate moved to wizard submit
 
-            generated_count = len([img for img in st.session_state.generated_images if img is not None])
-
-            # ── Gate 1: Story generation paywall ──────────────────────────────
-            needs_story_payment = (
-                not story_paid
-                and total_pages > FREE_IMAGES_PER_BOOK
-                and generated_count >= FREE_IMAGES_PER_BOOK
-            )
-
-            def _render_payment_link_ui(gate: str, amount: int, description: str, product: str):
-                """Shared UI for creating / confirming a Cashfree payment link."""
-                pending_link_id = st.session_state.get("pending_payment_link_id")
-                pending_gate = st.session_state.get("pending_payment_gate")
-                # If a link exists for a different gate, clear it
-                if pending_link_id and pending_gate != gate:
-                    st.session_state.pending_payment_link_id = None
-                    st.session_state.pending_payment_url = None
-                    pending_link_id = None
-
-                if pending_link_id:
-                    col_chk, col_new = st.columns(2)
-                    with col_chk:
-                        if st.button("✅ I've paid — continue", type="primary",
-                                     use_container_width=True, key=f"confirm_{gate}"):
-                            if confirm_payment_and_credit(pending_link_id, user_id_pay):
-                                new_status = "story_paid" if gate == "story" else "download_paid"
-                                st.session_state.current_book_payment_status = new_status
-                                st.session_state.pending_payment_link_id = None
-                                st.session_state.pending_payment_url = None
-                                st.session_state.pending_payment_gate = None
-                                st.success("Payment confirmed! ✓")
-                                st.rerun()
-                            else:
-                                st.error("Payment not confirmed yet. Complete the payment and try again.")
-                    with col_new:
-                        if st.button("🔄 New link", use_container_width=True, key=f"newlink_{gate}"):
-                            st.session_state.pending_payment_link_id = None
-                            st.session_state.pending_payment_url = None
-                            st.session_state.pending_payment_gate = None
-                            st.rerun()
-                    pending_url = st.session_state.get("pending_payment_url", "")
-                    if pending_url:
-                        st.markdown(
-                            f'<a href="{pending_url}" target="_blank" style="display:inline-block;'
-                            f'background:#2563eb;color:white;padding:10px 24px;border-radius:8px;'
-                            f'font-weight:700;text-decoration:none;margin-top:8px;">Open payment page ↗</a>',
-                            unsafe_allow_html=True,
-                        )
-                else:
-                    pay_phone = st.text_input(
-                        "Mobile number (for payment receipt)",
-                        max_chars=10, placeholder="10-digit mobile", key=f"pay_phone_{gate}",
-                    )
-                    if st.button(f"Pay ₹{amount} — {description}", type="primary",
-                                 use_container_width=True, key=f"pay_btn_{gate}"):
-                        if not _is_valid_phone(pay_phone):
-                            st.error("Please enter a valid 10-digit mobile number.")
-                            st.stop()
-                        with st.spinner("Creating payment link..."):
-                            result = create_payment_link(
-                                user_id_pay, user_email_pay, amount,
-                                f"{description} for {child_name_pay}",
-                                customer_phone=pay_phone,
-                                metadata={"book_kind": "custom", "product": product,
-                                          "gate": gate, "child_name": child_name_pay},
-                            )
-                        if result and result.get("link_url"):
-                            save_pending_payment_for_reminders(
-                                user_id=user_id_pay, user_email=user_email_pay,
-                                amount_inr=amount, child_name=child_name_pay,
-                                book_title=f"{child_name_pay}'s Story",
-                                product_type=product,
-                                payment_link_id=result["link_id"],
-                                payment_link_url=result["link_url"],
-                            )
-                            st.session_state.pending_payment_link_id = result["link_id"]
-                            st.session_state.pending_payment_url = result["link_url"]
-                            st.session_state.pending_payment_gate = gate
-                            st.session_state.current_book_payment_status = "pending"
-                            st.rerun()
-                        else:
-                            st.error((result or {}).get("error", "Could not create payment link."))
-
-            if needs_story_payment:
-                _story_p = custom_story_price_inr()
-                st.divider()
-                st.markdown(
-                    f"### 📖 {FREE_IMAGES_PER_BOOK} free pages ready!\n\n"
-                    f"Pay **₹{_story_p}** to generate your complete personalised book "
-                    f"({total_pages} pages with illustrations)."
-                )
-                if is_cashfree_configured():
-                    _render_payment_link_ui("story", _story_p, "Custom storybook", "story")
-                else:
-                    if _is_admin_user:
-                        st.warning("Payment gateway not configured. Admin override available.")
-                        if st.button("🔓 Unlock story (admin)", key="admin_unlock_story"):
-                            st.session_state.current_book_payment_status = "story_paid"
-                            st.rerun()
-                    else:
-                        st.info("Checkout is temporarily unavailable. Please try again shortly.")
-
-                # Show free preview cards + locked pages below the paywall
-                st.divider()
-                for i, page in enumerate(pages):
-                    page_num = page.get("page_number", i + 1)
-                    text = st.session_state.edited_story_pages.get(i, page.get("text", ""))
-                    has_img = (i < len(st.session_state.generated_images)
-                               and st.session_state.generated_images[i] is not None)
-                    if i < FREE_IMAGES_PER_BOOK - 1 and has_img:
-                        _render_page_card(st.session_state.generated_images[i], text, page_num, total_pages)
-                    elif i == FREE_IMAGES_PER_BOOK - 1 and has_img:
-                        remaining = total_pages - FREE_IMAGES_PER_BOOK
-                        cta = _render_paywall_card(
-                            st.session_state.generated_images[i], page_num, total_pages,
-                            remaining, _story_p, f"paywall_cta_{i}"
-                        )
-                        if cta:
-                            st.rerun()
-                        for j in range(i + 1, total_pages):
-                            _render_locked_card(pages[j].get("page_number", j + 1), total_pages)
-                        break
-
-            # Derived flag for image generation limit
-            book_already_paid = story_paid  # keeps existing gen-limit logic working
-
-            # Generate images that haven't been generated yet (stop at FREE_IMAGES_PER_BOOK when unpaid)
-            if regenerate_idx is None and not needs_story_payment:
-                # Find first missing or None image
-                # Determine generation limit: FREE_IMAGES_PER_BOOK until Gate 1 paid, then all pages
-                gen_limit = total_pages if story_paid else FREE_IMAGES_PER_BOOK
+            # Generate images that haven't been generated yet (all pages — Gate 1 already paid)
+            if regenerate_idx is None:
+                # Determine generation limit: all pages (Gate 1 is paid before reaching here)
+                gen_limit = total_pages
 
                 missing_idx = None
                 for idx in range(gen_limit):
@@ -3577,8 +3567,8 @@ def main():
                 if img is not None:
                     st.session_state.image_approvals[i] = True
 
-            # Show cards only when story is paid (Gate 1 cleared)
-            if not needs_story_payment:
+            # Gate 1 is paid before generation starts — always show cards here
+            if True:
                 for i, page in enumerate(pages):
                     if i >= len(st.session_state.generated_images):
                         break
