@@ -162,6 +162,10 @@ def restore_session_from_token(token: str) -> bool:
             return False
         _load_user_into_session(_get_user_id(user), user["email"], user,
                                 new_token=False)
+        # CRITICAL: store the active token so sign_out() can delete it and clear
+        # the cookie. Without this, clicking "Log Out" has no token to delete and
+        # the cookie just restores the session on the next rerun.
+        st.session_state._session_token = token
         return True
     except Exception as e:
         logger.error(f"Session restore failed: {e}")

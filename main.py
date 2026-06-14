@@ -1473,12 +1473,14 @@ def create_pdf(
         c.setFillAlpha(0.55)
         c.rect(0, 0, pw, ph * 0.38, fill=1, stroke=0)
         c.restoreState()
+        c.setFillAlpha(1.0)  # restoreState may not fully undo setFillAlpha; reset explicitly
     else:
         c.setFillColor(HexColor("#1a1a2e"))
         c.rect(0, 0, pw, ph, fill=1, stroke=0)
     # Title text
     title_fs = min(32, int(pw / inch * 3.8))
     name_fs = min(20, int(pw / inch * 2.4))
+    c.setFillAlpha(1.0)  # ensure full opacity before drawing text
     c.setFillColor(white)
     c.setFont("Helvetica-Bold", title_fs)
     # Word-wrap the title
@@ -3615,10 +3617,12 @@ def main():
         st.session_state.all_images_approved and
         len(st.session_state.generated_images) > 0):
         
-        # Create a unique key based on story and images to detect changes
+        # Create a unique key based on story, images AND format — so that changing
+        # the book format always triggers PDF regeneration.
         story_hash = hashlib.md5(json.dumps(st.session_state.generated_story, sort_keys=True).encode()).hexdigest()
         images_hash = hashlib.md5(str([id(img) for img in st.session_state.generated_images]).encode()).hexdigest()
-        current_pdf_key = f"{story_hash}_{images_hash}"
+        _active_format_id = st.session_state.get("wiz_format_id") or st.session_state.get("selected_book_format") or "default"
+        current_pdf_key = f"{story_hash}_{images_hash}_{_active_format_id}"
         
         # Regenerate PDF if content changed or doesn't exist
         if (st.session_state.pdf_path is None or 
