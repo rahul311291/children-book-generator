@@ -1,14 +1,16 @@
 """
 Authentication for Storytime Studio.
 
-Passwordless auth with two paths:
-  1. Google sign-in (Streamlit native OIDC via st.login / st.user)
-  2. Email + one-time code (OTP) sent over SMTP
+Three sign-in paths (all co-exist on the same screen):
+  1. Google OIDC (Streamlit native st.login/st.user)
+  2. Email + password  ← primary path, no SMTP needed
+  3. Email OTP code    ← fallback / passwordless option (needs SMTP)
 
-Sessions persist across reloads via a signed token stored in a browser
-cookie (handled in main.py) and mirrored in the `sessions` collection.
+Passwords are stored as PBKDF2-HMAC-SHA256 with a per-user random salt
+using Python's built-in `hashlib` — no extra dependencies.
 
-No passwords are ever stored.
+Sessions persist 7 days via a signed token stored in a browser cookie
+(handled in main.py) and mirrored in the `sessions` Mongo collection.
 """
 
 import streamlit as st
@@ -38,6 +40,7 @@ OTP_TTL_MINUTES = 10
 OTP_RESEND_SECONDS = 60
 MAX_OTP_ATTEMPTS = 5
 SESSION_DAYS = 7
+_PBKDF2_ITERS = 260_000
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
@@ -53,7 +56,6 @@ else:
 # ---------------------------------------------------------------------------
 
 def _conf(key: str, default: str = "") -> str:
-    """Env var first, then Streamlit secrets."""
     val = os.getenv(key, "")
     if val:
         return val
@@ -69,6 +71,23 @@ def _now() -> datetime:
 
 def _hash(value: str) -> str:
     return hashlib.sha256(value.encode()).hexdigest()
+
+
+# ---------------------------------------------------------------------------
+# Password helpers (PBKDF2-HMAC-SHA256)
+# ---------------------------------------------------------------------------
+
+def _hash_password(password: str) -> Tuple[str, str]:
+    """Return (salt_hex, hash_hex) for a new password."""
+    salt = secrets.token_bytes(32)
+    dk = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, _PBKDF2_ITERS)
+    return salt.hex(), dk.hex()
+
+
+def _verify_password(password: str, salt_hex: str, hash_hex: str) -> bool:
+    salt = bytes.fromhex(salt_hex)
+    dk = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, _PBKDF2_ITERS)
+    return secrets.compare_digest(dk.hex(), hash_hex)
 
 
 # ---------------------------------------------------------------------------
@@ -97,8 +116,36 @@ def _get_or_create_user(email: str, verified: bool = True, via: str = "email") -
     return user
 
 
+def set_password(user_id: str, password: str) -> None:
+    """Hash and persist a new password for a user."""
+    salt, pw_hash = _hash_password(password)
+    users_col().update_one(
+        {"user_id": user_id},
+        {"$set": {"pw_salt": salt, "pw_hash": pw_hash}},
+    )
+
+
+def check_password_login(email: str, password: str) -> Tuple[bool, str]:
+    """Verify email+password. Returns (ok, error_message)."""
+    email = email.strip().lower()
+    if not EMAIL_RE.match(email):
+        return False, "Please enter a valid email address."
+    if not password:
+        return False, "Please enter your password."
+    user = users_col().find_one({"email": email})
+    if not user:
+        return False, "No account found for this email. Please sign up below."
+    pw_salt = user.get("pw_salt")
+    pw_hash = user.get("pw_hash")
+    if not pw_salt or not pw_hash:
+        return False, "This account doesn't have a password set. Use 'Get a sign-in code' below."
+    if not _verify_password(password, pw_salt, pw_hash):
+        return False, "Incorrect password."
+    return True, ""
+
+
 # ---------------------------------------------------------------------------
-# Session tokens (cookie-backed persistence)
+# Session tokens
 # ---------------------------------------------------------------------------
 
 def _create_session_token(user_id: str) -> str:
@@ -122,7 +169,6 @@ def _delete_session_token(token: str) -> None:
 
 
 def restore_session_from_token(token: str) -> bool:
-    """Restore a login from a cookie token. Returns True on success."""
     if not token:
         return False
     try:
@@ -153,7 +199,7 @@ def init_auth_state() -> None:
         "user_id": None,
         "user_email": None,
         "is_admin": False,
-        "auth_stage": "login",  # login | otp
+        "auth_stage": "login",   # login | otp | set_password
         "otp_email": "",
         "otp_sent_at": None,
         "_pending_session_token": None,
@@ -175,7 +221,6 @@ def _load_user_into_session(user: dict, new_session_token: bool = True) -> None:
     st.session_state.authenticated = True
     st.session_state.user_id = user["user_id"]
     st.session_state.user_email = user["email"]
-    # Legacy shape used across main.py / template_book_generator.py
     st.session_state.auth_user = {"id": user["user_id"], "email": user["email"]}
     st.session_state.is_admin = user["email"] in ADMIN_EMAILS
     st.session_state.auth_stage = "login"
@@ -190,26 +235,14 @@ def sign_out() -> None:
     )
     if token:
         _delete_session_token(token)
-        # main.py watches this key to clear the browser cookie
         st.session_state._token_to_delete = token
     for key in [
-        "authenticated",
-        "user_id",
-        "user_email",
-        "auth_user",
-        "is_admin",
-        "_session_token",
-        "_pending_session_token",
-        "otp_email",
-        "otp_sent_at",
-        "api_key",
-        "openrouter_key",
-        "openrouter_api_key",
-        "vertex_config",
+        "authenticated", "user_id", "user_email", "auth_user", "is_admin",
+        "_session_token", "_pending_session_token", "otp_email", "otp_sent_at",
+        "api_key", "openrouter_key", "openrouter_api_key", "vertex_config",
     ]:
         st.session_state.pop(key, None)
     st.session_state.auth_stage = "login"
-    # Also end Google OIDC session if active
     try:
         if hasattr(st, "user") and getattr(st.user, "is_logged_in", False):
             st.logout()
@@ -218,22 +251,19 @@ def sign_out() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Google sign-in (Streamlit native OIDC)
+# Google sign-in
 # ---------------------------------------------------------------------------
 
 def google_auth_available() -> bool:
-    """True when [auth] is configured in Streamlit secrets."""
     if not hasattr(st, "login"):
         return False
     try:
-        auth_cfg = st.secrets.get("auth", {})
-        return bool(auth_cfg.get("client_id"))
+        return bool(st.secrets.get("auth", {}).get("client_id"))
     except Exception:
         return False
 
 
 def sync_google_session() -> bool:
-    """If the user just completed Google login, mirror it into our session."""
     try:
         if not hasattr(st, "user"):
             return False
@@ -264,7 +294,7 @@ def _send_otp_email(to_email: str, otp_code: str) -> bool:
     from_email = _conf("SMTP_FROM", smtp_user)
 
     if not smtp_user or not smtp_password:
-        logger.warning("SMTP not configured; OTP email not sent.")
+        logger.warning("SMTP not configured — OTP email not sent.")
         return False
 
     msg = MIMEMultipart("alternative")
@@ -273,7 +303,7 @@ def _send_otp_email(to_email: str, otp_code: str) -> bool:
     msg["To"] = to_email
     html = f"""
     <div style="font-family:Arial,sans-serif;max-width:440px;margin:0 auto;padding:24px;">
-      <h2 style="color:#FF6B6B;margin-bottom:4px;">{APP_NAME}</h2>
+      <h2 style="color:#FF6B6B;">{APP_NAME}</h2>
       <p>Use this code to sign in. It expires in {OTP_TTL_MINUTES} minutes.</p>
       <div style="font-size:32px;font-weight:bold;letter-spacing:8px;
                   background:#FFF4F4;border-radius:12px;padding:16px;
@@ -294,7 +324,6 @@ def _send_otp_email(to_email: str, otp_code: str) -> bool:
 
 
 def _issue_otp(email: str) -> Tuple[bool, str]:
-    """Create + email an OTP. Returns (ok, error_message)."""
     email = email.strip().lower()
     otp_code = f"{random.SystemRandom().randint(0, 999999):06d}"
     otps_col().delete_many({"email": email})
@@ -313,18 +342,20 @@ def _issue_otp(email: str) -> Tuple[bool, str]:
         st.session_state["_dev_otp"] = otp_code
         return True, ""
     if not sent:
-        return False, "Could not send the sign-in code. Please try again in a minute."
+        return False, (
+            "Could not send the sign-in code — email is not configured yet. "
+            "Please use your password to log in instead."
+        )
     return True, ""
 
 
 def start_email_login(email: str) -> Tuple[bool, str]:
-    """Begin email OTP flow. Returns (ok, error_message)."""
     email = (email or "").strip().lower()
     if not EMAIL_RE.match(email):
         return False, "Please enter a valid email address."
     last_sent = st.session_state.get("otp_sent_at")
     if last_sent and (_now() - last_sent).total_seconds() < OTP_RESEND_SECONDS:
-        return False, f"Please wait a moment before requesting another code."
+        return False, "Please wait a moment before requesting another code."
     ok, err = _issue_otp(email)
     if not ok:
         return False, err
@@ -335,7 +366,6 @@ def start_email_login(email: str) -> Tuple[bool, str]:
 
 
 def verify_otp(email: str, otp_code: str) -> Tuple[bool, str]:
-    """Check an OTP. Returns (ok, error_message)."""
     email = (email or "").strip().lower()
     otp_code = (otp_code or "").strip()
     if not otp_code.isdigit() or len(otp_code) != 6:
@@ -343,9 +373,7 @@ def verify_otp(email: str, otp_code: str) -> Tuple[bool, str]:
     doc = otps_col().find_one({"email": email})
     if not doc:
         return False, "Code expired or not found. Request a new one."
-    if doc.get("expires_at") and doc["expires_at"].replace(
-        tzinfo=timezone.utc
-    ) < _now():
+    if doc.get("expires_at") and doc["expires_at"].replace(tzinfo=timezone.utc) < _now():
         otps_col().delete_one({"_id": doc["_id"]})
         return False, "That code has expired. Request a new one."
     if doc.get("attempts", 0) >= MAX_OTP_ATTEMPTS:
@@ -363,13 +391,18 @@ def complete_otp_verification(email: str, otp_code: str) -> Tuple[bool, str]:
     if not ok:
         return False, err
     user = _get_or_create_user(email, verified=True, via="email")
+    # If user has no password yet, prompt them to set one after login
+    if not user.get("pw_hash"):
+        _load_user_into_session(user)
+        st.session_state.auth_stage = "set_password"
+        return True, ""
     _load_user_into_session(user)
     st.session_state.pop("_dev_otp", None)
     return True, ""
 
 
 # ---------------------------------------------------------------------------
-# Per-user API keys (BYO keys for admins / power users)
+# Per-user API keys
 # ---------------------------------------------------------------------------
 
 def save_user_api_key(user_id: str, api_key: str) -> None:
@@ -382,9 +415,7 @@ def load_user_api_key(user_id: str) -> Optional[str]:
 
 
 def save_user_openrouter_key(user_id: str, api_key: str) -> None:
-    users_col().update_one(
-        {"user_id": user_id}, {"$set": {"openrouter_api_key": api_key}}
-    )
+    users_col().update_one({"user_id": user_id}, {"$set": {"openrouter_api_key": api_key}})
 
 
 def load_user_openrouter_key(user_id: str) -> Optional[str]:
@@ -402,7 +433,6 @@ def load_user_vertex_config(user_id: str) -> Optional[dict]:
 
 
 def get_admin_vertex_config() -> Optional[dict]:
-    """Shared Vertex config from the admin account — customers fall back to this."""
     for admin_email in ADMIN_EMAILS:
         admin = users_col().find_one({"email": admin_email})
         if admin and admin.get("vertex_config"):
@@ -411,7 +441,6 @@ def get_admin_vertex_config() -> Optional[dict]:
 
 
 def _hydrate_keys_into_session(user: dict) -> None:
-    """Load API keys into session. Customers fall back to the admin's keys."""
     api_key = user.get("gemini_api_key")
     openrouter_key = user.get("openrouter_api_key")
     vertex_config = user.get("vertex_config")
@@ -458,7 +487,7 @@ _AUTH_CSS = """
 
 
 def render_auth_page() -> None:
-    """Sign-in screen: Google button + email OTP."""
+    """Sign-in + sign-up screen: Google → password → OTP fallback."""
     st.markdown(_AUTH_CSS, unsafe_allow_html=True)
     _, center, _ = st.columns([1, 1.4, 1])
     with center:
@@ -474,43 +503,87 @@ def render_auth_page() -> None:
         )
         st.write("")
 
+        # Google
         if google_auth_available():
-            if st.button(
-                "Continue with Google",
-                use_container_width=True,
-                type="primary",
-                key="google_login_btn",
-            ):
+            if st.button("Continue with Google", use_container_width=True,
+                         type="primary", key="google_login_btn"):
                 st.login()
-            st.markdown(
-                '<div class="auth-divider"><span>or</span></div>',
-                unsafe_allow_html=True,
-            )
+            st.markdown('<div class="auth-divider"><span>or</span></div>',
+                        unsafe_allow_html=True)
 
-        with st.form("email_login_form", border=False):
-            email = st.text_input(
-                "Email address",
-                placeholder="you@example.com",
-                label_visibility="collapsed",
-            )
-            submitted = st.form_submit_button(
-                "Continue with email", use_container_width=True
-            )
-        if submitted:
-            ok, err = start_email_login(email)
-            if ok:
-                st.rerun()
-            else:
-                st.error(err)
+        # Email + password (primary)
+        tab_login, tab_signup = st.tabs(["Sign in", "Create account"])
 
-        st.caption(
-            "We'll email you a one-time code — no password needed. "
-            "By continuing you agree to our terms of use."
-        )
+        with tab_login:
+            with st.form("pw_login_form"):
+                email = st.text_input("Email", placeholder="you@example.com",
+                                      label_visibility="collapsed", key="li_email")
+                password = st.text_input("Password", type="password",
+                                         placeholder="Password",
+                                         label_visibility="collapsed", key="li_pw")
+                submitted = st.form_submit_button("Sign in", use_container_width=True,
+                                                  type="primary")
+            if submitted:
+                ok, err = check_password_login(email, password)
+                if ok:
+                    user = users_col().find_one({"email": email.strip().lower()})
+                    _load_user_into_session(user)
+                    st.rerun()
+                else:
+                    st.error(err)
+            # OTP fallback
+            st.markdown('<div class="auth-divider"><span>or</span></div>',
+                        unsafe_allow_html=True)
+            with st.form("otp_request_form"):
+                otp_email = st.text_input("Email for sign-in code",
+                                          placeholder="you@example.com",
+                                          label_visibility="collapsed",
+                                          key="otp_req_email")
+                otp_submit = st.form_submit_button("Get a sign-in code",
+                                                   use_container_width=True)
+            if otp_submit:
+                ok, err = start_email_login(otp_email)
+                if ok:
+                    st.rerun()
+                else:
+                    st.error(err)
+
+        with tab_signup:
+            with st.form("signup_form"):
+                su_email = st.text_input("Email", placeholder="you@example.com",
+                                         label_visibility="collapsed", key="su_email")
+                su_pw = st.text_input("Choose a password", type="password",
+                                      placeholder="At least 8 characters",
+                                      label_visibility="collapsed", key="su_pw")
+                su_pw2 = st.text_input("Confirm password", type="password",
+                                       placeholder="Repeat password",
+                                       label_visibility="collapsed", key="su_pw2")
+                su_submit = st.form_submit_button("Create account",
+                                                  use_container_width=True,
+                                                  type="primary")
+            if su_submit:
+                su_email = (su_email or "").strip().lower()
+                if not EMAIL_RE.match(su_email):
+                    st.error("Please enter a valid email address.")
+                elif len(su_pw) < 8:
+                    st.error("Password must be at least 8 characters.")
+                elif su_pw != su_pw2:
+                    st.error("Passwords don't match.")
+                elif users_col().find_one({"email": su_email}):
+                    st.error("An account with this email already exists. Sign in above.")
+                else:
+                    user = _get_or_create_user(su_email, verified=False, via="email")
+                    set_password(user["user_id"], su_pw)
+                    user = users_col().find_one({"email": su_email})
+                    _load_user_into_session(user)
+                    st.success("Account created!")
+                    st.rerun()
+
+        st.caption("By continuing you agree to our terms of use.")
 
 
 def render_otp_page() -> None:
-    """Code-entry screen after an OTP has been emailed."""
+    """Code-entry screen after OTP email was sent."""
     st.markdown(_AUTH_CSS, unsafe_allow_html=True)
     email = st.session_state.get("otp_email", "")
     _, center, _ = st.columns([1, 1.4, 1])
@@ -525,18 +598,13 @@ def render_otp_page() -> None:
             """,
             unsafe_allow_html=True,
         )
-
         dev_otp = st.session_state.get("_dev_otp")
         if dev_otp:
             st.info(f"Dev mode — your code is **{dev_otp}**")
 
-        with st.form("otp_form", border=False):
-            otp_code = st.text_input(
-                "6-digit code",
-                max_chars=6,
-                placeholder="123456",
-                label_visibility="collapsed",
-            )
+        with st.form("otp_form"):
+            otp_code = st.text_input("6-digit code", max_chars=6, placeholder="123456",
+                                     label_visibility="collapsed")
             submitted = st.form_submit_button("Sign in", use_container_width=True)
         if submitted:
             ok, err = complete_otp_verification(email, otp_code)
@@ -558,3 +626,47 @@ def render_otp_page() -> None:
                 st.session_state.auth_stage = "login"
                 st.session_state.otp_email = ""
                 st.rerun()
+
+
+def render_set_password_page() -> None:
+    """Prompt a freshly-OTP-verified user to set a password (optional)."""
+    st.markdown(_AUTH_CSS, unsafe_allow_html=True)
+    _, center, _ = st.columns([1, 1.4, 1])
+    with center:
+        st.markdown(
+            """
+            <div class="auth-hero">
+              <div style="font-size:3rem;">🔑</div>
+              <h1>Set a password</h1>
+              <p>Skip the code next time — set a password for your account.</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        with st.form("set_pw_form"):
+            pw = st.text_input("Password", type="password",
+                               placeholder="At least 8 characters",
+                               label_visibility="collapsed")
+            pw2 = st.text_input("Confirm", type="password",
+                                placeholder="Repeat password",
+                                label_visibility="collapsed")
+            c1, c2 = st.columns(2)
+            with c1:
+                save = st.form_submit_button("Save password", type="primary",
+                                             use_container_width=True)
+            with c2:
+                skip = st.form_submit_button("Skip for now", use_container_width=True)
+
+        if save:
+            if len(pw) < 8:
+                st.error("Password must be at least 8 characters.")
+            elif pw != pw2:
+                st.error("Passwords don't match.")
+            else:
+                set_password(st.session_state.user_id, pw)
+                st.session_state.auth_stage = "login"
+                st.success("Password saved! You're all set.")
+                st.rerun()
+        if skip:
+            st.session_state.auth_stage = "login"
+            st.rerun()

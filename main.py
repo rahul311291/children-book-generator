@@ -29,6 +29,7 @@ from auth import (
     load_user_vertex_config,
     render_auth_page,
     render_otp_page,
+    render_set_password_page,
     restore_session_from_token,
     sync_google_session,
     ADMIN_EMAILS,
@@ -2301,14 +2302,19 @@ def main():
         if sync_google_session():
             st.rerun()
 
-    # OTP gate: intercept if a sign-in code is pending
+    # OTP gate
     if not is_authenticated() and st.session_state.get("auth_stage") == "otp":
         render_otp_page()
         return
 
-    # Auth gate: show sign-in if not authenticated
+    # Auth gate
     if not is_authenticated():
         render_auth_page()
+        return
+
+    # After OTP: prompt to set a password (optional, user can skip)
+    if st.session_state.get("auth_stage") == "set_password":
+        render_set_password_page()
         return
 
     # Payment return: Cashfree sends the customer back with ?cf_link_id=...
