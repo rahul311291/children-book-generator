@@ -2302,8 +2302,11 @@ def main():
         if sync_google_session():
             st.rerun()
 
-    # OTP gate
-    if not is_authenticated() and st.session_state.get("auth_stage") == "otp":
+    # OTP gate — supports both old (otp_pending_email) and new (auth_stage=otp) style
+    if not is_authenticated() and (
+        st.session_state.get("otp_pending_email")
+        or st.session_state.get("auth_stage") == "otp"
+    ):
         render_otp_page()
         return
 
