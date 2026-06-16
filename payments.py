@@ -187,13 +187,120 @@ def print_price_inr() -> int:
 
 
 def custom_story_price_inr() -> int:
-    """Gate 1 — unlock full story generation (all pages + images)."""
+    """Download option — ₹350 digital PDF."""
     return CUSTOM_STORY_PRICE_INR
 
 
 def custom_download_price_inr() -> int:
-    """Gate 2 — download PDF or order a printed copy."""
+    """Print & Deliver option — ₹650 printed book + digital."""
     return CUSTOM_DOWNLOAD_PRICE_INR
+
+
+def cashfree_env() -> str:
+    """Return 'sandbox' or 'production' (used by the JS SDK)."""
+    return _cf_cfg()["env"]
+
+
+# ---------------------------------------------------------------------------
+# Cashfree Orders API — gateway checkout (preferred over Payment Links)
+# ---------------------------------------------------------------------------
+
+def create_cashfree_order(
+    user_id: str,
+    user_email: str,
+    amount_inr: int,
+    purpose: str,
+    customer_phone: str,
+    metadata: Optional[dict] = None,
+) -> Optional[dict]:
+    """
+    Create a Cashfree order via the Orders API.
+    Returns {'order_id', 'payment_session_id'} on success, or {'error': msg} on failure.
+    The payment_session_id is passed to the JS Drop-in Checkout SDK.
+    """
+    if not is_cashfree_configured():
+        return {"error": "Payment gateway not configured. Please contact support."}
+
+    phone = normalize_phone(customer_phone)
+    if not is_valid_phone(phone):
+        return {"error": "A valid 10-digit mobile number is required for payment."}
+
+    c = _cf_cfg()
+    order_id = f"cbg_{user_id[:8]}_{uuid.uuid4().hex[:10]}"
+
+    payload = {
+        "order_id": order_id,
+        "order_amount": float(amount_inr),
+        "order_currency": "INR",
+        "customer_details": {
+            "customer_id": (user_id or "guest")[:50],
+            "customer_name": user_email.split("@")[0],
+            "customer_email": user_email,
+            "customer_phone": phone,
+        },
+        "order_note": purpose[:255],
+    }
+
+    try:
+        r = requests.post(
+            f"{c['base']}/pg/orders",
+            headers=_headers(),
+            json=payload,
+            timeout=30,
+        )
+        try:
+            data = r.json()
+        except ValueError:
+            data = {}
+
+        if r.status_code in (200, 201) and data.get("payment_session_id"):
+            _save_pending_order(user_id, order_id, amount_inr, purpose, metadata)
+            return {
+                "order_id": order_id,
+                "payment_session_id": data["payment_session_id"],
+            }
+
+        error_msg = data.get("message", "") or data.get("error", "")
+        logger.error(f"Cashfree create order failed {r.status_code} [{c['env']}]: {data}")
+        if r.status_code == 401:
+            return {"error": (
+                f"Payment gateway authentication failed. Check that API keys match "
+                f"the configured environment ('{c['env']}')."
+            )}
+        return {"error": f"Payment service error: {error_msg}" if error_msg else "Order creation failed. Please try again."}
+
+    except requests.exceptions.Timeout:
+        return {"error": "Payment service timed out. Please try again."}
+    except Exception as e:
+        logger.error(f"create_cashfree_order error: {e}")
+        return {"error": "Could not connect to payment service. Please try again later."}
+
+
+def verify_cashfree_order(order_id: str) -> str:
+    """
+    Fetch a Cashfree order and return its status string.
+    Common values: 'PAID', 'ACTIVE', 'EXPIRED', 'TERMINATED'.
+    Returns 'ERROR' if the call fails.
+    """
+    if not is_cashfree_configured():
+        return "ERROR"
+    c = _cf_cfg()
+    try:
+        r = requests.get(
+            f"{c['base']}/pg/orders/{order_id}",
+            headers=_headers(),
+            timeout=15,
+        )
+        if r.status_code == 200:
+            data = r.json()
+            status = (data.get("order_status") or "ACTIVE").upper()
+            logger.info(f"verify_cashfree_order {order_id} → {status}")
+            return status
+        logger.warning(f"verify_cashfree_order {order_id}: HTTP {r.status_code}")
+        return "ERROR"
+    except Exception as e:
+        logger.error(f"verify_cashfree_order {order_id}: {e}")
+        return "ERROR"
 
 
 def user_can_afford_book(user_id: str, page_count: int) -> bool:
@@ -437,21 +544,30 @@ def check_payment_status(link_id: str) -> str:
         return "ERROR"
 
 
-def confirm_payment_and_credit(link_id: str, user_id: str) -> bool:
+def confirm_payment_and_credit(order_or_link_id: str, user_id: str) -> bool:
     """
-    Poll Cashfree for payment status. On PAID: add credits, record the purchase
-    entitlement, and mark order complete. Idempotent.
+    Verify payment with Cashfree and credit the user. Idempotent.
+    Works for both Cashfree Payment Links (legacy) and Orders API orders.
+    Orders created via create_cashfree_order() have IDs starting with 'cbg_'.
     """
+    link_id = order_or_link_id
     try:
         from mongo_client import get_db
         orders = get_db()["payment_orders"]
         order = orders.find_one({"_id": link_id, "user_id": user_id})
         if not order:
+            # Also accept without user_id match (e.g. JS callback path)
+            order = orders.find_one({"_id": link_id})
+        if not order:
             return False
         if order.get("status") == "CREDITED":
             return True  # Already processed
 
-        cf_status = check_payment_status(link_id)
+        # Route to correct API: Orders API for cbg_ prefixed IDs, Links API otherwise
+        if link_id.startswith("cbg_"):
+            cf_status = verify_cashfree_order(link_id)
+        else:
+            cf_status = check_payment_status(link_id)
         if cf_status == "PAID":
             add_credits(user_id, order["amount_paise"])
             orders.update_one(

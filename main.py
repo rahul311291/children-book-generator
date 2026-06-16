@@ -168,6 +168,10 @@ if 'pending_payment_gate' not in st.session_state:
 if 'book_delivery_option' not in st.session_state:
     # "download" = ₹350 digital; "print_deliver" = ₹650 print+deliver
     st.session_state.book_delivery_option = None
+if 'cf_pending_order_id' not in st.session_state:
+    st.session_state.cf_pending_order_id = None  # Cashfree order ID awaiting payment
+if 'cf_payment_session_id' not in st.session_state:
+    st.session_state.cf_payment_session_id = None  # JS SDK session token
 if 'book_mode' not in st.session_state:
     st.session_state.book_mode = None  # None, "custom", "template"
 if 'wizard_step' not in st.session_state:
@@ -195,6 +199,79 @@ def _resolve_book_format() -> dict:
     except Exception:
         pass
     return None
+
+
+def _cashfree_dropin_html(payment_session_id: str, order_id: str) -> str:
+    """
+    Build a self-contained HTML page for the Cashfree JS Drop-in Checkout.
+    Rendered via st.components.v1.html(). On success/failure the JS sets
+    window.parent.location.search which Streamlit reads as query params.
+    """
+    from payments import cashfree_env
+    mode = "production" if cashfree_env() == "production" else "sandbox"
+    return f"""<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <script src="https://sdk.cashfree.com/js/v3/cashfree.js"></script>
+  <style>
+    * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #f8fafc; padding: 8px; }}
+    #status_bar {{ padding: 10px 14px; border-radius: 8px; font-size: 13px;
+                   margin-bottom: 10px; display: none; }}
+    .info  {{ background: #dbeafe; color: #1e40af; }}
+    .error {{ background: #fee2e2; color: #991b1b; }}
+    #drop_in_container {{ background: white; border-radius: 10px;
+                          box-shadow: 0 1px 8px rgba(0,0,0,.08); padding: 12px; }}
+  </style>
+</head>
+<body>
+  <div id="status_bar"></div>
+  <div id="drop_in_container"></div>
+  <script>
+  (function() {{
+    var SESSION_ID = "{payment_session_id}";
+    var ORDER_ID   = "{order_id}";
+    var CF_MODE    = "{mode}";
+
+    function showStatus(msg, type) {{
+      var el = document.getElementById("status_bar");
+      el.className = type; el.innerText = msg; el.style.display = "block";
+    }}
+
+    try {{
+      var cashfree = Cashfree({{ mode: CF_MODE }});
+      cashfree.create({{
+        values: {{ paymentSessionId: SESSION_ID }},
+        style: {{
+          backgroundColor: "#ffffff", color: "#1a1a2e",
+          fontFamily: "inherit", fontSize: "14px",
+          errorColor: "#dc2626", theme: "light"
+        }},
+        onSuccess: function(data) {{
+          showStatus("✅ Payment successful! Please wait…", "info");
+          window.parent.location.search =
+            "?cf_order_id=" + encodeURIComponent(ORDER_ID) + "&cf_status=SUCCESS";
+        }},
+        onFailure: function(data) {{
+          var msg = (data && data.order && data.order.errorText)
+                    ? data.order.errorText : "Payment was not completed";
+          showStatus("❌ " + msg, "error");
+          window.parent.location.search =
+            "?cf_order_id=" + encodeURIComponent(ORDER_ID) +
+            "&cf_status=FAILED&cf_error=" + encodeURIComponent(msg);
+        }},
+        components: ["order-details", "card", "netbanking", "app", "upi"]
+      }}).mount("#drop_in_container");
+    }} catch(e) {{
+      showStatus("Failed to load payment form: " + e.message, "error");
+    }}
+  }})();
+  </script>
+</body>
+</html>"""
 
 
 def _assemble_image_prompt(page: dict, visual_anchor: str, book_format: dict = None, secondary_characters: list = None) -> str:
@@ -726,6 +803,8 @@ def reset_story_state():
     st.session_state.pending_payment_url = None
     st.session_state.pending_payment_gate = None
     st.session_state.book_delivery_option = None
+    st.session_state.cf_pending_order_id = None
+    st.session_state.cf_payment_session_id = None
     # Clear template-related states
     if "template_generated_book" in st.session_state:
         del st.session_state.template_generated_book
@@ -848,14 +927,9 @@ CRITICAL: Output ONLY the JSON, no additional text before or after."""
                 st.code(response_text[:2000])
             return None
 
-        # Handle format mapping and ensure visual anchor
-        visual_anchor = story_data.get("visual_anchor", existing_visual_anchor)
-        secondary_chars = story_data.get("secondary_characters", existing_story.get("secondary_characters", []))
-        book_format = _resolve_book_format()
+        # Strip any pre-assembled image_prompt — assembled lazily in Step 2
         for page in story_data.get("pages", []):
-            if "visual_description" in page and "image_prompt" not in page:
-                page["image_prompt"] = page["visual_description"]
-            page["image_prompt"] = _assemble_image_prompt(page, visual_anchor, book_format, secondary_chars)
+            page.pop("image_prompt", None)
 
         # Verify we got a valid story structure
         if not story_data.get("pages") or len(story_data.get("pages", [])) == 0:
@@ -907,9 +981,18 @@ def refine_story_with_followup(api_key: str, existing_story: Dict, followup_prom
         existing_pages = existing_story.get("pages", [])
         existing_title = existing_story.get("title", "Story")
         existing_visual_anchor = existing_story.get("visual_anchor", "")
-        
-        # Create full story JSON for context
-        existing_story_json = json.dumps(existing_story, indent=2, ensure_ascii=False)
+
+        # Build a lean version of the story for context — strip assembled image_prompt
+        # (they are very long and eat into the max_tokens budget; we re-assemble them lazily)
+        _lean_pages = [
+            {k: v for k, v in p.items() if k != "image_prompt"}
+            for p in existing_pages
+        ]
+        lean_story_for_context = {
+            **{k: v for k, v in existing_story.items() if k != "pages"},
+            "pages": _lean_pages,
+        }
+        existing_story_json = json.dumps(lean_story_for_context, indent=2, ensure_ascii=False)
         logger.info(f"Original story has {len(existing_pages)} pages")
         
         # Detect if this is about medical/health issues
@@ -963,7 +1046,8 @@ def refine_story_with_followup(api_key: str, existing_story: Dict, followup_prom
 Return ONLY the modified JSON. Every page's "text" field should reflect the requested changes. Do NOT return the same JSON. Output ONLY valid JSON, no markdown, no explanations."""
 
         from vertex_client import call_gemini_text
-        response_text = call_gemini_text(prompt, api_key=api_key, temperature=0.8)
+        # Use high token limit — response must contain full story JSON (~10 pages)
+        response_text = call_gemini_text(prompt, api_key=api_key, temperature=0.8, max_tokens=32768)
         if response_text is None:
             st.error("❌ Could not refine story. Check your API key or Vertex AI credentials.")
             return None
@@ -985,14 +1069,10 @@ Return ONLY the modified JSON. Every page's "text" field should reflect the requ
             st.expander("View API Response", expanded=False).code(original_response[:2000])
             return None
         
-        # Handle format mapping
-        visual_anchor = story_data.get("visual_anchor", existing_visual_anchor)
-        secondary_chars = story_data.get("secondary_characters", existing_story.get("secondary_characters", []))
-        book_format = _resolve_book_format()
+        # Strip any pre-assembled image_prompt from refined pages — they will be
+        # assembled lazily in Step 2 just before each image is generated.
         for page in story_data.get("pages", []):
-            if "visual_description" in page and "image_prompt" not in page:
-                page["image_prompt"] = page["visual_description"]
-            page["image_prompt"] = _assemble_image_prompt(page, visual_anchor, book_format, secondary_chars)
+            page.pop("image_prompt", None)
 
         # Verify we got a valid story structure
         if not story_data.get("pages") or len(story_data.get("pages", [])) == 0:
@@ -1105,14 +1185,9 @@ Output ONLY valid JSON, no markdown, no explanations."""
                 st.code(response_text[:2000])
             return None
         
-        # Handle format mapping and ensure visual anchor
-        visual_anchor = story_data.get("visual_anchor", existing_visual_anchor)
-        secondary_chars = story_data.get("secondary_characters", existing_story.get("secondary_characters", []))
-        book_format = _resolve_book_format()
+        # Strip any pre-assembled image_prompt — assembled lazily in Step 2
         for page in story_data.get("pages", []):
-            if "visual_description" in page and "image_prompt" not in page:
-                page["image_prompt"] = page["visual_description"]
-            page["image_prompt"] = _assemble_image_prompt(page, visual_anchor, book_format, secondary_chars)
+            page.pop("image_prompt", None)
 
         # Verify structure
         if not story_data.get("pages") or len(story_data.get("pages", [])) != len(existing_pages):
@@ -1183,15 +1258,11 @@ def generate_story_with_gemini(api_key: str, child_name: str, age: int, gender: 
 
         story_data = json.loads(response_text)
 
-        # Handle new format: map "visual_description" to "image_prompt" for compatibility
-        visual_anchor = story_data.get("visual_anchor", visual_anchor)
-        secondary_chars = story_data.get("secondary_characters", [])
+        # Keep visual_anchor at story level; strip any pre-assembled image_prompt —
+        # image prompts are assembled lazily in Step 2 just before each image is generated.
+        story_data["visual_anchor"] = story_data.get("visual_anchor", visual_anchor)
         for page in story_data.get("pages", []):
-            # If using new format with "visual_description", map it to "image_prompt"
-            if "visual_description" in page and "image_prompt" not in page:
-                page["image_prompt"] = page["visual_description"]
-            # Ensure visual anchor is in image prompt
-            page["image_prompt"] = _assemble_image_prompt(page, visual_anchor, book_format, secondary_chars)
+            page.pop("image_prompt", None)
 
         return story_data
         
@@ -2363,6 +2434,40 @@ def main():
             logger.warning(f"Payment-return verification failed: {_e}")
         st.query_params.pop("cf_link_id", None)
 
+    # Payment return: Cashfree JS Drop-in SDK sets ?cf_order_id=...&cf_status=SUCCESS|FAILED
+    _cf_order_qp = st.query_params.get("cf_order_id")
+    _cf_status_qp = st.query_params.get("cf_status", "")
+    if _cf_order_qp:
+        st.query_params.pop("cf_order_id", None)
+        st.query_params.pop("cf_status", None)
+        st.query_params.pop("cf_error", None)
+        if _cf_status_qp == "SUCCESS":
+            try:
+                from payments import verify_cashfree_order as _vco, confirm_payment_and_credit as _cpc_ord
+                _ord_status = _vco(_cf_order_qp)
+                if _ord_status == "PAID":
+                    # Also credit / record the purchase
+                    _cpc_ord(_cf_order_qp, get_current_user_id())
+                    _ord_gate = st.session_state.get("pending_payment_gate", "download_choice")
+                    if _ord_gate == "print_deliver_choice":
+                        st.session_state.current_book_payment_status = "print_paid"
+                        st.session_state.book_delivery_option = "print_deliver"
+                    else:
+                        st.session_state.current_book_payment_status = "story_paid"
+                        st.session_state.book_delivery_option = "download"
+                    st.session_state.cf_pending_order_id = None
+                    st.session_state.cf_payment_session_id = None
+                    st.session_state.pending_payment_gate = None
+                    st.toast("✅ Payment confirmed — generating your book!", icon="✅")
+                else:
+                    st.warning(f"Payment status from Cashfree: {_ord_status}. If you completed payment, click 'Verify Payment' below.")
+            except Exception as _oe:
+                logger.warning(f"cf_order verification failed: {_oe}")
+        elif _cf_status_qp == "FAILED":
+            _cf_err = st.query_params.get("cf_error", "Payment was not completed")
+            st.error(f"Payment failed: {_cf_err}. Please try again.")
+            st.session_state.cf_payment_session_id = None  # Allow retry
+
     # Ensure non-admin users always have Vertex credentials (admin's credentials as shared backend)
     _session_email = st.session_state.get("user_email") or ""
     if _session_email not in ADMIN_EMAILS and not st.session_state.get("vertex_sa_json"):
@@ -2902,7 +3007,11 @@ def main():
     if st.session_state.generated_story and not st.session_state.story_approved:
         st.header("📖 Step 1: Review & Edit Story")
         st.markdown("Review each page below. You can edit the text for any page. Click 'Approve Story' when ready.")
-        
+
+        # Determine admin status once for the whole Step 1 block
+        _s1_email = st.session_state.get("user_email") or (st.session_state.get("auth_user") or {}).get("email", "")
+        _s1_is_admin = _s1_email in ADMIN_EMAILS
+
         pages = st.session_state.generated_story.get("pages", [])
         
         # Debug: Validate story has pages
@@ -2940,21 +3049,20 @@ def main():
                 # Update the story data
                 st.session_state.generated_story["pages"][i]["text"] = new_text
             
-            # Editable image prompt area
-            st.write("**Image Prompt:**")
-            new_image_prompt = st.text_area(
-                f"Image Prompt (Page {page_num})",
-                value=edited_image_prompt,
-                key=f"image_prompt_{i}",
-                height=80,
-                help="Edit the image prompt to change how the image will be generated. Make sure to include the visual anchor description."
-            )
-            
-            # Save edited image prompt
-            if new_image_prompt != page.get("image_prompt", ""):
-                st.session_state.edited_image_prompts[i] = new_image_prompt
-                # Update the story data
-                st.session_state.generated_story["pages"][i]["image_prompt"] = new_image_prompt
+            # Editable image prompt area — admin only
+            if _s1_is_admin:
+                st.write("**Image Prompt:**")
+                new_image_prompt = st.text_area(
+                    f"Image Prompt (Page {page_num})",
+                    value=edited_image_prompt,
+                    key=f"image_prompt_{i}",
+                    height=80,
+                    help="Edit the image prompt to change how the image will be generated. Make sure to include the visual anchor description."
+                )
+                # Save edited image prompt
+                if new_image_prompt != page.get("image_prompt", ""):
+                    st.session_state.edited_image_prompts[i] = new_image_prompt
+                    st.session_state.generated_story["pages"][i]["image_prompt"] = new_image_prompt
             
             # Page actions: Regenerate from this page, Move up/down
             col_action1, col_action2, col_action3 = st.columns([1, 1, 1])
@@ -3198,7 +3306,8 @@ def main():
             from payments import (
                 custom_story_price_inr as _cs_price_fn,
                 custom_download_price_inr as _cd_price_fn,
-                create_payment_link as _choice_cpl,
+                create_cashfree_order as _choice_create_order,
+                verify_cashfree_order as _choice_verify_order,
                 confirm_payment_and_credit as _choice_cpc,
                 is_cashfree_configured as _choice_cf_ok,
                 is_valid_phone as _choice_vph,
@@ -3234,54 +3343,53 @@ def main():
                         st.rerun()
                 return
 
-            # Non-admin: full payment flow
-            _pending_id = st.session_state.get("pending_payment_link_id")
+            # Non-admin: Cashfree Gateway (Orders API + JS Drop-in SDK)
+            _pending_session_id = st.session_state.get("cf_payment_session_id")
+            _pending_order_id = st.session_state.get("cf_pending_order_id")
             _pending_gate = st.session_state.get("pending_payment_gate")
-            # Clear any stale link from a different gate
-            if _pending_id and _pending_gate not in ("download_choice", "print_deliver_choice"):
-                _pending_id = None
-                st.session_state.pending_payment_link_id = None
-                st.session_state.pending_payment_url = None
 
-            if _pending_id:
-                # Awaiting payment confirmation
+            # Clear stale session if the gate doesn't match
+            if _pending_session_id and _pending_gate not in ("download_choice", "print_deliver_choice"):
+                _pending_session_id = None
+                _pending_order_id = None
+                st.session_state.cf_payment_session_id = None
+                st.session_state.cf_pending_order_id = None
+
+            if _pending_session_id and _pending_order_id:
+                # Drop-in checkout is active — render the payment form inline
                 _opt_label = "📥 Download PDF" if _pending_gate == "download_choice" else "📬 Print & Deliver"
                 _opt_price = _dl_price if _pending_gate == "download_choice" else _pd_price
-                st.info(
-                    f"💳 Payment pending for: **{_opt_label} — ₹{_opt_price}**\n\n"
-                    "Complete the payment in the tab/window that opened, then click below."
+                st.info(f"💳 Completing payment for: **{_opt_label} — ₹{_opt_price}**")
+                components.html(
+                    _cashfree_dropin_html(_pending_session_id, _pending_order_id),
+                    height=540,
+                    scrolling=False,
                 )
-                _pu = st.session_state.get("pending_payment_url", "")
-                if _pu:
-                    st.markdown(
-                        f'<a href="{_pu}" target="_blank" style="display:inline-block;'
-                        f'background:#2563eb;color:white;padding:12px 28px;border-radius:8px;'
-                        f'font-weight:700;text-decoration:none;margin-top:4px;margin-bottom:12px;">'
-                        f'Open payment page ↗</a>',
-                        unsafe_allow_html=True,
-                    )
-                col_chk, col_new = st.columns(2)
-                with col_chk:
-                    if st.button("✅ I've paid — generate my images", type="primary",
-                                 use_container_width=True, key="choice_confirm"):
-                        if _choice_cpc(_pending_id, _choice_uid):
+                st.caption("Payment is processed securely by Cashfree. The form above may take a few seconds to load.")
+                st.divider()
+                col_verify, col_cancel = st.columns(2)
+                with col_verify:
+                    if st.button("✅ Verify payment manually", use_container_width=True, key="choice_verify"):
+                        _v = _choice_verify_order(_pending_order_id)
+                        if _v == "PAID":
+                            _choice_cpc(_pending_order_id, _choice_uid)
                             if _pending_gate == "download_choice":
                                 st.session_state.current_book_payment_status = "story_paid"
                                 st.session_state.book_delivery_option = "download"
                             else:
                                 st.session_state.current_book_payment_status = "print_paid"
                                 st.session_state.book_delivery_option = "print_deliver"
-                            st.session_state.pending_payment_link_id = None
-                            st.session_state.pending_payment_url = None
+                            st.session_state.cf_pending_order_id = None
+                            st.session_state.cf_payment_session_id = None
                             st.session_state.pending_payment_gate = None
                             st.success("✅ Payment confirmed! Generating your images now…")
                             st.rerun()
                         else:
-                            st.error("Payment not confirmed yet. Complete the payment and try again.")
-                with col_new:
-                    if st.button("🔄 Create new payment link", use_container_width=True, key="choice_newlink"):
-                        st.session_state.pending_payment_link_id = None
-                        st.session_state.pending_payment_url = None
+                            st.error(f"Payment status: {_v}. Please complete payment above and try again.")
+                with col_cancel:
+                    if st.button("✖ Cancel & start over", use_container_width=True, key="choice_cancel"):
+                        st.session_state.cf_pending_order_id = None
+                        st.session_state.cf_payment_session_id = None
                         st.session_state.pending_payment_gate = None
                         st.rerun()
                 return
@@ -3313,22 +3421,22 @@ def main():
                     if not _choice_vph(_choice_phone):
                         st.error("Please enter a valid 10-digit mobile number.")
                         st.stop()
-                    with st.spinner("Creating payment link…"):
-                        _res_dl = _choice_cpl(
+                    with st.spinner("Opening payment…"):
+                        _res_dl = _choice_create_order(
                             _choice_uid, _choice_email, _dl_price,
                             f"Storybook digital download for {_choice_child}",
                             customer_phone=_choice_phone,
                             metadata={"book_kind": "custom", "product": "pdf_download",
                                       "gate": "download_choice", "child_name": _choice_child},
                         )
-                    if _res_dl and _res_dl.get("link_url"):
-                        st.session_state.pending_payment_link_id = _res_dl["link_id"]
-                        st.session_state.pending_payment_url = _res_dl["link_url"]
+                    if _res_dl and _res_dl.get("payment_session_id"):
+                        st.session_state.cf_pending_order_id = _res_dl["order_id"]
+                        st.session_state.cf_payment_session_id = _res_dl["payment_session_id"]
                         st.session_state.pending_payment_gate = "download_choice"
                         st.session_state.current_book_payment_status = "pending"
                         st.rerun()
                     else:
-                        st.error((_res_dl or {}).get("error", "Could not create payment link."))
+                        st.error((_res_dl or {}).get("error", "Could not initiate payment. Please try again."))
 
             with col_pd:
                 st.markdown(
@@ -3347,22 +3455,22 @@ def main():
                     if not _choice_vph(_choice_phone):
                         st.error("Please enter a valid 10-digit mobile number.")
                         st.stop()
-                    with st.spinner("Creating payment link…"):
-                        _res_pd = _choice_cpl(
+                    with st.spinner("Opening payment…"):
+                        _res_pd = _choice_create_order(
                             _choice_uid, _choice_email, _pd_price,
                             f"Printed storybook for {_choice_child}",
                             customer_phone=_choice_phone,
                             metadata={"book_kind": "custom", "product": "print_deliver",
                                       "gate": "print_deliver_choice", "child_name": _choice_child},
                         )
-                    if _res_pd and _res_pd.get("link_url"):
-                        st.session_state.pending_payment_link_id = _res_pd["link_id"]
-                        st.session_state.pending_payment_url = _res_pd["link_url"]
+                    if _res_pd and _res_pd.get("payment_session_id"):
+                        st.session_state.cf_pending_order_id = _res_pd["order_id"]
+                        st.session_state.cf_payment_session_id = _res_pd["payment_session_id"]
                         st.session_state.pending_payment_gate = "print_deliver_choice"
                         st.session_state.current_book_payment_status = "pending"
                         st.rerun()
                     else:
-                        st.error((_res_pd or {}).get("error", "Could not create payment link."))
+                        st.error((_res_pd or {}).get("error", "Could not initiate payment. Please try again."))
             return  # don't proceed to Step 2 until gate is passed
 
     # Step 2: Image Generation with Review
@@ -3443,13 +3551,13 @@ def main():
             if regenerate_idx is not None:
                 with st.spinner(f"Regenerating image {regenerate_idx + 1}/{total_pages}..."):
                     page = pages[regenerate_idx]
-                    # Use edited prompt if available, otherwise use original
-                    # NOTE: Visual anchor is already included in the image_prompt during story generation
-                    # DO NOT add it again to avoid duplicate character descriptions
-                    image_prompt = st.session_state.edited_image_prompts.get(
-                        regenerate_idx, 
-                        page.get("image_prompt", "")
-                    )
+                    # Admin may have saved a custom prompt; otherwise assemble lazily from visual_description
+                    if regenerate_idx in st.session_state.edited_image_prompts:
+                        image_prompt = st.session_state.edited_image_prompts[regenerate_idx]
+                    else:
+                        _va = st.session_state.generated_story.get("visual_anchor", "")
+                        _sc = st.session_state.generated_story.get("secondary_characters", [])
+                        image_prompt = _assemble_image_prompt(page, _va, _resolve_book_format(), _sc)
                     logger.info(f"Regenerating image for page {regenerate_idx + 1} with prompt: {image_prompt[:150]}...")
                     img = generate_image_with_imagen(api_key, image_prompt, image_index=regenerate_idx)
                     # ALWAYS replace at the correct index - ensure list is large enough
@@ -3501,10 +3609,13 @@ def main():
                     else:
                         with st.spinner(f"Generating image {missing_idx + 1}/{total_pages}..."):
                             page = pages[missing_idx]
-                            image_prompt = st.session_state.edited_image_prompts.get(
-                                missing_idx,
-                                page.get("image_prompt", "")
-                            )
+                            # Admin may have saved a custom prompt; otherwise assemble lazily
+                            if missing_idx in st.session_state.edited_image_prompts:
+                                image_prompt = st.session_state.edited_image_prompts[missing_idx]
+                            else:
+                                _va = st.session_state.generated_story.get("visual_anchor", "")
+                                _sc = st.session_state.generated_story.get("secondary_characters", [])
+                                image_prompt = _assemble_image_prompt(page, _va, _resolve_book_format(), _sc)
                             logger.info(f"Generating image for page {missing_idx + 1} with prompt: {image_prompt[:150]}...")
                             img = generate_image_with_imagen(api_key, image_prompt, image_index=missing_idx)
                             # Ensure list is large enough
