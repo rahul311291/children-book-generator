@@ -848,14 +848,9 @@ CRITICAL: Output ONLY the JSON, no additional text before or after."""
                 st.code(response_text[:2000])
             return None
 
-        # Handle format mapping and ensure visual anchor
-        visual_anchor = story_data.get("visual_anchor", existing_visual_anchor)
-        secondary_chars = story_data.get("secondary_characters", existing_story.get("secondary_characters", []))
-        book_format = _resolve_book_format()
+        # Strip any pre-assembled image_prompt — assembled lazily in Step 2
         for page in story_data.get("pages", []):
-            if "visual_description" in page and "image_prompt" not in page:
-                page["image_prompt"] = page["visual_description"]
-            page["image_prompt"] = _assemble_image_prompt(page, visual_anchor, book_format, secondary_chars)
+            page.pop("image_prompt", None)
 
         # Verify we got a valid story structure
         if not story_data.get("pages") or len(story_data.get("pages", [])) == 0:
@@ -907,9 +902,18 @@ def refine_story_with_followup(api_key: str, existing_story: Dict, followup_prom
         existing_pages = existing_story.get("pages", [])
         existing_title = existing_story.get("title", "Story")
         existing_visual_anchor = existing_story.get("visual_anchor", "")
-        
-        # Create full story JSON for context
-        existing_story_json = json.dumps(existing_story, indent=2, ensure_ascii=False)
+
+        # Build a lean version of the story for context — strip assembled image_prompt
+        # (they are very long and eat into the max_tokens budget; we re-assemble them lazily)
+        _lean_pages = [
+            {k: v for k, v in p.items() if k != "image_prompt"}
+            for p in existing_pages
+        ]
+        lean_story_for_context = {
+            **{k: v for k, v in existing_story.items() if k != "pages"},
+            "pages": _lean_pages,
+        }
+        existing_story_json = json.dumps(lean_story_for_context, indent=2, ensure_ascii=False)
         logger.info(f"Original story has {len(existing_pages)} pages")
         
         # Detect if this is about medical/health issues
@@ -963,7 +967,8 @@ def refine_story_with_followup(api_key: str, existing_story: Dict, followup_prom
 Return ONLY the modified JSON. Every page's "text" field should reflect the requested changes. Do NOT return the same JSON. Output ONLY valid JSON, no markdown, no explanations."""
 
         from vertex_client import call_gemini_text
-        response_text = call_gemini_text(prompt, api_key=api_key, temperature=0.8)
+        # Use high token limit — response must contain full story JSON (~10 pages)
+        response_text = call_gemini_text(prompt, api_key=api_key, temperature=0.8, max_tokens=32768)
         if response_text is None:
             st.error("❌ Could not refine story. Check your API key or Vertex AI credentials.")
             return None
@@ -985,14 +990,10 @@ Return ONLY the modified JSON. Every page's "text" field should reflect the requ
             st.expander("View API Response", expanded=False).code(original_response[:2000])
             return None
         
-        # Handle format mapping
-        visual_anchor = story_data.get("visual_anchor", existing_visual_anchor)
-        secondary_chars = story_data.get("secondary_characters", existing_story.get("secondary_characters", []))
-        book_format = _resolve_book_format()
+        # Strip any pre-assembled image_prompt from refined pages — they will be
+        # assembled lazily in Step 2 just before each image is generated.
         for page in story_data.get("pages", []):
-            if "visual_description" in page and "image_prompt" not in page:
-                page["image_prompt"] = page["visual_description"]
-            page["image_prompt"] = _assemble_image_prompt(page, visual_anchor, book_format, secondary_chars)
+            page.pop("image_prompt", None)
 
         # Verify we got a valid story structure
         if not story_data.get("pages") or len(story_data.get("pages", [])) == 0:
@@ -1105,14 +1106,9 @@ Output ONLY valid JSON, no markdown, no explanations."""
                 st.code(response_text[:2000])
             return None
         
-        # Handle format mapping and ensure visual anchor
-        visual_anchor = story_data.get("visual_anchor", existing_visual_anchor)
-        secondary_chars = story_data.get("secondary_characters", existing_story.get("secondary_characters", []))
-        book_format = _resolve_book_format()
+        # Strip any pre-assembled image_prompt — assembled lazily in Step 2
         for page in story_data.get("pages", []):
-            if "visual_description" in page and "image_prompt" not in page:
-                page["image_prompt"] = page["visual_description"]
-            page["image_prompt"] = _assemble_image_prompt(page, visual_anchor, book_format, secondary_chars)
+            page.pop("image_prompt", None)
 
         # Verify structure
         if not story_data.get("pages") or len(story_data.get("pages", [])) != len(existing_pages):
@@ -1183,15 +1179,11 @@ def generate_story_with_gemini(api_key: str, child_name: str, age: int, gender: 
 
         story_data = json.loads(response_text)
 
-        # Handle new format: map "visual_description" to "image_prompt" for compatibility
-        visual_anchor = story_data.get("visual_anchor", visual_anchor)
-        secondary_chars = story_data.get("secondary_characters", [])
+        # Keep visual_anchor at story level; strip any pre-assembled image_prompt —
+        # image prompts are assembled lazily in Step 2 just before each image is generated.
+        story_data["visual_anchor"] = story_data.get("visual_anchor", visual_anchor)
         for page in story_data.get("pages", []):
-            # If using new format with "visual_description", map it to "image_prompt"
-            if "visual_description" in page and "image_prompt" not in page:
-                page["image_prompt"] = page["visual_description"]
-            # Ensure visual anchor is in image prompt
-            page["image_prompt"] = _assemble_image_prompt(page, visual_anchor, book_format, secondary_chars)
+            page.pop("image_prompt", None)
 
         return story_data
         
@@ -2902,7 +2894,11 @@ def main():
     if st.session_state.generated_story and not st.session_state.story_approved:
         st.header("📖 Step 1: Review & Edit Story")
         st.markdown("Review each page below. You can edit the text for any page. Click 'Approve Story' when ready.")
-        
+
+        # Determine admin status once for the whole Step 1 block
+        _s1_email = st.session_state.get("user_email") or (st.session_state.get("auth_user") or {}).get("email", "")
+        _s1_is_admin = _s1_email in ADMIN_EMAILS
+
         pages = st.session_state.generated_story.get("pages", [])
         
         # Debug: Validate story has pages
@@ -2940,21 +2936,20 @@ def main():
                 # Update the story data
                 st.session_state.generated_story["pages"][i]["text"] = new_text
             
-            # Editable image prompt area
-            st.write("**Image Prompt:**")
-            new_image_prompt = st.text_area(
-                f"Image Prompt (Page {page_num})",
-                value=edited_image_prompt,
-                key=f"image_prompt_{i}",
-                height=80,
-                help="Edit the image prompt to change how the image will be generated. Make sure to include the visual anchor description."
-            )
-            
-            # Save edited image prompt
-            if new_image_prompt != page.get("image_prompt", ""):
-                st.session_state.edited_image_prompts[i] = new_image_prompt
-                # Update the story data
-                st.session_state.generated_story["pages"][i]["image_prompt"] = new_image_prompt
+            # Editable image prompt area — admin only
+            if _s1_is_admin:
+                st.write("**Image Prompt:**")
+                new_image_prompt = st.text_area(
+                    f"Image Prompt (Page {page_num})",
+                    value=edited_image_prompt,
+                    key=f"image_prompt_{i}",
+                    height=80,
+                    help="Edit the image prompt to change how the image will be generated. Make sure to include the visual anchor description."
+                )
+                # Save edited image prompt
+                if new_image_prompt != page.get("image_prompt", ""):
+                    st.session_state.edited_image_prompts[i] = new_image_prompt
+                    st.session_state.generated_story["pages"][i]["image_prompt"] = new_image_prompt
             
             # Page actions: Regenerate from this page, Move up/down
             col_action1, col_action2, col_action3 = st.columns([1, 1, 1])
@@ -3443,13 +3438,13 @@ def main():
             if regenerate_idx is not None:
                 with st.spinner(f"Regenerating image {regenerate_idx + 1}/{total_pages}..."):
                     page = pages[regenerate_idx]
-                    # Use edited prompt if available, otherwise use original
-                    # NOTE: Visual anchor is already included in the image_prompt during story generation
-                    # DO NOT add it again to avoid duplicate character descriptions
-                    image_prompt = st.session_state.edited_image_prompts.get(
-                        regenerate_idx, 
-                        page.get("image_prompt", "")
-                    )
+                    # Admin may have saved a custom prompt; otherwise assemble lazily from visual_description
+                    if regenerate_idx in st.session_state.edited_image_prompts:
+                        image_prompt = st.session_state.edited_image_prompts[regenerate_idx]
+                    else:
+                        _va = st.session_state.generated_story.get("visual_anchor", "")
+                        _sc = st.session_state.generated_story.get("secondary_characters", [])
+                        image_prompt = _assemble_image_prompt(page, _va, _resolve_book_format(), _sc)
                     logger.info(f"Regenerating image for page {regenerate_idx + 1} with prompt: {image_prompt[:150]}...")
                     img = generate_image_with_imagen(api_key, image_prompt, image_index=regenerate_idx)
                     # ALWAYS replace at the correct index - ensure list is large enough
@@ -3501,10 +3496,13 @@ def main():
                     else:
                         with st.spinner(f"Generating image {missing_idx + 1}/{total_pages}..."):
                             page = pages[missing_idx]
-                            image_prompt = st.session_state.edited_image_prompts.get(
-                                missing_idx,
-                                page.get("image_prompt", "")
-                            )
+                            # Admin may have saved a custom prompt; otherwise assemble lazily
+                            if missing_idx in st.session_state.edited_image_prompts:
+                                image_prompt = st.session_state.edited_image_prompts[missing_idx]
+                            else:
+                                _va = st.session_state.generated_story.get("visual_anchor", "")
+                                _sc = st.session_state.generated_story.get("secondary_characters", [])
+                                image_prompt = _assemble_image_prompt(page, _va, _resolve_book_format(), _sc)
                             logger.info(f"Generating image for page {missing_idx + 1} with prompt: {image_prompt[:150]}...")
                             img = generate_image_with_imagen(api_key, image_prompt, image_index=missing_idx)
                             # Ensure list is large enough
