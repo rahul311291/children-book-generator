@@ -228,6 +228,11 @@ def create_cashfree_order(
     c = _cf_cfg()
     order_id = f"cbg_{user_id[:8]}_{uuid.uuid4().hex[:10]}"
 
+    # Return URL — Cashfree redirects here after embedded form completes
+    # We pass the order_id so Streamlit can verify on return
+    _app_url = os.environ.get("STREAMLIT_URL", "http://localhost:8501").rstrip("/")
+    _return_url = f"{_app_url}/?cf_order_id={order_id}&cf_status=SUCCESS"
+
     payload = {
         "order_id": order_id,
         "order_amount": float(amount_inr),
@@ -239,6 +244,10 @@ def create_cashfree_order(
             "customer_phone": phone,
         },
         "order_note": purpose[:255],
+        "order_meta": {
+            "return_url": _return_url,
+            "notify_url": "",   # webhook URL — leave blank unless configured
+        },
     }
 
     try:

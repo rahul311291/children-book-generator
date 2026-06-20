@@ -242,31 +242,32 @@ def _cashfree_dropin_html(payment_session_id: str, order_id: str) -> str:
     }}
 
     try {{
+      // Cashfree JS SDK v3 — CDN exposes Cashfree() constructor
       var cashfree = Cashfree({{ mode: CF_MODE }});
-      cashfree.create({{
-        values: {{ paymentSessionId: SESSION_ID }},
-        style: {{
-          backgroundColor: "#ffffff", color: "#1a1a2e",
-          fontFamily: "inherit", fontSize: "14px",
-          errorColor: "#dc2626", theme: "light"
-        }},
-        onSuccess: function(data) {{
+      showStatus("Loading payment form…", "info");
+
+      // v3 API: .checkout() returns a Promise
+      cashfree.checkout({{
+        paymentSessionId: SESSION_ID,
+        redirectTarget: "#drop_in_container"   // embed form in-page
+      }}).then(function(result) {{
+        if (result && result.paymentDetails) {{
           showStatus("✅ Payment successful! Please wait…", "info");
           window.parent.location.search =
             "?cf_order_id=" + encodeURIComponent(ORDER_ID) + "&cf_status=SUCCESS";
-        }},
-        onFailure: function(data) {{
-          var msg = (data && data.order && data.order.errorText)
-                    ? data.order.errorText : "Payment was not completed";
+        }} else if (result && result.error) {{
+          var msg = result.error.message || "Payment was not completed";
           showStatus("❌ " + msg, "error");
           window.parent.location.search =
             "?cf_order_id=" + encodeURIComponent(ORDER_ID) +
             "&cf_status=FAILED&cf_error=" + encodeURIComponent(msg);
-        }},
-        components: ["order-details", "card", "netbanking", "app", "upi"]
-      }}).mount("#drop_in_container");
+        }}
+        // If result.redirect — Cashfree will navigate via return_url; no action needed here
+      }}).catch(function(e) {{
+        showStatus("Payment error: " + (e.message || e), "error");
+      }});
     }} catch(e) {{
-      showStatus("Failed to load payment form: " + e.message, "error");
+      showStatus("Failed to initialise payment: " + (e.message || e), "error");
     }}
   }})();
   </script>
