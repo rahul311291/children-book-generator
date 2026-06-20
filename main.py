@@ -172,6 +172,8 @@ if 'cf_pending_order_id' not in st.session_state:
     st.session_state.cf_pending_order_id = None  # Cashfree order ID awaiting payment
 if 'cf_payment_session_id' not in st.session_state:
     st.session_state.cf_payment_session_id = None  # JS SDK session token
+if 'cf_show_verify_button' not in st.session_state:
+    st.session_state.cf_show_verify_button = False  # shown only after 60 s timeout
 if 'book_mode' not in st.session_state:
     st.session_state.book_mode = None  # None, "custom", "template"
 if 'wizard_step' not in st.session_state:
@@ -281,6 +283,24 @@ def _cashfree_dropin_html(payment_session_id: str, order_id: str) -> str:
       setMsg("Payment could not be opened", "");
     }}
 
+    var _done = false;   // set true once payment resolves (success or failure)
+    var _timeoutHandle = null;
+
+    function markDone() {{
+      _done = true;
+      if (_timeoutHandle) {{ clearTimeout(_timeoutHandle); _timeoutHandle = null; }}
+    }}
+
+    // After 60 s with no resolution, signal Streamlit to reveal the manual fallback button
+    function startFallbackTimer() {{
+      _timeoutHandle = setTimeout(function() {{
+        if (!_done) {{
+          window.parent.location.search =
+            "?cf_order_id=" + encodeURIComponent(ORDER_ID) + "&cf_show_verify=1";
+        }}
+      }}, 60000);
+    }}
+
     function startPayment() {{
       document.getElementById("err").style.display = "none";
       document.getElementById("retry-btn").style.display = "none";
@@ -294,31 +314,38 @@ def _cashfree_dropin_html(payment_session_id: str, order_id: str) -> str:
           redirectTarget: "_modal"
         }}).then(function(result) {{
           if (result && result.paymentDetails) {{
+            markDone();
             document.getElementById("spinner").style.display = "none";
             setMsg("✅ Payment successful! Confirming your order…", "");
             window.parent.location.search =
               "?cf_order_id=" + encodeURIComponent(ORDER_ID) + "&cf_status=SUCCESS";
           }} else if (result && result.error) {{
+            markDone();
             var errMsg = result.error.message || "Payment was not completed. Please try again.";
             showErr("❌ " + errMsg);
           }} else {{
-            // Modal dismissed without paying — show retry
+            // Modal dismissed — let user reopen; keep 60s timer running
             document.getElementById("spinner").style.display = "none";
-            setMsg("Payment window closed", "");
+            setMsg("Payment window closed", "Click below to reopen.");
             document.getElementById("retry-btn").style.display = "inline-block";
             document.getElementById("retry-btn").innerText = "🔒 Open payment again";
           }}
         }}).catch(function(e) {{
+          markDone();
           showErr("Payment error: " + (e.message || String(e)));
         }});
       }} catch(e) {{
+        markDone();
         showErr("Could not initialise payment: " + (e.message || String(e)));
       }}
     }}
 
-    // Auto-trigger as soon as SDK is ready — no extra click needed
+    // Auto-trigger as soon as SDK is ready; start 60 s fallback timer simultaneously
     window.addEventListener("load", function() {{
-      setTimeout(startPayment, 400);
+      setTimeout(function() {{
+        startPayment();
+        startFallbackTimer();
+      }}, 400);
     }});
   </script>
 </body>
@@ -856,6 +883,7 @@ def reset_story_state():
     st.session_state.book_delivery_option = None
     st.session_state.cf_pending_order_id = None
     st.session_state.cf_payment_session_id = None
+    st.session_state.cf_show_verify_button = False
     # Clear template-related states
     if "template_generated_book" in st.session_state:
         del st.session_state.template_generated_book
@@ -2488,10 +2516,17 @@ def main():
     # Payment return: Cashfree JS Drop-in SDK sets ?cf_order_id=...&cf_status=SUCCESS|FAILED
     _cf_order_qp = st.query_params.get("cf_order_id")
     _cf_status_qp = st.query_params.get("cf_status", "")
-    if _cf_order_qp:
+    _cf_show_verify = st.query_params.get("cf_show_verify", "")
+    if _cf_order_qp and _cf_show_verify == "1":
+        # 60-second timeout fired — no payment yet; reveal the manual fallback button
+        st.query_params.pop("cf_order_id", None)
+        st.query_params.pop("cf_show_verify", None)
+        st.session_state.cf_show_verify_button = True
+    if _cf_order_qp and _cf_status_qp:
         st.query_params.pop("cf_order_id", None)
         st.query_params.pop("cf_status", None)
         st.query_params.pop("cf_error", None)
+        st.session_state.cf_show_verify_button = False  # clear if payment resolved
         if _cf_status_qp == "SUCCESS":
             try:
                 from payments import verify_cashfree_order as _vco, confirm_payment_and_credit as _cpc_ord
@@ -3426,17 +3461,21 @@ def main():
                     height=720,
                     scrolling=False,
                 )
-                # Cancel option — plain and unobtrusive
-                if st.button("✖ Cancel payment & choose again", use_container_width=False,
+                # Cancel — unobtrusive small button
+                if st.button("✖ Cancel & choose again", use_container_width=False,
                              key="choice_cancel"):
                     st.session_state.cf_pending_order_id = None
                     st.session_state.cf_payment_session_id = None
                     st.session_state.pending_payment_gate = None
+                    st.session_state.cf_show_verify_button = False
                     st.rerun()
-                # Fallback in case JS callback doesn't fire (rare)
-                with st.expander("Payment completed but page didn't update?"):
-                    if st.button("✅ Confirm my payment", use_container_width=True,
-                                 key="choice_verify"):
+
+                # Fallback verify button — only visible after 60 s timeout from JS
+                if st.session_state.get("cf_show_verify_button"):
+                    st.warning("⏱ Payment is taking longer than expected. If you've completed "
+                               "the payment, click below to confirm.")
+                    if st.button("✅ I've paid — confirm my payment", type="primary",
+                                 use_container_width=True, key="choice_verify"):
                         _v = _choice_verify_order(_pending_order_id)
                         if _v == "PAID":
                             _choice_cpc(_pending_order_id, _choice_uid)
@@ -3449,11 +3488,12 @@ def main():
                             st.session_state.cf_pending_order_id = None
                             st.session_state.cf_payment_session_id = None
                             st.session_state.pending_payment_gate = None
+                            st.session_state.cf_show_verify_button = False
                             st.success("✅ Confirmed! Generating your images now…")
                             st.rerun()
                         else:
                             st.error(f"Payment not yet received (status: {_v}). "
-                                     "Please complete payment above first.")
+                                     "Please complete the payment in the window above.")
                 return
 
             if not _choice_cf_ok():
