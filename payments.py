@@ -230,7 +230,10 @@ def create_cashfree_order(
 
     # Return URL — Cashfree redirects here after embedded form completes
     # We pass the order_id so Streamlit can verify on return
-    _app_url = os.environ.get("STREAMLIT_URL", "http://localhost:8501").rstrip("/")
+    _app_url = os.environ.get(
+        "STREAMLIT_URL",
+        "https://children-book-generator-bbjnvpkaqzuhwwlz83dmre.streamlit.app"
+    ).rstrip("/")
     _return_url = f"{_app_url}/?cf_order_id={order_id}&cf_status=SUCCESS"
 
     payload = {
