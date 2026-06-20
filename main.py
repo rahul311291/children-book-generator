@@ -203,9 +203,11 @@ def _resolve_book_format() -> dict:
 
 def _cashfree_dropin_html(payment_session_id: str, order_id: str) -> str:
     """
-    Build a self-contained HTML page for the Cashfree JS Drop-in Checkout.
-    Rendered via st.components.v1.html(). On success/failure the JS sets
-    window.parent.location.search which Streamlit reads as query params.
+    Cashfree JS SDK v3 modal checkout.
+    Renders a "Pay Now" button inside a components.html() iframe.
+    Clicking it opens Cashfree's secure payment modal over the page.
+    On success/failure the JS updates window.parent.location.search
+    so Streamlit picks up ?cf_order_id=...&cf_status=SUCCESS|FAILED.
     """
     from payments import cashfree_env
     mode = "production" if cashfree_env() == "production" else "sandbox"
@@ -217,59 +219,109 @@ def _cashfree_dropin_html(payment_session_id: str, order_id: str) -> str:
   <script src="https://sdk.cashfree.com/js/v3/cashfree.js"></script>
   <style>
     * {{ box-sizing: border-box; margin: 0; padding: 0; }}
-    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background: #f8fafc; padding: 8px; }}
-    #status_bar {{ padding: 10px 14px; border-radius: 8px; font-size: 13px;
-                   margin-bottom: 10px; display: none; }}
-    .info  {{ background: #dbeafe; color: #1e40af; }}
-    .error {{ background: #fee2e2; color: #991b1b; }}
-    #drop_in_container {{ background: white; border-radius: 10px;
-                          box-shadow: 0 1px 8px rgba(0,0,0,.08); padding: 12px; }}
+    body {{
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: transparent;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 140px;
+      padding: 16px;
+      gap: 12px;
+    }}
+    #pay-btn {{
+      background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+      color: white;
+      border: none;
+      border-radius: 10px;
+      padding: 16px 40px;
+      font-size: 18px;
+      font-weight: 700;
+      cursor: pointer;
+      letter-spacing: 0.3px;
+      box-shadow: 0 4px 14px rgba(37,99,235,0.4);
+      transition: transform .1s, box-shadow .1s;
+      width: 100%;
+      max-width: 360px;
+    }}
+    #pay-btn:hover {{ transform: translateY(-1px); box-shadow: 0 6px 18px rgba(37,99,235,0.45); }}
+    #pay-btn:active {{ transform: translateY(0); }}
+    #pay-btn:disabled {{ background: #93c5fd; cursor: not-allowed; box-shadow: none; }}
+    #msg {{
+      font-size: 13px;
+      color: #6b7280;
+      text-align: center;
+    }}
+    #err {{
+      background: #fee2e2;
+      color: #991b1b;
+      border-radius: 8px;
+      padding: 10px 16px;
+      font-size: 13px;
+      text-align: center;
+      display: none;
+      width: 100%;
+      max-width: 360px;
+    }}
   </style>
 </head>
 <body>
-  <div id="status_bar"></div>
-  <div id="drop_in_container"></div>
+  <button id="pay-btn" onclick="startPayment()">🔒 Pay Securely with Cashfree</button>
+  <div id="msg">Secure payment powered by Cashfree</div>
+  <div id="err"></div>
+
   <script>
-  (function() {{
     var SESSION_ID = "{payment_session_id}";
     var ORDER_ID   = "{order_id}";
     var CF_MODE    = "{mode}";
+    var paying = false;
 
-    function showStatus(msg, type) {{
-      var el = document.getElementById("status_bar");
-      el.className = type; el.innerText = msg; el.style.display = "block";
+    function showErr(msg) {{
+      var e = document.getElementById("err");
+      e.innerText = msg; e.style.display = "block";
+      document.getElementById("pay-btn").disabled = false;
+      document.getElementById("msg").innerText = "Secure payment powered by Cashfree";
     }}
 
-    try {{
-      // Cashfree JS SDK v3 — CDN exposes Cashfree() constructor
-      var cashfree = Cashfree({{ mode: CF_MODE }});
-      showStatus("Loading payment form…", "info");
+    function startPayment() {{
+      if (paying) return;
+      paying = true;
+      var btn = document.getElementById("pay-btn");
+      btn.disabled = true;
+      document.getElementById("msg").innerText = "Opening payment window…";
+      document.getElementById("err").style.display = "none";
 
-      // v3 API: .checkout() returns a Promise
-      cashfree.checkout({{
-        paymentSessionId: SESSION_ID,
-        redirectTarget: "#drop_in_container"   // embed form in-page
-      }}).then(function(result) {{
-        if (result && result.paymentDetails) {{
-          showStatus("✅ Payment successful! Please wait…", "info");
-          window.parent.location.search =
-            "?cf_order_id=" + encodeURIComponent(ORDER_ID) + "&cf_status=SUCCESS";
-        }} else if (result && result.error) {{
-          var msg = result.error.message || "Payment was not completed";
-          showStatus("❌ " + msg, "error");
-          window.parent.location.search =
-            "?cf_order_id=" + encodeURIComponent(ORDER_ID) +
-            "&cf_status=FAILED&cf_error=" + encodeURIComponent(msg);
-        }}
-        // If result.redirect — Cashfree will navigate via return_url; no action needed here
-      }}).catch(function(e) {{
-        showStatus("Payment error: " + (e.message || e), "error");
-      }});
-    }} catch(e) {{
-      showStatus("Failed to initialise payment: " + (e.message || e), "error");
+      try {{
+        var cashfree = Cashfree({{ mode: CF_MODE }});
+        cashfree.checkout({{
+          paymentSessionId: SESSION_ID,
+          redirectTarget: "_modal"
+        }}).then(function(result) {{
+          if (result && result.paymentDetails) {{
+            document.getElementById("msg").innerText = "✅ Payment done! Confirming…";
+            // Signal Streamlit parent to verify + proceed
+            window.parent.location.search =
+              "?cf_order_id=" + encodeURIComponent(ORDER_ID) + "&cf_status=SUCCESS";
+          }} else if (result && result.error) {{
+            var errMsg = (result.error.message) || "Payment was not completed. Please try again.";
+            paying = false;
+            showErr("❌ " + errMsg);
+          }} else {{
+            // Modal closed without payment — let user retry
+            paying = false;
+            btn.disabled = false;
+            document.getElementById("msg").innerText = "Click above to open the payment window.";
+          }}
+        }}).catch(function(e) {{
+          paying = false;
+          showErr("Payment error: " + (e.message || String(e)));
+        }});
+      }} catch(e) {{
+        paying = false;
+        showErr("Could not load payment gateway: " + (e.message || String(e)));
+      }}
     }}
-  }})();
   </script>
 </body>
 </html>"""
@@ -3363,7 +3415,7 @@ def main():
                 st.info(f"💳 Completing payment for: **{_opt_label} — ₹{_opt_price}**")
                 components.html(
                     _cashfree_dropin_html(_pending_session_id, _pending_order_id),
-                    height=540,
+                    height=180,
                     scrolling=False,
                 )
                 st.caption("Payment is processed securely by Cashfree. The form above may take a few seconds to load.")
