@@ -219,78 +219,73 @@ def _cashfree_dropin_html(payment_session_id: str, order_id: str) -> str:
   <script src="https://sdk.cashfree.com/js/v3/cashfree.js"></script>
   <style>
     * {{ box-sizing: border-box; margin: 0; padding: 0; }}
-    body {{
+    html, body {{
+      width: 100%; height: 100%;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: transparent;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      min-height: 140px;
-      padding: 16px;
-      gap: 12px;
+      background: #f8fafc;
     }}
-    #pay-btn {{
-      background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
-      color: white;
-      border: none;
-      border-radius: 10px;
-      padding: 16px 40px;
-      font-size: 18px;
-      font-weight: 700;
-      cursor: pointer;
-      letter-spacing: 0.3px;
-      box-shadow: 0 4px 14px rgba(37,99,235,0.4);
-      transition: transform .1s, box-shadow .1s;
-      width: 100%;
-      max-width: 360px;
+    #overlay {{
+      position: fixed; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 14px; padding: 24px;
     }}
-    #pay-btn:hover {{ transform: translateY(-1px); box-shadow: 0 6px 18px rgba(37,99,235,0.45); }}
-    #pay-btn:active {{ transform: translateY(0); }}
-    #pay-btn:disabled {{ background: #93c5fd; cursor: not-allowed; box-shadow: none; }}
-    #msg {{
-      font-size: 13px;
-      color: #6b7280;
-      text-align: center;
+    #spinner {{
+      width: 40px; height: 40px;
+      border: 4px solid #e2e8f0;
+      border-top-color: #2563eb;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
     }}
+    @keyframes spin {{ to {{ transform: rotate(360deg); }} }}
+    #msg {{ font-size: 15px; color: #374151; font-weight: 500; text-align: center; }}
+    #sub {{ font-size: 12px; color: #9ca3af; text-align: center; }}
     #err {{
-      background: #fee2e2;
-      color: #991b1b;
-      border-radius: 8px;
-      padding: 10px 16px;
-      font-size: 13px;
-      text-align: center;
-      display: none;
-      width: 100%;
-      max-width: 360px;
+      background: #fee2e2; color: #991b1b;
+      border-radius: 8px; padding: 12px 18px;
+      font-size: 13px; text-align: center;
+      display: none; max-width: 400px;
+    }}
+    #retry-btn {{
+      background: #2563eb; color: white;
+      border: none; border-radius: 8px;
+      padding: 10px 28px; font-size: 14px; font-weight: 600;
+      cursor: pointer; display: none;
     }}
   </style>
 </head>
 <body>
-  <button id="pay-btn" onclick="startPayment()">🔒 Pay Securely with Cashfree</button>
-  <div id="msg">Secure payment powered by Cashfree</div>
-  <div id="err"></div>
+  <div id="overlay">
+    <div id="spinner"></div>
+    <div id="msg">Opening Cashfree checkout…</div>
+    <div id="sub">Please wait while your secure payment window loads</div>
+    <div id="err"></div>
+    <button id="retry-btn" onclick="startPayment()">Try again</button>
+  </div>
 
   <script>
     var SESSION_ID = "{payment_session_id}";
     var ORDER_ID   = "{order_id}";
     var CF_MODE    = "{mode}";
-    var paying = false;
+
+    function setMsg(msg, sub) {{
+      document.getElementById("msg").innerText = msg;
+      if (sub !== undefined) document.getElementById("sub").innerText = sub || "";
+    }}
 
     function showErr(msg) {{
-      var e = document.getElementById("err");
-      e.innerText = msg; e.style.display = "block";
-      document.getElementById("pay-btn").disabled = false;
-      document.getElementById("msg").innerText = "Secure payment powered by Cashfree";
+      document.getElementById("spinner").style.display = "none";
+      document.getElementById("err").innerText = msg;
+      document.getElementById("err").style.display = "block";
+      document.getElementById("retry-btn").style.display = "inline-block";
+      setMsg("Payment could not be opened", "");
     }}
 
     function startPayment() {{
-      if (paying) return;
-      paying = true;
-      var btn = document.getElementById("pay-btn");
-      btn.disabled = true;
-      document.getElementById("msg").innerText = "Opening payment window…";
       document.getElementById("err").style.display = "none";
+      document.getElementById("retry-btn").style.display = "none";
+      document.getElementById("spinner").style.display = "block";
+      setMsg("Opening Cashfree checkout…", "Please wait while your secure payment window loads");
 
       try {{
         var cashfree = Cashfree({{ mode: CF_MODE }});
@@ -299,29 +294,32 @@ def _cashfree_dropin_html(payment_session_id: str, order_id: str) -> str:
           redirectTarget: "_modal"
         }}).then(function(result) {{
           if (result && result.paymentDetails) {{
-            document.getElementById("msg").innerText = "✅ Payment done! Confirming…";
-            // Signal Streamlit parent to verify + proceed
+            document.getElementById("spinner").style.display = "none";
+            setMsg("✅ Payment successful! Confirming your order…", "");
             window.parent.location.search =
               "?cf_order_id=" + encodeURIComponent(ORDER_ID) + "&cf_status=SUCCESS";
           }} else if (result && result.error) {{
-            var errMsg = (result.error.message) || "Payment was not completed. Please try again.";
-            paying = false;
+            var errMsg = result.error.message || "Payment was not completed. Please try again.";
             showErr("❌ " + errMsg);
           }} else {{
-            // Modal closed without payment — let user retry
-            paying = false;
-            btn.disabled = false;
-            document.getElementById("msg").innerText = "Click above to open the payment window.";
+            // Modal dismissed without paying — show retry
+            document.getElementById("spinner").style.display = "none";
+            setMsg("Payment window closed", "");
+            document.getElementById("retry-btn").style.display = "inline-block";
+            document.getElementById("retry-btn").innerText = "🔒 Open payment again";
           }}
         }}).catch(function(e) {{
-          paying = false;
           showErr("Payment error: " + (e.message || String(e)));
         }});
       }} catch(e) {{
-        paying = false;
-        showErr("Could not load payment gateway: " + (e.message || String(e)));
+        showErr("Could not initialise payment: " + (e.message || String(e)));
       }}
     }}
+
+    // Auto-trigger as soon as SDK is ready — no extra click needed
+    window.addEventListener("load", function() {{
+      setTimeout(startPayment, 400);
+    }});
   </script>
 </body>
 </html>"""
@@ -3415,7 +3413,7 @@ def main():
                 st.info(f"💳 Completing payment for: **{_opt_label} — ₹{_opt_price}**")
                 components.html(
                     _cashfree_dropin_html(_pending_session_id, _pending_order_id),
-                    height=180,
+                    height=720,
                     scrolling=False,
                 )
                 st.caption("Payment is processed securely by Cashfree. The form above may take a few seconds to load.")
