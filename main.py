@@ -3407,20 +3407,36 @@ def main():
                 st.session_state.cf_pending_order_id = None
 
             if _pending_session_id and _pending_order_id:
-                # Drop-in checkout is active — render the payment form inline
+                # Cashfree modal checkout — payment auto-triggers inside the iframe
                 _opt_label = "📥 Download PDF" if _pending_gate == "download_choice" else "📬 Print & Deliver"
                 _opt_price = _dl_price if _pending_gate == "download_choice" else _pd_price
-                st.info(f"💳 Completing payment for: **{_opt_label} — ₹{_opt_price}**")
+                st.markdown(
+                    f"""<div style='background:#f0fdf4;border:1px solid #86efac;border-radius:10px;
+                    padding:14px 18px;margin-bottom:12px;'>
+                    <span style='font-size:20px;'>🔒</span>
+                    <strong style='color:#166534;margin-left:8px;'>
+                    Secure payment — {_opt_label} · ₹{_opt_price}</strong><br>
+                    <span style='color:#4b5563;font-size:13px;margin-left:30px;'>
+                    Complete your payment below. The page will update automatically once done.</span>
+                    </div>""",
+                    unsafe_allow_html=True,
+                )
                 components.html(
                     _cashfree_dropin_html(_pending_session_id, _pending_order_id),
                     height=720,
                     scrolling=False,
                 )
-                st.caption("Payment is processed securely by Cashfree. The form above may take a few seconds to load.")
-                st.divider()
-                col_verify, col_cancel = st.columns(2)
-                with col_verify:
-                    if st.button("✅ Verify payment manually", use_container_width=True, key="choice_verify"):
+                # Cancel option — plain and unobtrusive
+                if st.button("✖ Cancel payment & choose again", use_container_width=False,
+                             key="choice_cancel"):
+                    st.session_state.cf_pending_order_id = None
+                    st.session_state.cf_payment_session_id = None
+                    st.session_state.pending_payment_gate = None
+                    st.rerun()
+                # Fallback in case JS callback doesn't fire (rare)
+                with st.expander("Payment completed but page didn't update?"):
+                    if st.button("✅ Confirm my payment", use_container_width=True,
+                                 key="choice_verify"):
                         _v = _choice_verify_order(_pending_order_id)
                         if _v == "PAID":
                             _choice_cpc(_pending_order_id, _choice_uid)
@@ -3433,25 +3449,31 @@ def main():
                             st.session_state.cf_pending_order_id = None
                             st.session_state.cf_payment_session_id = None
                             st.session_state.pending_payment_gate = None
-                            st.success("✅ Payment confirmed! Generating your images now…")
+                            st.success("✅ Confirmed! Generating your images now…")
                             st.rerun()
                         else:
-                            st.error(f"Payment status: {_v}. Please complete payment above and try again.")
-                with col_cancel:
-                    if st.button("✖ Cancel & start over", use_container_width=True, key="choice_cancel"):
-                        st.session_state.cf_pending_order_id = None
-                        st.session_state.cf_payment_session_id = None
-                        st.session_state.pending_payment_gate = None
-                        st.rerun()
+                            st.error(f"Payment not yet received (status: {_v}). "
+                                     "Please complete payment above first.")
                 return
 
             if not _choice_cf_ok():
                 st.warning("Checkout is temporarily unavailable. Please try again shortly.")
                 return
 
+            st.markdown(
+                """<div style='background:#fffbeb;border:1.5px solid #f59e0b;border-radius:10px;
+                padding:16px 20px;margin:16px 0 4px 0;'>
+                <div style='font-size:15px;font-weight:700;color:#92400e;margin-bottom:6px;'>
+                📱 Enter your mobile number to continue</div>
+                <div style='font-size:13px;color:#78350f;'>
+                Required by Cashfree to process the payment and send a receipt.</div>
+                </div>""",
+                unsafe_allow_html=True,
+            )
             _choice_phone = st.text_input(
-                "📱 Mobile number (for payment receipt)",
-                max_chars=10, placeholder="10-digit mobile number", key="choice_phone",
+                "Mobile number",
+                max_chars=10, placeholder="10-digit number e.g. 9876543210",
+                key="choice_phone", label_visibility="collapsed",
             )
 
             col_dl, col_pd = st.columns(2)
