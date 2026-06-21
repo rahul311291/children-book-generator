@@ -234,7 +234,7 @@ def create_cashfree_order(
         "STREAMLIT_URL",
         "https://children-book-generator-bbjnvpkaqzuhwwlz83dmre.streamlit.app"
     ).rstrip("/")
-    _return_url = f"{_app_url}/?cf_order_id={order_id}&cf_status=SUCCESS"
+    _return_url = f"{_app_url}/?cf_order_id={order_id}&cf_status=SUCCESS&cf_tab=payment"
 
     payload = {
         "order_id": order_id,
