@@ -322,11 +322,29 @@ def call_gemini_image(
                             elif r.status_code == 404:
                                 logger.warning(f"Vertex Gemini image {model} 404 at {url}, trying next")
                                 break
+                            elif r.status_code in (500, 502, 503, 504):
+                                # Transient server error — retry with backoff.
+                                # These are common during Vertex hot-pathing.
+                                wait = [4, 10, 25][_attempt]
+                                logger.warning(f"Vertex Gemini image {model} server error ({r.status_code}), waiting {wait}s (attempt {_attempt+1}/3)")
+                                time.sleep(wait)
+                                continue
                             else:
+                                # Real 4xx (400 bad request, 401 auth, 403 perm) — not retryable
                                 vertex_img_errors.append(f"{model}: HTTP {r.status_code} — {r.text[:200]}")
                                 logger.warning(f"Vertex Gemini image {model} → {r.status_code}: {r.text[:150]}")
                                 model_success = True
                                 break
+                        except (requests.Timeout, requests.ConnectionError) as e:
+                            # Network glitch — retry. Last attempt falls through to next model.
+                            if _attempt < 2:
+                                wait = [2, 5, 10][_attempt]
+                                logger.warning(f"Vertex Gemini image {model} network error, waiting {wait}s (attempt {_attempt+1}/3): {e}")
+                                time.sleep(wait)
+                                continue
+                            vertex_img_errors.append(f"{model}: {e}")
+                            model_success = True
+                            break
                         except Exception as e:
                             vertex_img_errors.append(f"{model}: {e}")
                             logger.warning(f"Vertex Gemini image {model} error: {e}")
@@ -372,10 +390,23 @@ def call_gemini_image(
                             logger.warning(f"Vertex Imagen {model} rate limited (429), waiting {wait}s (attempt {_attempt+1}/3)")
                             time.sleep(wait)
                             continue
+                        elif r.status_code in (500, 502, 503, 504):
+                            wait = [4, 10, 25][_attempt]
+                            logger.warning(f"Vertex Imagen {model} server error ({r.status_code}), waiting {wait}s (attempt {_attempt+1}/3)")
+                            time.sleep(wait)
+                            continue
                         else:
                             vertex_img_errors.append(f"{model}: HTTP {r.status_code} — {r.text[:200]}")
                             logger.warning(f"Vertex Imagen {model} → {r.status_code}: {r.text[:150]}")
                             break
+                    except (requests.Timeout, requests.ConnectionError) as e:
+                        if _attempt < 2:
+                            wait = [2, 5, 10][_attempt]
+                            logger.warning(f"Vertex Imagen {model} network error, waiting {wait}s (attempt {_attempt+1}/3): {e}")
+                            time.sleep(wait)
+                            continue
+                        vertex_img_errors.append(f"{model}: {e}")
+                        break
                     except Exception as e:
                         vertex_img_errors.append(f"{model}: {e}")
                         logger.warning(f"Vertex Imagen {model} error: {e}")

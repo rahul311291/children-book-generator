@@ -1376,88 +1376,114 @@ def _generate_image_threadsafe(
     image_style: str,
     reference_image_b64,
     openrouter_key: str,
+    _outer_attempts: int = 2,
 ):
-    """Pure function — never touches st.*. Returns (PIL.Image | None, error_str | None)."""
-    try:
-        # Upgrade cartoon styles to face-preserving portrait when refs are present.
-        has_ref = bool(
-            (isinstance(reference_image_b64, list) and reference_image_b64)
-            or (reference_image_b64 and not isinstance(reference_image_b64, list))
-        )
-        eff_style = image_style
-        if has_ref and eff_style in (
-            "Cartoon/Animated (3D Pixar Style)", "Cartoon (2D Flat Style)"
-        ):
-            eff_style = "Photo Reference Portrait"
+    """Pure function — never touches st.*. Returns (PIL.Image | None, error_str | None).
 
-        style_modifiers = get_image_style(eff_style)
-        no_text_instruction = (
-            "CRITICAL REQUIREMENT - ABSOLUTELY NO TEXT: This image must "
-            "contain ZERO text, ZERO words, ZERO letters, ZERO numbers, "
-            "ZERO speech bubbles, ZERO captions, ZERO signs, ZERO labels, "
-            "ZERO writing of any kind. This is a pure illustration for a "
-            "children's book - visual art only."
-        )
+    Retry layers (outer → inner):
+      _outer_attempts (this fn)  → up to 2 full passes, 5s apart
+        vertex_client.call_gemini_image    → up to 3 attempts per model,
+                                              8s/20s/45s on 429, 4s/10s/25s on
+                                              5xx, 2s/5s/10s on network errors,
+                                              honours Retry-After header
+        generate_image_with_openrouter     → loops over 3 OpenRouter models
 
-        scene_keywords = (
-            "wide shot", "panorama", "aerial", "crowd scene", "crowd of",
-            "dozens of", "hundreds of", "grand scale", "epic scale",
-            "stadium", "ocean view", "mountain vista",
-        )
-        is_scene = any(k in prompt.lower() for k in scene_keywords)
-        scene_instruction = (
-            "WIDE CINEMATIC SHOT — capture the full scene and environment. "
-            "DO NOT crop to faces or close-up portraits. Show the whole setting."
-            if is_scene else ""
-        )
-
-        photo_instruction = ""
-        face_match_prefix = ""
-        if has_ref:
-            face_match_prefix = (
-                "REFERENCE PHOTO PROVIDED — render the child with the same "
-                "face shape, skin tone, hair, and features as the reference. "
-            )
-            photo_instruction = (
-                "Match the face of the child to the reference photo. "
-                "Preserve identifying features."
-            )
-
-        style_prompt = (
-            f"{face_match_prefix}"
-            f"{no_text_instruction}. "
-            f"{scene_instruction} "
-            f"{photo_instruction} "
-            f"{prompt}. "
-            f"{style_modifiers}. "
-            f"{no_text_instruction}"
-        )
-
-        from vertex_client import call_gemini_image
-        data_url = call_gemini_image(
-            style_prompt, api_key=api_key, reference_image_b64=reference_image_b64
-        )
-        if data_url:
-            image_bytes = base64.b64decode(data_url.split(",", 1)[1])
-            return Image.open(io.BytesIO(image_bytes)).convert("RGB"), None
-
-        # Vertex/Gemini returned nothing — try OpenRouter
-        if openrouter_key:
-            fallback = generate_image_with_openrouter(openrouter_key, prompt, image_style)
-            if fallback:
-                return fallback, None
-
-        return None, "No image returned from any backend"
-    except Exception as e:
-        # Last-ditch: OpenRouter fallback on exception
+    So a single page is only marked failed after Gemini's full retry budget,
+    Imagen's full budget, OpenRouter's 3 models, then ONE more full pass
+    5s later. In practice that's ~30+ attempts across backends per page
+    before we give up.
+    """
+    last_err = None
+    for _pass in range(max(1, _outer_attempts)):
+        if _pass > 0:
+            # Brief pause before the second full pass. Gemini transients
+            # almost always clear within a few seconds.
+            time.sleep(5)
+            logger.info(f"_generate_image_threadsafe: outer retry pass {_pass+1}/{_outer_attempts}")
         try:
+            # Upgrade cartoon styles to face-preserving portrait when refs are present.
+            has_ref = bool(
+                (isinstance(reference_image_b64, list) and reference_image_b64)
+                or (reference_image_b64 and not isinstance(reference_image_b64, list))
+            )
+            eff_style = image_style
+            if has_ref and eff_style in (
+                "Cartoon/Animated (3D Pixar Style)", "Cartoon (2D Flat Style)"
+            ):
+                eff_style = "Photo Reference Portrait"
+
+            style_modifiers = get_image_style(eff_style)
+            no_text_instruction = (
+                "CRITICAL REQUIREMENT - ABSOLUTELY NO TEXT: This image must "
+                "contain ZERO text, ZERO words, ZERO letters, ZERO numbers, "
+                "ZERO speech bubbles, ZERO captions, ZERO signs, ZERO labels, "
+                "ZERO writing of any kind. This is a pure illustration for a "
+                "children's book - visual art only."
+            )
+
+            scene_keywords = (
+                "wide shot", "panorama", "aerial", "crowd scene", "crowd of",
+                "dozens of", "hundreds of", "grand scale", "epic scale",
+                "stadium", "ocean view", "mountain vista",
+            )
+            is_scene = any(k in prompt.lower() for k in scene_keywords)
+            scene_instruction = (
+                "WIDE CINEMATIC SHOT — capture the full scene and environment. "
+                "DO NOT crop to faces or close-up portraits. Show the whole setting."
+                if is_scene else ""
+            )
+
+            photo_instruction = ""
+            face_match_prefix = ""
+            if has_ref:
+                face_match_prefix = (
+                    "REFERENCE PHOTO PROVIDED — render the child with the same "
+                    "face shape, skin tone, hair, and features as the reference. "
+                )
+                photo_instruction = (
+                    "Match the face of the child to the reference photo. "
+                    "Preserve identifying features."
+                )
+
+            style_prompt = (
+                f"{face_match_prefix}"
+                f"{no_text_instruction}. "
+                f"{scene_instruction} "
+                f"{photo_instruction} "
+                f"{prompt}. "
+                f"{style_modifiers}. "
+                f"{no_text_instruction}"
+            )
+
+            from vertex_client import call_gemini_image
+            data_url = call_gemini_image(
+                style_prompt, api_key=api_key, reference_image_b64=reference_image_b64
+            )
+            if data_url:
+                image_bytes = base64.b64decode(data_url.split(",", 1)[1])
+                return Image.open(io.BytesIO(image_bytes)).convert("RGB"), None
+
+            # Vertex/Gemini returned nothing — try OpenRouter
             if openrouter_key:
                 fallback = generate_image_with_openrouter(openrouter_key, prompt, image_style)
                 if fallback:
                     return fallback, None
-        except Exception:
-            pass
-        return None, str(e)
+
+            last_err = "No image returned from any backend"
+            # Fall through to next outer pass (if any)
+            continue
+        except Exception as e:
+            # Last-ditch: OpenRouter fallback on exception
+            try:
+                if openrouter_key:
+                    fallback = generate_image_with_openrouter(openrouter_key, prompt, image_style)
+                    if fallback:
+                        return fallback, None
+            except Exception:
+                pass
+            last_err = str(e)
+            continue
+    return None, last_err or "All backends failed after retries"
 
 
 def generate_image_with_imagen(
