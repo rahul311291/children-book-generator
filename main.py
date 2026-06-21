@@ -172,6 +172,8 @@ if 'cf_pending_order_id' not in st.session_state:
     st.session_state.cf_pending_order_id = None  # Cashfree order ID awaiting payment
 if 'cf_payment_session_id' not in st.session_state:
     st.session_state.cf_payment_session_id = None  # JS SDK session token
+if 'cf_order_created_at' not in st.session_state:
+    st.session_state.cf_order_created_at = None   # epoch when order was created
 if 'cf_show_verify_button' not in st.session_state:
     st.session_state.cf_show_verify_button = False  # shown only after 60 s timeout
 if 'book_mode' not in st.session_state:
@@ -286,23 +288,32 @@ def _cashfree_dropin_html(payment_session_id: str, order_id: str) -> str:
     var _done = false;
     var _timeoutHandle = null;
 
+    // ── Mobile detection ────────────────────────────────────────────────────
+    // On mobile: use _blank (new tab) — UPI deep links work, no iframe scroll issues
+    // On desktop: use _modal (overlay) — no popup blocker, stays in-page
+    var _isMobile = /iPhone|iPad|iPod|Android|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    var _redirectTarget = _isMobile ? "_blank" : "_modal";
+
     // ── BroadcastChannel: new tab posts 'PAID' after Cashfree returns ──────
+    // Only needed when using _blank (mobile)
     var _channel = null;
-    try {{
-      _channel = new BroadcastChannel("cbg_pay_" + ORDER_ID);
-      _channel.onmessage = function(e) {{
-        if (e.data === "PAID" && !_done) {{
-          _done = true;
-          if (_timeoutHandle) clearTimeout(_timeoutHandle);
-          _channel.close();
-          setMsg("✅ Payment confirmed! Loading your book…", "");
-          document.getElementById("spinner").style.display = "block";
-          document.getElementById("retry-btn").style.display = "none";
-          window.parent.location.search =
-            "?cf_order_id=" + encodeURIComponent(ORDER_ID) + "&cf_status=SUCCESS";
-        }}
-      }};
-    }} catch(e) {{/* BroadcastChannel not supported — fallback button will appear */}}
+    if (_isMobile) {{
+      try {{
+        _channel = new BroadcastChannel("cbg_pay_" + ORDER_ID);
+        _channel.onmessage = function(e) {{
+          if (e.data === "PAID" && !_done) {{
+            _done = true;
+            if (_timeoutHandle) clearTimeout(_timeoutHandle);
+            _channel.close();
+            setMsg("✅ Payment confirmed! Loading your book…", "");
+            document.getElementById("spinner").style.display = "block";
+            document.getElementById("retry-btn").style.display = "none";
+            window.parent.location.search =
+              "?cf_order_id=" + encodeURIComponent(ORDER_ID) + "&cf_status=SUCCESS";
+          }}
+        }};
+      }} catch(e) {{/* BroadcastChannel not supported — fallback button will appear */}}
+    }}
 
     // ── 60-second fallback: reveal the manual verify button ────────────────
     function startFallbackTimer() {{
@@ -318,34 +329,32 @@ def _cashfree_dropin_html(payment_session_id: str, order_id: str) -> str:
       document.getElementById("err").style.display = "none";
       document.getElementById("retry-btn").style.display = "none";
       document.getElementById("spinner").style.display = "block";
-      setMsg("Opening Cashfree checkout…",
-             "A new tab will open for payment. GPay, Paytm & all UPI apps work there.");
+
+      if (_isMobile) {{
+        setMsg("Opening payment…",
+               "A new tab will open. GPay, PhonePe & all UPI apps work there.");
+      }} else {{
+        setMsg("Opening secure checkout…", "Complete your payment in the overlay.");
+      }}
 
       try {{
         var cashfree = Cashfree({{ mode: CF_MODE }});
-
-        // ── Use _blank so UPI deep-links (GPay/Paytm) work in the new tab ──
-        // The new tab is a real browser window with no iframe sandbox, so
-        // UPI apps open correctly. After payment, Cashfree redirects the new
-        // tab to our return_url which posts a BroadcastChannel message back here.
         cashfree.checkout({{
           paymentSessionId: SESSION_ID,
-          redirectTarget: "_blank"
+          redirectTarget: _redirectTarget
         }}).then(function(result) {{
-          // _blank doesn't resolve promise with paymentDetails —
-          // we rely on BroadcastChannel from the new tab instead.
-          // If new tab was blocked, fall through to show retry.
           if (result && result.paymentDetails) {{
-            // Some browsers may still return this
+            // Desktop _modal: promise resolves with paymentDetails on success
             _done = true;
             if (_timeoutHandle) clearTimeout(_timeoutHandle);
             setMsg("✅ Payment successful! Confirming…", "");
             window.parent.location.search =
               "?cf_order_id=" + encodeURIComponent(ORDER_ID) + "&cf_status=SUCCESS";
           }} else {{
+            // Mobile _blank: new tab opened; BroadcastChannel handles auto-update
             document.getElementById("spinner").style.display = "none";
-            setMsg("Payment window opened in a new tab",
-                   "Complete the payment there, then return here. The page updates automatically.");
+            setMsg("Payment opened in a new tab",
+                   "Complete payment there. This page updates automatically when done.");
             document.getElementById("retry-btn").style.display = "inline-block";
             document.getElementById("retry-btn").innerText = "🔄 Reopen payment tab";
           }}
@@ -900,6 +909,7 @@ def reset_story_state():
     st.session_state.book_delivery_option = None
     st.session_state.cf_pending_order_id = None
     st.session_state.cf_payment_session_id = None
+    st.session_state.cf_order_created_at = None
     st.session_state.cf_show_verify_button = False
     # Clear template-related states
     if "template_generated_book" in st.session_state:
@@ -3449,8 +3459,22 @@ def main():
                 st.session_state.cf_payment_session_id = None
                 st.session_state.cf_pending_order_id = None
 
+            # Expire stale payment sessions — Cashfree sessions last ~20 min
+            _order_age = (
+                (time.time() - st.session_state.cf_order_created_at)
+                if st.session_state.get("cf_order_created_at") else 9999
+            )
+            if _pending_session_id and _pending_order_id and _order_age > 1200:
+                st.warning("⚠️ Your payment session expired. Please start again.")
+                st.session_state.cf_pending_order_id = None
+                st.session_state.cf_payment_session_id = None
+                st.session_state.cf_order_created_at = None
+                st.session_state.pending_payment_gate = None
+                _pending_session_id = None
+                _pending_order_id = None
+
             if _pending_session_id and _pending_order_id:
-                # Cashfree modal checkout — payment auto-triggers inside the iframe
+                # Cashfree checkout — payment auto-triggers inside the iframe
                 _opt_label = "📥 Download PDF" if _pending_gate == "download_choice" else "📬 Print & Deliver"
                 _opt_price = _dl_price if _pending_gate == "download_choice" else _pd_price
                 st.markdown(
@@ -3553,6 +3577,7 @@ def main():
                     if _res_dl and _res_dl.get("payment_session_id"):
                         st.session_state.cf_pending_order_id = _res_dl["order_id"]
                         st.session_state.cf_payment_session_id = _res_dl["payment_session_id"]
+                        st.session_state.cf_order_created_at = time.time()
                         st.session_state.pending_payment_gate = "download_choice"
                         st.session_state.current_book_payment_status = "pending"
                         st.rerun()
@@ -3587,6 +3612,7 @@ def main():
                     if _res_pd and _res_pd.get("payment_session_id"):
                         st.session_state.cf_pending_order_id = _res_pd["order_id"]
                         st.session_state.cf_payment_session_id = _res_pd["payment_session_id"]
+                        st.session_state.cf_order_created_at = time.time()
                         st.session_state.pending_payment_gate = "print_deliver_choice"
                         st.session_state.current_book_payment_status = "pending"
                         st.rerun()
