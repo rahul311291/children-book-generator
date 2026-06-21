@@ -325,7 +325,7 @@ def call_gemini_image(
                             elif r.status_code in (500, 502, 503, 504):
                                 # Transient server error — retry with backoff.
                                 # These are common during Vertex hot-pathing.
-                                wait = [4, 10, 25][_attempt]
+                                wait = [5, 15, 40][_attempt]
                                 logger.warning(f"Vertex Gemini image {model} server error ({r.status_code}), waiting {wait}s (attempt {_attempt+1}/3)")
                                 time.sleep(wait)
                                 continue
@@ -391,7 +391,7 @@ def call_gemini_image(
                             time.sleep(wait)
                             continue
                         elif r.status_code in (500, 502, 503, 504):
-                            wait = [4, 10, 25][_attempt]
+                            wait = [5, 15, 40][_attempt]
                             logger.warning(f"Vertex Imagen {model} server error ({r.status_code}), waiting {wait}s (attempt {_attempt+1}/3)")
                             time.sleep(wait)
                             continue
