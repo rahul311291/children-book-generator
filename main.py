@@ -81,6 +81,7 @@ from reportlab.lib.colors import HexColor, black, white
 from PIL import Image
 import io
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Page configuration
 st.set_page_config(
@@ -1354,6 +1355,110 @@ def generate_story_with_gemini(api_key: str, child_name: str, age: int, gender: 
         with st.expander("Error Details", expanded=False):
             st.code(traceback.format_exc())
         return None
+
+
+# ---------------------------------------------------------------------------
+# Thread-safe image generator (no st.* access). Used by the parallel batch
+# generation path. The single-image / regenerate paths still call
+# generate_image_with_imagen below, which has st.* hooks for inline UI updates.
+# ---------------------------------------------------------------------------
+
+# Max parallel image requests. 3 is conservative for Gemini Tier-1 (~10 IPM):
+# 3 in flight × ~20s per image ≈ ~9 RPM peak, safely under the limit. Override
+# with the IMAGE_GEN_CONCURRENCY env var if your tier allows more.
+import os as _os_imggen
+IMAGE_GEN_CONCURRENCY = int(_os_imggen.environ.get("IMAGE_GEN_CONCURRENCY", "3"))
+
+
+def _generate_image_threadsafe(
+    api_key: str,
+    prompt: str,
+    image_style: str,
+    reference_image_b64,
+    openrouter_key: str,
+):
+    """Pure function — never touches st.*. Returns (PIL.Image | None, error_str | None)."""
+    try:
+        # Upgrade cartoon styles to face-preserving portrait when refs are present.
+        has_ref = bool(
+            (isinstance(reference_image_b64, list) and reference_image_b64)
+            or (reference_image_b64 and not isinstance(reference_image_b64, list))
+        )
+        eff_style = image_style
+        if has_ref and eff_style in (
+            "Cartoon/Animated (3D Pixar Style)", "Cartoon (2D Flat Style)"
+        ):
+            eff_style = "Photo Reference Portrait"
+
+        style_modifiers = get_image_style(eff_style)
+        no_text_instruction = (
+            "CRITICAL REQUIREMENT - ABSOLUTELY NO TEXT: This image must "
+            "contain ZERO text, ZERO words, ZERO letters, ZERO numbers, "
+            "ZERO speech bubbles, ZERO captions, ZERO signs, ZERO labels, "
+            "ZERO writing of any kind. This is a pure illustration for a "
+            "children's book - visual art only."
+        )
+
+        scene_keywords = (
+            "wide shot", "panorama", "aerial", "crowd scene", "crowd of",
+            "dozens of", "hundreds of", "grand scale", "epic scale",
+            "stadium", "ocean view", "mountain vista",
+        )
+        is_scene = any(k in prompt.lower() for k in scene_keywords)
+        scene_instruction = (
+            "WIDE CINEMATIC SHOT — capture the full scene and environment. "
+            "DO NOT crop to faces or close-up portraits. Show the whole setting."
+            if is_scene else ""
+        )
+
+        photo_instruction = ""
+        face_match_prefix = ""
+        if has_ref:
+            face_match_prefix = (
+                "REFERENCE PHOTO PROVIDED — render the child with the same "
+                "face shape, skin tone, hair, and features as the reference. "
+            )
+            photo_instruction = (
+                "Match the face of the child to the reference photo. "
+                "Preserve identifying features."
+            )
+
+        style_prompt = (
+            f"{face_match_prefix}"
+            f"{no_text_instruction}. "
+            f"{scene_instruction} "
+            f"{photo_instruction} "
+            f"{prompt}. "
+            f"{style_modifiers}. "
+            f"{no_text_instruction}"
+        )
+
+        from vertex_client import call_gemini_image
+        data_url = call_gemini_image(
+            style_prompt, api_key=api_key, reference_image_b64=reference_image_b64
+        )
+        if data_url:
+            image_bytes = base64.b64decode(data_url.split(",", 1)[1])
+            return Image.open(io.BytesIO(image_bytes)).convert("RGB"), None
+
+        # Vertex/Gemini returned nothing — try OpenRouter
+        if openrouter_key:
+            fallback = generate_image_with_openrouter(openrouter_key, prompt, image_style)
+            if fallback:
+                return fallback, None
+
+        return None, "No image returned from any backend"
+    except Exception as e:
+        # Last-ditch: OpenRouter fallback on exception
+        try:
+            if openrouter_key:
+                fallback = generate_image_with_openrouter(openrouter_key, prompt, image_style)
+                if fallback:
+                    return fallback, None
+        except Exception:
+            pass
+        return None, str(e)
+
 
 def generate_image_with_imagen(
     api_key: str,
@@ -3851,21 +3956,94 @@ def main():
                             st.session_state._loaded_from_history = False
                             st.rerun()
                     else:
-                        with st.spinner(f"Generating image {missing_idx + 1}/{total_pages}..."):
-                            page = pages[missing_idx]
-                            # Admin may have saved a custom prompt; otherwise assemble lazily
-                            if missing_idx in st.session_state.edited_image_prompts:
-                                image_prompt = st.session_state.edited_image_prompts[missing_idx]
+                        # ── PARALLEL GENERATION ────────────────────────────
+                        # Gather every still-missing index, assemble prompts in
+                        # the main thread (session_state isn't thread-safe),
+                        # then dispatch a bounded pool of workers. Single rerun
+                        # at the end. Net: ~3× faster than one-image-per-rerun,
+                        # and the rerun overhead (story cards, iframes) only
+                        # runs once instead of N times.
+                        missing_indices = [
+                            i for i in range(gen_limit)
+                            if i >= len(st.session_state.generated_images)
+                            or st.session_state.generated_images[i] is None
+                        ]
+                        # Ensure list is large enough for all writes
+                        while len(st.session_state.generated_images) < gen_limit:
+                            st.session_state.generated_images.append(None)
+
+                        # Resolve session-dependent inputs ONCE on the main thread
+                        _eff_style = (
+                            st.session_state.get("wiz_image_style")
+                            or st.session_state.get("image_style", "Cartoon/Animated (3D Pixar Style)")
+                        )
+                        _ref_b64 = st.session_state.get("wiz_reference_photos_b64") or None
+                        _or_key = st.session_state.get("openrouter_api_key", "") or ""
+                        _va = st.session_state.generated_story.get("visual_anchor", "")
+                        _sc = st.session_state.generated_story.get("secondary_characters", [])
+                        _fmt = _resolve_book_format()
+
+                        # Build (idx, prompt) pairs
+                        jobs = []
+                        for idx in missing_indices:
+                            page = pages[idx]
+                            if idx in st.session_state.edited_image_prompts:
+                                p = st.session_state.edited_image_prompts[idx]
                             else:
-                                _va = st.session_state.generated_story.get("visual_anchor", "")
-                                _sc = st.session_state.generated_story.get("secondary_characters", [])
-                                image_prompt = _assemble_image_prompt(page, _va, _resolve_book_format(), _sc)
-                            logger.info(f"Generating image for page {missing_idx + 1} with prompt: {image_prompt[:150]}...")
-                            img = generate_image_with_imagen(api_key, image_prompt, image_index=missing_idx)
-                            # Ensure list is large enough
-                            while len(st.session_state.generated_images) <= missing_idx:
-                                st.session_state.generated_images.append(None)
-                            st.session_state.generated_images[missing_idx] = img
+                                p = _assemble_image_prompt(page, _va, _fmt, _sc)
+                            jobs.append((idx, p))
+
+                        if jobs:
+                            st.markdown(
+                                f"### 🎨 Generating {len(jobs)} image"
+                                f"{'s' if len(jobs) != 1 else ''} in parallel…"
+                            )
+                            progress = st.progress(0.0, text=f"0 / {len(jobs)} done")
+                            done = 0
+                            errors = {}
+                            logger.info(
+                                f"Parallel image gen: {len(jobs)} jobs, "
+                                f"max_workers={IMAGE_GEN_CONCURRENCY}"
+                            )
+                            with ThreadPoolExecutor(max_workers=IMAGE_GEN_CONCURRENCY) as _pool:
+                                fut_to_idx = {
+                                    _pool.submit(
+                                        _generate_image_threadsafe,
+                                        api_key, prompt, _eff_style, _ref_b64, _or_key,
+                                    ): idx
+                                    for idx, prompt in jobs
+                                }
+                                for fut in as_completed(fut_to_idx):
+                                    idx = fut_to_idx[fut]
+                                    try:
+                                        img, err = fut.result()
+                                    except Exception as e:
+                                        img, err = None, str(e)
+                                    if img is not None:
+                                        st.session_state.generated_images[idx] = img
+                                    else:
+                                        # Placeholder so downstream layout still works;
+                                        # user can hit Regenerate on the failed page.
+                                        st.session_state.generated_images[idx] = Image.new(
+                                            "RGB", (384, 512), color=(200, 200, 200)
+                                        )
+                                        errors[idx] = {
+                                            "error": err or "Unknown",
+                                            "full_error": err or "Unknown",
+                                            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+                                            "attempt": 1,
+                                        }
+                                        logger.error(f"Image gen failed for page {idx+1}: {err}")
+                                    done += 1
+                                    progress.progress(
+                                        done / len(jobs),
+                                        text=f"{done} / {len(jobs)} done",
+                                    )
+
+                            # Merge errors into session state
+                            for idx, info in errors.items():
+                                st.session_state.image_generation_errors[idx] = info
+
                             _save_images_now()
                             st.rerun()
         

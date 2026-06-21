@@ -309,7 +309,13 @@ def call_gemini_image(
                                 model_success = True
                                 break
                             elif r.status_code == 429:
-                                wait = 60 * (_attempt + 1)
+                                # Honour Retry-After if Cashfree sends it,
+                                # else exponential backoff (8s, 20s, 45s).
+                                _ra = r.headers.get("Retry-After", "")
+                                try:
+                                    wait = int(_ra) if _ra else [8, 20, 45][_attempt]
+                                except ValueError:
+                                    wait = [8, 20, 45][_attempt]
                                 logger.warning(f"Vertex Gemini image {model} rate limited (429), waiting {wait}s (attempt {_attempt+1}/3)")
                                 time.sleep(wait)
                                 continue
@@ -358,7 +364,11 @@ def call_gemini_image(
                             vertex_img_errors.append(f"{model}: 200 but no image in response")
                             break
                         elif r.status_code == 429:
-                            wait = 60 * (_attempt + 1)
+                            _ra = r.headers.get("Retry-After", "")
+                            try:
+                                wait = int(_ra) if _ra else [8, 20, 45][_attempt]
+                            except ValueError:
+                                wait = [8, 20, 45][_attempt]
                             logger.warning(f"Vertex Imagen {model} rate limited (429), waiting {wait}s (attempt {_attempt+1}/3)")
                             time.sleep(wait)
                             continue

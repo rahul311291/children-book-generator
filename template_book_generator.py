@@ -2361,25 +2361,21 @@ def generate_template_book(api_key: str, book_data: Dict):
             if not image_url:
                 # Enforce payment gate: only generate images up to gen_limit
                 if idx < gen_limit:
-                    # Retry logic: try up to 2 times with a 60s pause on failure
+                    # Retry logic: 2 attempts with a SHORT 8s pause on failure.
+                    # Hard rate-limit responses (429) are handled by exponential
+                    # backoff inside vertex_client — we don't need a global
+                    # proactive sleep here. The old 60s-every-3-images pause
+                    # cost 4 minutes on a 12-page book for no real benefit.
                     for _attempt in range(2):
                         image_url = generate_page_image(api_key, personalized_image_prompt, reference_image_base64, openrouter_key=openrouter_key)
                         if image_url:
                             break
                         if _attempt == 0:
-                            status_text.text(f"Retrying page {idx + 1} after a brief pause...")
-                            _time.sleep(60)
+                            status_text.text(f"Retrying page {idx + 1}…")
+                            _time.sleep(8)
 
-                    if image_url:
-                        _images_generated_since_pause += 1
-                        # Contribute to shared pool if generic
-                        if use_shared_pool:
-                            save_to_shared_pool(template_id, page['page_number'], age_group, gender, image_url)
-                        # Rate-limit pause every 3 generated images
-                        if _images_generated_since_pause >= 3 and idx < gen_limit - 1:
-                            _images_generated_since_pause = 0
-                            status_text.text(f"Page {idx + 1} done. Preparing next batch...")
-                            _time.sleep(60)
+                    if image_url and use_shared_pool:
+                        save_to_shared_pool(template_id, page['page_number'], age_group, gender, image_url)
                 else:
                     image_url = None
 
@@ -2905,17 +2901,11 @@ def display_template_book_preview(book_data: Dict, api_key: Optional[str] = None
                         if img_url:
                             break
                         if _attempt == 0:
-                            status.text(f"Retrying page {pidx + 1}...")
-                            _time_rem.sleep(60)
+                            status.text(f"Retrying page {pidx + 1}…")
+                            _time_rem.sleep(8)
 
-                    if img_url:
-                        _gen_count += 1
-                        if use_pool_rem:
-                            save_to_shared_pool(template_id_rem, page.get("page_number", pidx + 1), age_group_rem, gender_rem, img_url)
-                        if _gen_count >= 3 and count < len(pages_without_images) - 1:
-                            _gen_count = 0
-                            status.text(f"Page {pidx + 1} done. Preparing next batch...")
-                            _time_rem.sleep(60)
+                    if img_url and use_pool_rem:
+                        save_to_shared_pool(template_id_rem, page.get("page_number", pidx + 1), age_group_rem, gender_rem, img_url)
 
                 if img_url:
                     book_data["pages"][pidx]["image_url"] = img_url
