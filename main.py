@@ -289,31 +289,16 @@ def _cashfree_dropin_html(payment_session_id: str, order_id: str) -> str:
     var _timeoutHandle = null;
 
     // ── Mobile detection ────────────────────────────────────────────────────
-    // On mobile: use _blank (new tab) — UPI deep links work, no iframe scroll issues
+    // On mobile: use _self (top-level redirect, SAME tab) — UPI deep links fire
+    //   reliably from top-level navigation; user returns to the same tab from
+    //   their UPI app, Cashfree redirects back here, Streamlit reruns and
+    //   verifies the payment via query params. No tab juggling, no
+    //   cross-iframe BroadcastChannel handoff (which was silently failing
+    //   because Streamlit's components iframe sandbox blocks
+    //   window.parent.location writes from a different origin).
     // On desktop: use _modal (overlay) — no popup blocker, stays in-page
     var _isMobile = /iPhone|iPad|iPod|Android|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-    var _redirectTarget = _isMobile ? "_blank" : "_modal";
-
-    // ── BroadcastChannel: new tab posts 'PAID' after Cashfree returns ──────
-    // Only needed when using _blank (mobile)
-    var _channel = null;
-    if (_isMobile) {{
-      try {{
-        _channel = new BroadcastChannel("cbg_pay_" + ORDER_ID);
-        _channel.onmessage = function(e) {{
-          if (e.data === "PAID" && !_done) {{
-            _done = true;
-            if (_timeoutHandle) clearTimeout(_timeoutHandle);
-            _channel.close();
-            setMsg("✅ Payment confirmed! Loading your book…", "");
-            document.getElementById("spinner").style.display = "block";
-            document.getElementById("retry-btn").style.display = "none";
-            window.parent.location.search =
-              "?cf_order_id=" + encodeURIComponent(ORDER_ID) + "&cf_status=SUCCESS";
-          }}
-        }};
-      }} catch(e) {{/* BroadcastChannel not supported — fallback button will appear */}}
-    }}
+    var _redirectTarget = _isMobile ? "_self" : "_modal";
 
     // ── 60-second fallback: reveal the manual verify button ────────────────
     function startFallbackTimer() {{
@@ -337,8 +322,8 @@ def _cashfree_dropin_html(payment_session_id: str, order_id: str) -> str:
       document.getElementById("spinner").style.display = "block";
 
       if (_isMobile) {{
-        setMsg("Opening payment…",
-               "A new tab will open. GPay, PhonePe & all UPI apps work there.");
+        setMsg("Redirecting to secure checkout…",
+               "You'll be taken to Cashfree. GPay, PhonePe & all UPI apps work — you'll come back here automatically after paying.");
       }} else {{
         setMsg("Opening secure checkout…", "Complete your payment in the overlay.");
       }}
@@ -370,12 +355,10 @@ def _cashfree_dropin_html(payment_session_id: str, order_id: str) -> str:
               showErr("Payment error: " + (result.error.message || code));
             }}
           }} else {{
-            // Mobile _blank: new tab opened; BroadcastChannel handles auto-update
-            document.getElementById("spinner").style.display = "none";
-            setMsg("Payment opened in a new tab",
-                   "Complete payment there. This page updates automatically when done.");
-            document.getElementById("retry-btn").style.display = "inline-block";
-            document.getElementById("retry-btn").innerText = "🔄 Reopen payment tab";
+            // Defensive fallback: SDK returned without paymentDetails or
+            // error. With _self the page should already be navigating away.
+            document.getElementById("spinner").style.display = "block";
+            setMsg("Redirecting to payment…", "");
           }}
         }}).catch(function(e) {{
           var msg = e.message || String(e);
