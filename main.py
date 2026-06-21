@@ -283,15 +283,28 @@ def _cashfree_dropin_html(payment_session_id: str, order_id: str) -> str:
       setMsg("Payment could not be opened", "");
     }}
 
-    var _done = false;   // set true once payment resolves (success or failure)
+    var _done = false;
     var _timeoutHandle = null;
 
-    function markDone() {{
-      _done = true;
-      if (_timeoutHandle) {{ clearTimeout(_timeoutHandle); _timeoutHandle = null; }}
-    }}
+    // ── BroadcastChannel: new tab posts 'PAID' after Cashfree returns ──────
+    var _channel = null;
+    try {{
+      _channel = new BroadcastChannel("cbg_pay_" + ORDER_ID);
+      _channel.onmessage = function(e) {{
+        if (e.data === "PAID" && !_done) {{
+          _done = true;
+          if (_timeoutHandle) clearTimeout(_timeoutHandle);
+          _channel.close();
+          setMsg("✅ Payment confirmed! Loading your book…", "");
+          document.getElementById("spinner").style.display = "block";
+          document.getElementById("retry-btn").style.display = "none";
+          window.parent.location.search =
+            "?cf_order_id=" + encodeURIComponent(ORDER_ID) + "&cf_status=SUCCESS";
+        }}
+      }};
+    }} catch(e) {{/* BroadcastChannel not supported — fallback button will appear */}}
 
-    // After 60 s with no resolution, signal Streamlit to reveal the manual fallback button
+    // ── 60-second fallback: reveal the manual verify button ────────────────
     function startFallbackTimer() {{
       _timeoutHandle = setTimeout(function() {{
         if (!_done) {{
@@ -305,42 +318,46 @@ def _cashfree_dropin_html(payment_session_id: str, order_id: str) -> str:
       document.getElementById("err").style.display = "none";
       document.getElementById("retry-btn").style.display = "none";
       document.getElementById("spinner").style.display = "block";
-      setMsg("Opening Cashfree checkout…", "Please wait while your secure payment window loads");
+      setMsg("Opening Cashfree checkout…",
+             "A new tab will open for payment. GPay, Paytm & all UPI apps work there.");
 
       try {{
         var cashfree = Cashfree({{ mode: CF_MODE }});
+
+        // ── Use _blank so UPI deep-links (GPay/Paytm) work in the new tab ──
+        // The new tab is a real browser window with no iframe sandbox, so
+        // UPI apps open correctly. After payment, Cashfree redirects the new
+        // tab to our return_url which posts a BroadcastChannel message back here.
         cashfree.checkout({{
           paymentSessionId: SESSION_ID,
-          redirectTarget: "_modal"
+          redirectTarget: "_blank"
         }}).then(function(result) {{
+          // _blank doesn't resolve promise with paymentDetails —
+          // we rely on BroadcastChannel from the new tab instead.
+          // If new tab was blocked, fall through to show retry.
           if (result && result.paymentDetails) {{
-            markDone();
-            document.getElementById("spinner").style.display = "none";
-            setMsg("✅ Payment successful! Confirming your order…", "");
+            // Some browsers may still return this
+            _done = true;
+            if (_timeoutHandle) clearTimeout(_timeoutHandle);
+            setMsg("✅ Payment successful! Confirming…", "");
             window.parent.location.search =
               "?cf_order_id=" + encodeURIComponent(ORDER_ID) + "&cf_status=SUCCESS";
-          }} else if (result && result.error) {{
-            markDone();
-            var errMsg = result.error.message || "Payment was not completed. Please try again.";
-            showErr("❌ " + errMsg);
           }} else {{
-            // Modal dismissed — let user reopen; keep 60s timer running
             document.getElementById("spinner").style.display = "none";
-            setMsg("Payment window closed", "Click below to reopen.");
+            setMsg("Payment window opened in a new tab",
+                   "Complete the payment there, then return here. The page updates automatically.");
             document.getElementById("retry-btn").style.display = "inline-block";
-            document.getElementById("retry-btn").innerText = "🔒 Open payment again";
+            document.getElementById("retry-btn").innerText = "🔄 Reopen payment tab";
           }}
         }}).catch(function(e) {{
-          markDone();
-          showErr("Payment error: " + (e.message || String(e)));
+          showErr("Could not open payment: " + (e.message || String(e)));
         }});
       }} catch(e) {{
-        markDone();
         showErr("Could not initialise payment: " + (e.message || String(e)));
       }}
     }}
 
-    // Auto-trigger as soon as SDK is ready; start 60 s fallback timer simultaneously
+    // Auto-trigger on load + start 60-second fallback timer
     window.addEventListener("load", function() {{
       setTimeout(function() {{
         startPayment();
@@ -1050,89 +1067,66 @@ def list_available_models(api_key: str):
         st.warning(f"Could not list models: {e}")
         return []
 
-def refine_story_with_followup(api_key: str, existing_story: Dict, followup_prompt: str, 
+def refine_story_with_followup(api_key: str, existing_story: Dict, followup_prompt: str,
                                 child_name: str, age: int, language: str) -> Dict:
-    """Refine existing story based on follow-up prompt - simplified direct approach."""
+    """
+    Edit the existing story boldly based on the user's revision instructions.
+    The model receives the current story as REFERENCE but is explicitly told to
+    make deep, sweeping changes — not cosmetic tweaks.  Pages that don't need
+    changing can stay; pages that do should be fully rewritten.  The model may
+    also add or remove pages to properly honour the instructions.
+    """
     try:
-        logger.info(f"Starting story refinement for {child_name} with prompt: {followup_prompt[:100]}...")
-        
-        # Get existing story structure
-        existing_pages = existing_story.get("pages", [])
-        existing_title = existing_story.get("title", "Story")
+        logger.info(f"Editing story for '{child_name}' — instruction: {followup_prompt[:120]}…")
+
+        existing_pages         = existing_story.get("pages", [])
         existing_visual_anchor = existing_story.get("visual_anchor", "")
+        existing_title         = existing_story.get("title", "")
 
-        # Build a lean version of the story for context — strip assembled image_prompt
-        # (they are very long and eat into the max_tokens budget; we re-assemble them lazily)
-        _lean_pages = [
-            {k: v for k, v in p.items() if k != "image_prompt"}
-            for p in existing_pages
-        ]
-        lean_story_for_context = {
-            **{k: v for k, v in existing_story.items() if k != "pages"},
-            "pages": _lean_pages,
-        }
-        existing_story_json = json.dumps(lean_story_for_context, indent=2, ensure_ascii=False)
-        logger.info(f"Original story has {len(existing_pages)} pages")
-        
-        # Detect if this is about medical/health issues
-        is_medical_issue = any(keyword in followup_prompt.lower() for keyword in [
-            'doctor', 'medical', 'hospital', 'clinic', 'medicine', 'treatment', 
-            'ginger', 'home remedy', 'home made', 'remedy', 'cure', 'sick', 'illness'
-        ])
-        
-        medical_instruction = ""
-        if is_medical_issue:
-            medical_instruction = """
-**CRITICAL MEDICAL CONTEXT:**
-- If the instructions mention going to a doctor, hospital, or medical professional, you MUST replace any home remedies (like ginger, turmeric, home-made solutions) with proper medical care
-- The story should show the character visiting a doctor or medical professional when health issues arise
-- Do NOT use home remedies as the primary solution for medical problems
-- Medical issues should be resolved through professional medical care, not home remedies
-"""
-        
-        # Strong, explicit prompt that forces changes
-        prompt = f"""You are a story editor. Your job is to MODIFY an existing children's story based on specific instructions. You MUST make changes - returning the same story is NOT acceptable.
+        # Strip heavy fields to keep prompt compact
+        _lean_pages = [{k: v for k, v in p.items() if k != "image_prompt"}
+                       for p in existing_pages]
+        lean_story  = {**{k: v for k, v in existing_story.items() if k != "pages"},
+                       "pages": _lean_pages}
+        story_json  = json.dumps(lean_story, indent=2, ensure_ascii=False)
 
-**CRITICAL INSTRUCTIONS - YOU MUST FOLLOW THESE EXACTLY:**
+        prompt = f"""You are a professional children's book editor with full creative authority.
+Your job is to BOLDLY REWRITE this story based on the parent's instructions below.
+
+══════════════════════════════════════════════════════
+PARENT'S REVISION INSTRUCTIONS (apply these in full):
+══════════════════════════════════════════════════════
 {followup_prompt}
-{medical_instruction}
+══════════════════════════════════════════════════════
 
-**ABSOLUTE REQUIREMENTS (DO NOT SKIP):**
-1. You MUST change the story text in at least 5-7 pages (not just 1-2 pages)
-2. DO NOT copy the original text - rewrite it with the requested changes
-3. If instructions mention "doctor" or "medical", you MUST replace ALL mentions of home remedies (ginger, turmeric, etc.) with doctor visits
-4. If the original has "ginger" anywhere, and instructions want "doctor", change EVERY instance
-5. Keep the same JSON structure (10 pages, visual_anchor, etc.)
-6. Keep visual_anchor exactly as is: {existing_visual_anchor}
-7. The modified story MUST be clearly different - someone reading both should notice the changes immediately
+EDITING RULES — READ EVERY ONE:
+1. SCOPE OF CHANGE: Apply the instructions to the WHOLE story, not just 1-2 pages.
+   If the instruction changes the theme, rewrite every page that needs it.
+   If the instruction adds a new element (character, place, twist), weave it through
+   the entire arc — introduction, middle, and resolution.
+2. BOLD EDITS ONLY: Do NOT make cosmetic tweaks (changing one word per page).
+   Fully rewrite any page whose meaning, action, or feel must change.
+3. PAGE COUNT: You may ADD pages if the story needs more room, or REMOVE pages if
+   the story becomes tighter. There is no fixed page count — write what the story needs.
+4. TITLE: Update the title if the story direction has changed significantly.
+5. WHAT TO KEEP: Keep the child's name ({child_name}), the visual_anchor (for
+   illustration consistency), and the overall JSON structure.
+   Keep pages that genuinely don't need changing — don't rewrite for the sake of it.
+6. OUTPUT FORMAT: Return ONLY valid JSON — same structure as the input below.
+   No markdown fences, no commentary, no extra text before or after.
 
-**ORIGINAL STORY (DO NOT COPY THIS - MODIFY IT):**
-{existing_story_json}
+CURRENT STORY (for reference — edit this, don't copy it):
+{story_json}
 
-**YOUR TASK:**
-1. Read the instructions carefully: {followup_prompt}
-2. Go through EACH page of the original story
-3. Modify the "text" field to incorporate the requested changes
-4. Make sure at least 5-7 pages have visible changes
-5. If instructions mention "doctor" and original has "ginger" or "home remedy", replace those completely
-
-**SPECIFIC EXAMPLES OF REQUIRED CHANGES:**
-- Original: "Mama gave ginger tea to help" → Modified: "Mama took [child] to the doctor for help"
-- Original: "Grandma's home remedy worked" → Modified: "The doctor's treatment worked"
-- Original: "They tried turmeric" → Modified: "They visited the clinic"
-
-**OUTPUT:**
-Return ONLY the modified JSON. Every page's "text" field should reflect the requested changes. Do NOT return the same JSON. Output ONLY valid JSON, no markdown, no explanations."""
+Now write the revised story JSON:"""
 
         from vertex_client import call_gemini_text
-        # Use high token limit — response must contain full story JSON (~10 pages)
-        response_text = call_gemini_text(prompt, api_key=api_key, temperature=0.8, max_tokens=32768)
+        response_text = call_gemini_text(prompt, api_key=api_key, temperature=0.9, max_tokens=32768)
         if response_text is None:
-            st.error("❌ Could not refine story. Check your API key or Vertex AI credentials.")
+            st.error("❌ Could not edit story. Check your API key or Vertex AI credentials.")
             return None
 
-        # Extract JSON
-        original_response = response_text
+        # Strip markdown fences if model added them
         if "```json" in response_text:
             response_text = response_text.split("```json")[1].split("```")[0].strip()
         elif "```" in response_text:
@@ -1140,57 +1134,33 @@ Return ONLY the modified JSON. Every page's "text" field should reflect the requ
 
         try:
             story_data = json.loads(response_text)
-            logger.info("Successfully parsed refined story JSON")
         except json.JSONDecodeError as e:
-            error_msg = f"Failed to parse JSON response: {e}"
-            logger.error(f"{error_msg}. Response: {original_response[:500]}")
-            st.error(f"❌ {error_msg}")
-            st.expander("View API Response", expanded=False).code(original_response[:2000])
+            logger.error(f"JSON parse error in refine: {e} — response: {response_text[:400]}")
+            st.error(f"❌ Failed to parse edited story: {e}")
+            with st.expander("Raw model output"):
+                st.code(response_text[:3000])
             return None
-        
-        # Strip any pre-assembled image_prompt from refined pages — they will be
-        # assembled lazily in Step 2 just before each image is generated.
+
+        # Strip any assembled image_prompts — re-assembled lazily before image gen
         for page in story_data.get("pages", []):
             page.pop("image_prompt", None)
 
-        # Verify we got a valid story structure
-        if not story_data.get("pages") or len(story_data.get("pages", [])) == 0:
-            error_msg = "Refined story has no pages"
-            logger.error(error_msg)
-            st.error(f"❌ {error_msg}. Please try again.")
+        if not story_data.get("pages"):
+            st.error("❌ Edited story has no pages. Please try again.")
             return None
-        
-        # Log comparison to detect if story actually changed
-        original_texts = [p.get("text", "").strip() for p in existing_pages]
-        refined_texts = [p.get("text", "").strip() for p in story_data.get("pages", [])]
-        changes_detected = original_texts != refined_texts
-        
-        # Count how many pages actually changed
-        changed_pages = sum(1 for i, (orig, ref) in enumerate(zip(original_texts, refined_texts)) if orig != ref)
-        
-        logger.info(f"Story refinement complete. Pages: {len(story_data.get('pages', []))}, Total pages changed: {changed_pages}/{len(original_texts)}")
-        
-        if not changes_detected:
-            logger.warning("⚠️ Refined story appears identical to original - AI may not have applied changes")
-            logger.warning(f"Original story preview: {original_texts[0][:100] if original_texts else 'N/A'}")
-            logger.warning(f"Refined story preview: {refined_texts[0][:100] if refined_texts else 'N/A'}")
-        else:
-            logger.info(f"✅ Story successfully modified! {changed_pages} pages changed.")
-            # Log a sample of changes
-            for i, (orig, ref) in enumerate(zip(original_texts, refined_texts)):
-                if orig != ref:
-                    logger.info(f"Page {i+1} changed: '{orig[:50]}...' -> '{ref[:50]}...'")
-                    break  # Just log first change
-        
+
+        # Always restore the existing visual_anchor so images stay consistent
+        if existing_visual_anchor:
+            story_data["visual_anchor"] = existing_visual_anchor
+
+        n_new = len(story_data.get("pages", []))
+        n_old = len(existing_pages)
+        logger.info(f"Story edit complete — {n_old} → {n_new} pages")
         return story_data
-        
+
     except Exception as e:
-        error_msg = f"Error refining story: {e}"
-        logger.error(error_msg, exc_info=True)
-        st.error(f"❌ {error_msg}")
-        import traceback
-        with st.expander("Error Details", expanded=False):
-            st.code(traceback.format_exc())
+        logger.error(f"refine_story_with_followup error: {e}", exc_info=True)
+        st.error(f"❌ Error editing story: {e}")
         return None
 
 def regenerate_story_from_page(api_key: str, existing_story: Dict, start_page_idx: int, 
@@ -2516,13 +2486,51 @@ def main():
     # Payment return: Cashfree JS Drop-in SDK sets ?cf_order_id=...&cf_status=SUCCESS|FAILED
     _cf_order_qp = st.query_params.get("cf_order_id")
     _cf_status_qp = st.query_params.get("cf_status", "")
+    _cf_tab_qp = st.query_params.get("cf_tab", "")
     _cf_show_verify = st.query_params.get("cf_show_verify", "")
+
+    # ── Payment return in the new tab (opened by redirectTarget: "_blank") ──
+    # Cashfree redirects here after checkout. Verify, broadcast to original tab, close.
+    if _cf_order_qp and _cf_status_qp == "SUCCESS" and _cf_tab_qp == "payment":
+        st.query_params.clear()
+        try:
+            from payments import verify_cashfree_order as _vco2, confirm_payment_and_credit as _cpc2
+            _s2 = _vco2(_cf_order_qp)
+            if _s2 == "PAID":
+                _cpc2(_cf_order_qp, get_current_user_id())
+        except Exception as _e2:
+            logger.warning(f"Payment tab verify: {_e2}")
+        # Broadcast to the original tab's components.html iframe and close this tab
+        components.html(f"""
+        <script>
+          function broadcast() {{
+            try {{
+              var ch = new BroadcastChannel("cbg_pay_{_cf_order_qp}");
+              ch.postMessage("PAID");
+              ch.close();
+            }} catch(e) {{}}
+          }}
+          broadcast();
+          setTimeout(broadcast, 600);
+          setTimeout(broadcast, 1500);
+          setTimeout(function() {{ window.close(); }}, 2500);
+        </script>
+        """, height=0)
+        st.markdown("""
+        <div style='text-align:center;padding:60px 24px;font-family:sans-serif;'>
+          <div style='font-size:56px;'>✅</div>
+          <h2 style='color:#166534;margin:16px 0 8px;'>Payment Successful!</h2>
+          <p style='color:#4b5563;font-size:16px;'>
+            You can close this tab — your story page will update automatically.</p>
+        </div>""", unsafe_allow_html=True)
+        st.stop()
+
     if _cf_order_qp and _cf_show_verify == "1":
-        # 60-second timeout fired — no payment yet; reveal the manual fallback button
+        # 60-second timeout fired — reveal the manual fallback button
         st.query_params.pop("cf_order_id", None)
         st.query_params.pop("cf_show_verify", None)
         st.session_state.cf_show_verify_button = True
-    if _cf_order_qp and _cf_status_qp:
+    if _cf_order_qp and _cf_status_qp and _cf_tab_qp != "payment":
         st.query_params.pop("cf_order_id", None)
         st.query_params.pop("cf_status", None)
         st.query_params.pop("cf_error", None)
