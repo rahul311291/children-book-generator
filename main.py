@@ -325,6 +325,12 @@ def _cashfree_dropin_html(payment_session_id: str, order_id: str) -> str:
       }}, 60000);
     }}
 
+    function resetAndRetry() {{
+      // Session is stale/expired — tell parent to clear it so a fresh order is created
+      window.parent.location.search =
+        "?cf_order_id=" + encodeURIComponent(ORDER_ID) + "&cf_reset=1";
+    }}
+
     function startPayment() {{
       document.getElementById("err").style.display = "none";
       document.getElementById("retry-btn").style.display = "none";
@@ -350,6 +356,19 @@ def _cashfree_dropin_html(payment_session_id: str, order_id: str) -> str:
             setMsg("✅ Payment successful! Confirming…", "");
             window.parent.location.search =
               "?cf_order_id=" + encodeURIComponent(ORDER_ID) + "&cf_status=SUCCESS";
+          }} else if (result && result.error) {{
+            // SDK returned an error object (stale session, invalid endpoint, etc.)
+            var code = (result.error.code || "");
+            if (code === "request_failed" || code === "api_connection_error") {{
+              // Payment session is expired/consumed — must create a new order
+              document.getElementById("spinner").style.display = "none";
+              setMsg("Session expired", "Your payment session timed out. Starting fresh…");
+              document.getElementById("retry-btn").style.display = "inline-block";
+              document.getElementById("retry-btn").innerText = "🔄 Start new payment";
+              document.getElementById("retry-btn").onclick = resetAndRetry;
+            }} else {{
+              showErr("Payment error: " + (result.error.message || code));
+            }}
           }} else {{
             // Mobile _blank: new tab opened; BroadcastChannel handles auto-update
             document.getElementById("spinner").style.display = "none";
@@ -359,7 +378,18 @@ def _cashfree_dropin_html(payment_session_id: str, order_id: str) -> str:
             document.getElementById("retry-btn").innerText = "🔄 Reopen payment tab";
           }}
         }}).catch(function(e) {{
-          showErr("Could not open payment: " + (e.message || String(e)));
+          var msg = e.message || String(e);
+          // "endpoint or method is not valid" → stale session, must reset
+          if (msg.indexOf("endpoint") !== -1 || msg.indexOf("not valid") !== -1 ||
+              msg.indexOf("request_failed") !== -1) {{
+            document.getElementById("spinner").style.display = "none";
+            setMsg("Session expired", "Your payment session timed out. Starting fresh…");
+            document.getElementById("retry-btn").style.display = "inline-block";
+            document.getElementById("retry-btn").innerText = "🔄 Start new payment";
+            document.getElementById("retry-btn").onclick = resetAndRetry;
+          }} else {{
+            showErr("Could not open payment: " + msg);
+          }}
         }});
       }} catch(e) {{
         showErr("Could not initialise payment: " + (e.message || String(e)));
@@ -2498,6 +2528,18 @@ def main():
     _cf_status_qp = st.query_params.get("cf_status", "")
     _cf_tab_qp = st.query_params.get("cf_tab", "")
     _cf_show_verify = st.query_params.get("cf_show_verify", "")
+    _cf_reset = st.query_params.get("cf_reset", "")
+
+    # ── Session expired/stale: JS detected "endpoint not valid" → clear and retry ──
+    if _cf_order_qp and _cf_reset == "1":
+        st.query_params.clear()
+        st.session_state.cf_pending_order_id = None
+        st.session_state.cf_payment_session_id = None
+        st.session_state.cf_order_created_at = None
+        st.session_state.cf_show_verify_button = False
+        st.session_state.pending_payment_gate = None
+        st.toast("⚠️ Payment session expired. Please try again.", icon="⚠️")
+        st.rerun()
 
     # ── Payment return in the new tab (opened by redirectTarget: "_blank") ──
     # Cashfree redirects here after checkout. Verify, broadcast to original tab, close.
