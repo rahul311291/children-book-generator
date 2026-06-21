@@ -595,3 +595,40 @@ def confirm_payment_and_credit(order_or_link_id: str, user_id: str) -> bool:
     except Exception as e:
         logger.error(f"confirm_payment_and_credit: {e}")
         return False
+
+
+# ---------------------------------------------------------------------------
+# Wizard / story snapshot — survives the Cashfree payment redirect on mobile
+# ---------------------------------------------------------------------------
+# On mobile the user is taken away from the app (top-level redirect → Cashfree
+# → UPI app → back). When they return, Streamlit may serve a fresh
+# st.session_state (worker restart, expired cookie, different session cookie
+# after the auth round-trip). Without this snapshot, st.session_state.generated_story
+# is None on return and the rendering tree falls back to the home page even
+# though the payment toast fires. We persist what we need keyed by order_id and
+# rehydrate inside the cf_status=SUCCESS handler in main.py.
+
+def save_book_snapshot(order_id: str, user_id: str, snapshot: dict) -> None:
+    try:
+        from mongo_client import get_db
+        get_db()["book_snapshots"].update_one(
+            {"_id": order_id},
+            {"$set": {
+                "user_id": user_id,
+                "snapshot": snapshot,
+                "created_at": datetime.utcnow(),
+            }},
+            upsert=True,
+        )
+    except Exception as e:
+        logger.warning(f"save_book_snapshot: {e}")
+
+
+def load_book_snapshot(order_id: str) -> Optional[dict]:
+    try:
+        from mongo_client import get_db
+        doc = get_db()["book_snapshots"].find_one({"_id": order_id})
+        return doc.get("snapshot") if doc else None
+    except Exception as e:
+        logger.warning(f"load_book_snapshot: {e}")
+        return None

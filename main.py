@@ -2405,6 +2405,56 @@ def render_custom_wizard():
                 st.rerun()
 
 
+# ---------------------------------------------------------------------------
+# Wizard snapshot keys — persisted before the Cashfree mobile redirect and
+# rehydrated on return so the user lands back on their book, not the home page.
+# Do NOT include generated_images (PIL objects, not JSON-serialisable). Images
+# get regenerated after Step 1.5; the story + wizard inputs are what matter.
+# ---------------------------------------------------------------------------
+WIZARD_SNAPSHOT_KEYS = [
+    # Story itself + approval state
+    "generated_story", "story_approved",
+    "image_prompts_approved", "all_images_approved", "image_approvals",
+    # Wizard inputs (Step 1–4)
+    "wiz_child_name", "wiz_age", "wiz_gender",
+    "wiz_story_type", "wiz_problem", "wiz_image_style", "wiz_language",
+    "wiz_family_structure", "wiz_hero_trait", "wiz_character_choice",
+    "wiz_format_id",
+    "wiz_skin_tone", "wiz_hair_style", "wiz_eye_color", "wiz_outfit",
+    "wizard_step",
+    # Book mode + book context
+    "book_mode",
+    "current_child_name",
+    "selected_book_format",
+    # Payment gate (drives delivery option on return)
+    "pending_payment_gate",
+]
+
+
+def _build_wizard_snapshot() -> dict:
+    """Capture the subset of st.session_state needed to resume after a Cashfree
+    redirect. None / empty values are dropped so they don't accidentally
+    overwrite the live session on restore."""
+    snap = {}
+    for k in WIZARD_SNAPSHOT_KEYS:
+        v = st.session_state.get(k)
+        if v is None or v == "" or v == [] or v == {}:
+            continue
+        snap[k] = v
+    return snap
+
+
+def _restore_wizard_snapshot(snap: dict) -> None:
+    """Fill in missing session_state values from a snapshot. Conservative —
+    never overwrites an already-populated key, so a live session is left alone."""
+    if not snap:
+        return
+    for k, v in snap.items():
+        cur = st.session_state.get(k)
+        if cur is None or cur == "" or cur == [] or cur == {} or cur is False:
+            st.session_state[k] = v
+
+
 def main():
     # ------------------------------------------------------------------ #
     # Cookie-backed persistent sessions (7-day login)
@@ -2577,6 +2627,14 @@ def main():
                 if _ord_status == "PAID":
                     # Also credit / record the purchase
                     _cpc_ord(_cf_order_qp, get_current_user_id())
+                    # Rehydrate wizard state if the round-trip lost the session
+                    # (mobile redirect through Cashfree + UPI app can take long
+                    # enough that Streamlit gives us a fresh session_state).
+                    try:
+                        from payments import load_book_snapshot as _load_snap_ret
+                        _restore_wizard_snapshot(_load_snap_ret(_cf_order_qp))
+                    except Exception as _hse:
+                        logger.warning(f"snapshot restore failed: {_hse}")
                     _ord_gate = st.session_state.get("pending_payment_gate", "download_choice")
                     if _ord_gate == "print_deliver_choice":
                         st.session_state.current_book_payment_status = "print_paid"
@@ -3600,11 +3658,19 @@ def main():
                                       "gate": "download_choice", "child_name": _choice_child},
                         )
                     if _res_dl and _res_dl.get("payment_session_id"):
-                        st.session_state.cf_pending_order_id = _res_dl["order_id"]
+                        _ord_id_dl = _res_dl["order_id"]
+                        st.session_state.cf_pending_order_id = _ord_id_dl
                         st.session_state.cf_payment_session_id = _res_dl["payment_session_id"]
                         st.session_state.cf_order_created_at = time.time()
                         st.session_state.pending_payment_gate = "download_choice"
                         st.session_state.current_book_payment_status = "pending"
+                        # Snapshot the wizard so we can rehydrate after the
+                        # Cashfree redirect (see cf_status=SUCCESS handler).
+                        try:
+                            from payments import save_book_snapshot as _save_snap_dl
+                            _save_snap_dl(_ord_id_dl, _choice_uid, _build_wizard_snapshot())
+                        except Exception as _sse_dl:
+                            logger.warning(f"snapshot save (download) failed: {_sse_dl}")
                         st.rerun()
                     else:
                         st.error((_res_dl or {}).get("error", "Could not initiate payment. Please try again."))
@@ -3635,11 +3701,17 @@ def main():
                                       "gate": "print_deliver_choice", "child_name": _choice_child},
                         )
                     if _res_pd and _res_pd.get("payment_session_id"):
-                        st.session_state.cf_pending_order_id = _res_pd["order_id"]
+                        _ord_id_pd = _res_pd["order_id"]
+                        st.session_state.cf_pending_order_id = _ord_id_pd
                         st.session_state.cf_payment_session_id = _res_pd["payment_session_id"]
                         st.session_state.cf_order_created_at = time.time()
                         st.session_state.pending_payment_gate = "print_deliver_choice"
                         st.session_state.current_book_payment_status = "pending"
+                        try:
+                            from payments import save_book_snapshot as _save_snap_pd
+                            _save_snap_pd(_ord_id_pd, _choice_uid, _build_wizard_snapshot())
+                        except Exception as _sse_pd:
+                            logger.warning(f"snapshot save (print+deliver) failed: {_sse_pd}")
                         st.rerun()
                     else:
                         st.error((_res_pd or {}).get("error", "Could not initiate payment. Please try again."))
