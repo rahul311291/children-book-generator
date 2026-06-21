@@ -172,6 +172,8 @@ if 'cf_pending_order_id' not in st.session_state:
     st.session_state.cf_pending_order_id = None  # Cashfree order ID awaiting payment
 if 'cf_payment_session_id' not in st.session_state:
     st.session_state.cf_payment_session_id = None  # JS SDK session token
+if 'cf_show_verify_button' not in st.session_state:
+    st.session_state.cf_show_verify_button = False  # shown only after 60 s timeout
 if 'book_mode' not in st.session_state:
     st.session_state.book_mode = None  # None, "custom", "template"
 if 'wizard_step' not in st.session_state:
@@ -219,78 +221,91 @@ def _cashfree_dropin_html(payment_session_id: str, order_id: str) -> str:
   <script src="https://sdk.cashfree.com/js/v3/cashfree.js"></script>
   <style>
     * {{ box-sizing: border-box; margin: 0; padding: 0; }}
-    body {{
+    html, body {{
+      width: 100%; height: 100%;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: transparent;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      min-height: 140px;
-      padding: 16px;
-      gap: 12px;
+      background: #f8fafc;
     }}
-    #pay-btn {{
-      background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
-      color: white;
-      border: none;
-      border-radius: 10px;
-      padding: 16px 40px;
-      font-size: 18px;
-      font-weight: 700;
-      cursor: pointer;
-      letter-spacing: 0.3px;
-      box-shadow: 0 4px 14px rgba(37,99,235,0.4);
-      transition: transform .1s, box-shadow .1s;
-      width: 100%;
-      max-width: 360px;
+    #overlay {{
+      position: fixed; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 14px; padding: 24px;
     }}
-    #pay-btn:hover {{ transform: translateY(-1px); box-shadow: 0 6px 18px rgba(37,99,235,0.45); }}
-    #pay-btn:active {{ transform: translateY(0); }}
-    #pay-btn:disabled {{ background: #93c5fd; cursor: not-allowed; box-shadow: none; }}
-    #msg {{
-      font-size: 13px;
-      color: #6b7280;
-      text-align: center;
+    #spinner {{
+      width: 40px; height: 40px;
+      border: 4px solid #e2e8f0;
+      border-top-color: #2563eb;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
     }}
+    @keyframes spin {{ to {{ transform: rotate(360deg); }} }}
+    #msg {{ font-size: 15px; color: #374151; font-weight: 500; text-align: center; }}
+    #sub {{ font-size: 12px; color: #9ca3af; text-align: center; }}
     #err {{
-      background: #fee2e2;
-      color: #991b1b;
-      border-radius: 8px;
-      padding: 10px 16px;
-      font-size: 13px;
-      text-align: center;
-      display: none;
-      width: 100%;
-      max-width: 360px;
+      background: #fee2e2; color: #991b1b;
+      border-radius: 8px; padding: 12px 18px;
+      font-size: 13px; text-align: center;
+      display: none; max-width: 400px;
+    }}
+    #retry-btn {{
+      background: #2563eb; color: white;
+      border: none; border-radius: 8px;
+      padding: 10px 28px; font-size: 14px; font-weight: 600;
+      cursor: pointer; display: none;
     }}
   </style>
 </head>
 <body>
-  <button id="pay-btn" onclick="startPayment()">🔒 Pay Securely with Cashfree</button>
-  <div id="msg">Secure payment powered by Cashfree</div>
-  <div id="err"></div>
+  <div id="overlay">
+    <div id="spinner"></div>
+    <div id="msg">Opening Cashfree checkout…</div>
+    <div id="sub">Please wait while your secure payment window loads</div>
+    <div id="err"></div>
+    <button id="retry-btn" onclick="startPayment()">Try again</button>
+  </div>
 
   <script>
     var SESSION_ID = "{payment_session_id}";
     var ORDER_ID   = "{order_id}";
     var CF_MODE    = "{mode}";
-    var paying = false;
+
+    function setMsg(msg, sub) {{
+      document.getElementById("msg").innerText = msg;
+      if (sub !== undefined) document.getElementById("sub").innerText = sub || "";
+    }}
 
     function showErr(msg) {{
-      var e = document.getElementById("err");
-      e.innerText = msg; e.style.display = "block";
-      document.getElementById("pay-btn").disabled = false;
-      document.getElementById("msg").innerText = "Secure payment powered by Cashfree";
+      document.getElementById("spinner").style.display = "none";
+      document.getElementById("err").innerText = msg;
+      document.getElementById("err").style.display = "block";
+      document.getElementById("retry-btn").style.display = "inline-block";
+      setMsg("Payment could not be opened", "");
+    }}
+
+    var _done = false;   // set true once payment resolves (success or failure)
+    var _timeoutHandle = null;
+
+    function markDone() {{
+      _done = true;
+      if (_timeoutHandle) {{ clearTimeout(_timeoutHandle); _timeoutHandle = null; }}
+    }}
+
+    // After 60 s with no resolution, signal Streamlit to reveal the manual fallback button
+    function startFallbackTimer() {{
+      _timeoutHandle = setTimeout(function() {{
+        if (!_done) {{
+          window.parent.location.search =
+            "?cf_order_id=" + encodeURIComponent(ORDER_ID) + "&cf_show_verify=1";
+        }}
+      }}, 60000);
     }}
 
     function startPayment() {{
-      if (paying) return;
-      paying = true;
-      var btn = document.getElementById("pay-btn");
-      btn.disabled = true;
-      document.getElementById("msg").innerText = "Opening payment window…";
       document.getElementById("err").style.display = "none";
+      document.getElementById("retry-btn").style.display = "none";
+      document.getElementById("spinner").style.display = "block";
+      setMsg("Opening Cashfree checkout…", "Please wait while your secure payment window loads");
 
       try {{
         var cashfree = Cashfree({{ mode: CF_MODE }});
@@ -299,29 +314,39 @@ def _cashfree_dropin_html(payment_session_id: str, order_id: str) -> str:
           redirectTarget: "_modal"
         }}).then(function(result) {{
           if (result && result.paymentDetails) {{
-            document.getElementById("msg").innerText = "✅ Payment done! Confirming…";
-            // Signal Streamlit parent to verify + proceed
+            markDone();
+            document.getElementById("spinner").style.display = "none";
+            setMsg("✅ Payment successful! Confirming your order…", "");
             window.parent.location.search =
               "?cf_order_id=" + encodeURIComponent(ORDER_ID) + "&cf_status=SUCCESS";
           }} else if (result && result.error) {{
-            var errMsg = (result.error.message) || "Payment was not completed. Please try again.";
-            paying = false;
+            markDone();
+            var errMsg = result.error.message || "Payment was not completed. Please try again.";
             showErr("❌ " + errMsg);
           }} else {{
-            // Modal closed without payment — let user retry
-            paying = false;
-            btn.disabled = false;
-            document.getElementById("msg").innerText = "Click above to open the payment window.";
+            // Modal dismissed — let user reopen; keep 60s timer running
+            document.getElementById("spinner").style.display = "none";
+            setMsg("Payment window closed", "Click below to reopen.");
+            document.getElementById("retry-btn").style.display = "inline-block";
+            document.getElementById("retry-btn").innerText = "🔒 Open payment again";
           }}
         }}).catch(function(e) {{
-          paying = false;
+          markDone();
           showErr("Payment error: " + (e.message || String(e)));
         }});
       }} catch(e) {{
-        paying = false;
-        showErr("Could not load payment gateway: " + (e.message || String(e)));
+        markDone();
+        showErr("Could not initialise payment: " + (e.message || String(e)));
       }}
     }}
+
+    // Auto-trigger as soon as SDK is ready; start 60 s fallback timer simultaneously
+    window.addEventListener("load", function() {{
+      setTimeout(function() {{
+        startPayment();
+        startFallbackTimer();
+      }}, 400);
+    }});
   </script>
 </body>
 </html>"""
@@ -858,6 +883,7 @@ def reset_story_state():
     st.session_state.book_delivery_option = None
     st.session_state.cf_pending_order_id = None
     st.session_state.cf_payment_session_id = None
+    st.session_state.cf_show_verify_button = False
     # Clear template-related states
     if "template_generated_book" in st.session_state:
         del st.session_state.template_generated_book
@@ -2490,10 +2516,17 @@ def main():
     # Payment return: Cashfree JS Drop-in SDK sets ?cf_order_id=...&cf_status=SUCCESS|FAILED
     _cf_order_qp = st.query_params.get("cf_order_id")
     _cf_status_qp = st.query_params.get("cf_status", "")
-    if _cf_order_qp:
+    _cf_show_verify = st.query_params.get("cf_show_verify", "")
+    if _cf_order_qp and _cf_show_verify == "1":
+        # 60-second timeout fired — no payment yet; reveal the manual fallback button
+        st.query_params.pop("cf_order_id", None)
+        st.query_params.pop("cf_show_verify", None)
+        st.session_state.cf_show_verify_button = True
+    if _cf_order_qp and _cf_status_qp:
         st.query_params.pop("cf_order_id", None)
         st.query_params.pop("cf_status", None)
         st.query_params.pop("cf_error", None)
+        st.session_state.cf_show_verify_button = False  # clear if payment resolved
         if _cf_status_qp == "SUCCESS":
             try:
                 from payments import verify_cashfree_order as _vco, confirm_payment_and_credit as _cpc_ord
@@ -3409,20 +3442,40 @@ def main():
                 st.session_state.cf_pending_order_id = None
 
             if _pending_session_id and _pending_order_id:
-                # Drop-in checkout is active — render the payment form inline
+                # Cashfree modal checkout — payment auto-triggers inside the iframe
                 _opt_label = "📥 Download PDF" if _pending_gate == "download_choice" else "📬 Print & Deliver"
                 _opt_price = _dl_price if _pending_gate == "download_choice" else _pd_price
-                st.info(f"💳 Completing payment for: **{_opt_label} — ₹{_opt_price}**")
+                st.markdown(
+                    f"""<div style='background:#f0fdf4;border:1px solid #86efac;border-radius:10px;
+                    padding:14px 18px;margin-bottom:12px;'>
+                    <span style='font-size:20px;'>🔒</span>
+                    <strong style='color:#166534;margin-left:8px;'>
+                    Secure payment — {_opt_label} · ₹{_opt_price}</strong><br>
+                    <span style='color:#4b5563;font-size:13px;margin-left:30px;'>
+                    Complete your payment below. The page will update automatically once done.</span>
+                    </div>""",
+                    unsafe_allow_html=True,
+                )
                 components.html(
                     _cashfree_dropin_html(_pending_session_id, _pending_order_id),
-                    height=180,
+                    height=720,
                     scrolling=False,
                 )
-                st.caption("Payment is processed securely by Cashfree. The form above may take a few seconds to load.")
-                st.divider()
-                col_verify, col_cancel = st.columns(2)
-                with col_verify:
-                    if st.button("✅ Verify payment manually", use_container_width=True, key="choice_verify"):
+                # Cancel — unobtrusive small button
+                if st.button("✖ Cancel & choose again", use_container_width=False,
+                             key="choice_cancel"):
+                    st.session_state.cf_pending_order_id = None
+                    st.session_state.cf_payment_session_id = None
+                    st.session_state.pending_payment_gate = None
+                    st.session_state.cf_show_verify_button = False
+                    st.rerun()
+
+                # Fallback verify button — only visible after 60 s timeout from JS
+                if st.session_state.get("cf_show_verify_button"):
+                    st.warning("⏱ Payment is taking longer than expected. If you've completed "
+                               "the payment, click below to confirm.")
+                    if st.button("✅ I've paid — confirm my payment", type="primary",
+                                 use_container_width=True, key="choice_verify"):
                         _v = _choice_verify_order(_pending_order_id)
                         if _v == "PAID":
                             _choice_cpc(_pending_order_id, _choice_uid)
@@ -3435,25 +3488,32 @@ def main():
                             st.session_state.cf_pending_order_id = None
                             st.session_state.cf_payment_session_id = None
                             st.session_state.pending_payment_gate = None
-                            st.success("✅ Payment confirmed! Generating your images now…")
+                            st.session_state.cf_show_verify_button = False
+                            st.success("✅ Confirmed! Generating your images now…")
                             st.rerun()
                         else:
-                            st.error(f"Payment status: {_v}. Please complete payment above and try again.")
-                with col_cancel:
-                    if st.button("✖ Cancel & start over", use_container_width=True, key="choice_cancel"):
-                        st.session_state.cf_pending_order_id = None
-                        st.session_state.cf_payment_session_id = None
-                        st.session_state.pending_payment_gate = None
-                        st.rerun()
+                            st.error(f"Payment not yet received (status: {_v}). "
+                                     "Please complete the payment in the window above.")
                 return
 
             if not _choice_cf_ok():
                 st.warning("Checkout is temporarily unavailable. Please try again shortly.")
                 return
 
+            st.markdown(
+                """<div style='background:#fffbeb;border:1.5px solid #f59e0b;border-radius:10px;
+                padding:16px 20px;margin:16px 0 4px 0;'>
+                <div style='font-size:15px;font-weight:700;color:#92400e;margin-bottom:6px;'>
+                📱 Enter your mobile number to continue</div>
+                <div style='font-size:13px;color:#78350f;'>
+                Required by Cashfree to process the payment and send a receipt.</div>
+                </div>""",
+                unsafe_allow_html=True,
+            )
             _choice_phone = st.text_input(
-                "📱 Mobile number (for payment receipt)",
-                max_chars=10, placeholder="10-digit mobile number", key="choice_phone",
+                "Mobile number",
+                max_chars=10, placeholder="10-digit number e.g. 9876543210",
+                key="choice_phone", label_visibility="collapsed",
             )
 
             col_dl, col_pd = st.columns(2)
