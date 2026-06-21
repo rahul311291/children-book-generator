@@ -2442,7 +2442,7 @@ def main():
     if not is_authenticated() and not _cookie_token:
         if not st.session_state.get("_cookie_retry_done"):
             st.session_state._cookie_retry_done = True
-            import time; time.sleep(0.3)
+            time.sleep(0.3)
             st.rerun()
 
     # Try to restore session from cookie if not already authenticated
