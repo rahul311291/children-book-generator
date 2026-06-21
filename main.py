@@ -2750,6 +2750,10 @@ def main():
                     st.session_state.cf_pending_order_id = None
                     st.session_state.cf_payment_session_id = None
                     st.session_state.pending_payment_gate = None
+                    # Trigger the scrollIntoView('#image-generation-section')
+                    # script below so the user lands at their book, not the
+                    # nav bar at the top of the page.
+                    st.session_state.just_approved_story = True
                     st.toast("✅ Payment confirmed — generating your book!", icon="✅")
                 else:
                     st.warning(f"Payment status from Cashfree: {_ord_status}. If you completed payment, click 'Verify Payment' below.")
@@ -3995,10 +3999,48 @@ def main():
 
                         if jobs:
                             st.markdown(
-                                f"### 🎨 Generating {len(jobs)} image"
-                                f"{'s' if len(jobs) != 1 else ''} in parallel…"
+                                f"### 🎨 Your storybook is coming to life — "
+                                f"{len(jobs)} page{'s' if len(jobs) != 1 else ''}"
+                            )
+                            st.caption(
+                                "Pages appear here as they finish — you don't "
+                                "need to wait for the whole book."
                             )
                             progress = st.progress(0.0, text=f"0 / {len(jobs)} done")
+
+                            # ── Live grid of placeholders ─────────────────
+                            # One st.empty() per page. Each one gets filled by
+                            # the as_completed loop the moment its future
+                            # resolves, so the user watches the book build up
+                            # page by page instead of waiting for a single
+                            # rerun at the end. 2 columns on mobile-friendly
+                            # widths; pages render in page-order.
+                            N_COLS = 2
+                            grid_rows = []
+                            ordered_indices = sorted(idx for idx, _ in jobs)
+                            for row_start in range(0, len(ordered_indices), N_COLS):
+                                grid_rows.append(st.columns(N_COLS))
+                            placeholders = {}
+                            for slot, idx in enumerate(ordered_indices):
+                                row = slot // N_COLS
+                                col = slot % N_COLS
+                                with grid_rows[row][col]:
+                                    placeholders[idx] = st.empty()
+                                    with placeholders[idx].container():
+                                        st.markdown(
+                                            f"<div style='background:#f3f4f6;"
+                                            f"border:2px dashed #d1d5db;"
+                                            f"border-radius:12px;padding:48px 16px;"
+                                            f"text-align:center;color:#6b7280;"
+                                            f"font-size:14px;min-height:220px;"
+                                            f"display:flex;flex-direction:column;"
+                                            f"justify-content:center;align-items:center;'>"
+                                            f"<div style='font-size:28px;'>⏳</div>"
+                                            f"<div style='margin-top:8px;'>"
+                                            f"Page {idx+1} — preparing…</div></div>",
+                                            unsafe_allow_html=True,
+                                        )
+
                             done = 0
                             errors = {}
                             logger.info(
@@ -4021,9 +4063,15 @@ def main():
                                         img, err = None, str(e)
                                     if img is not None:
                                         st.session_state.generated_images[idx] = img
+                                        # Render the finished image into its
+                                        # placeholder — user sees it instantly.
+                                        with placeholders[idx].container():
+                                            st.image(
+                                                img,
+                                                caption=f"Page {idx+1}",
+                                                use_container_width=True,
+                                            )
                                     else:
-                                        # Placeholder so downstream layout still works;
-                                        # user can hit Regenerate on the failed page.
                                         st.session_state.generated_images[idx] = Image.new(
                                             "RGB", (384, 512), color=(200, 200, 200)
                                         )
@@ -4034,6 +4082,25 @@ def main():
                                             "attempt": 1,
                                         }
                                         logger.error(f"Image gen failed for page {idx+1}: {err}")
+                                        with placeholders[idx].container():
+                                            st.markdown(
+                                                f"<div style='background:#fef2f2;"
+                                                f"border:2px solid #fca5a5;"
+                                                f"border-radius:12px;padding:24px;"
+                                                f"text-align:center;color:#991b1b;"
+                                                f"font-size:13px;min-height:220px;"
+                                                f"display:flex;flex-direction:column;"
+                                                f"justify-content:center;'>"
+                                                f"<div style='font-size:28px;'>⚠️</div>"
+                                                f"<div style='margin-top:8px;font-weight:600;'>"
+                                                f"Page {idx+1} failed</div>"
+                                                f"<div style='margin-top:4px;font-size:11px;'>"
+                                                f"{(err or 'Unknown')[:80]}</div>"
+                                                f"<div style='margin-top:6px;font-size:11px;'>"
+                                                f"You can regenerate it below.</div>"
+                                                f"</div>",
+                                                unsafe_allow_html=True,
+                                            )
                                     done += 1
                                     progress.progress(
                                         done / len(jobs),
@@ -4045,6 +4112,9 @@ def main():
                                 st.session_state.image_generation_errors[idx] = info
 
                             _save_images_now()
+                            # Brief pause so the last image is visible before
+                            # the rerun swaps in the full review UI.
+                            time.sleep(0.8)
                             st.rerun()
         
         # ── Image display: admin full review vs non-admin preview cards ────────
