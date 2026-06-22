@@ -2536,6 +2536,95 @@ def render_custom_wizard():
                 st.rerun()
 
 
+
+# ---------------------------------------------------------------------------
+# FOCUS MODE — single-task UI while a paid book is generating images
+# ---------------------------------------------------------------------------
+# Triggered when:
+#   - user has a generated_story
+#   - story is approved
+#   - they've paid (story_paid / print_paid / download_paid)
+#   - not all images are done yet
+#
+# While true, main() suppresses the nav bar, the landing page, and the
+# Step 1 review section. Only this focus header + the existing Step 2
+# image-gen loop render. When the last image finishes, focus releases
+# automatically and the normal review UI appears.
+
+def _is_in_focus_mode() -> bool:
+    if not st.session_state.get("generated_story"):
+        return False
+    if not st.session_state.get("story_approved"):
+        return False
+    if st.session_state.get("current_book_payment_status") not in (
+        "story_paid", "print_paid", "download_paid"
+    ):
+        return False
+    # All images done? Then we're past focus mode (into review/download)
+    pages = st.session_state.generated_story.get("pages", [])
+    total = len(pages)
+    if total == 0:
+        return False
+    imgs = st.session_state.get("generated_images", []) or []
+    valid = sum(1 for i in imgs if i is not None)
+    if valid >= total and st.session_state.get("all_images_approved"):
+        return False
+    return True
+
+
+def _render_focus_header() -> None:
+    """Big, reassuring header that fills the top of the screen so the user
+    lands on it directly after payment — no scrolling required."""
+    pages = st.session_state.generated_story.get("pages", []) if st.session_state.get("generated_story") else []
+    total = len(pages)
+    imgs = st.session_state.get("generated_images", []) or []
+    done = sum(1 for i in imgs if i is not None)
+    child = (
+        st.session_state.get("current_child_name")
+        or st.session_state.get("wiz_child_name")
+        or "your"
+    )
+    pct = int(100 * done / total) if total else 0
+
+    st.markdown(
+        f"""
+        <div style="
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 16px;
+            padding: 28px 24px;
+            text-align: center;
+            margin: 8px 0 20px 0;
+            box-shadow: 0 8px 24px rgba(102, 126, 234, 0.25);
+        ">
+            <div style="font-size: 48px; line-height: 1; margin-bottom: 8px;">📖✨</div>
+            <h2 style="margin: 0 0 4px 0; font-weight: 700; letter-spacing: -0.5px;">
+                {child}'s storybook is being created
+            </h2>
+            <p style="margin: 0; opacity: 0.92; font-size: 15px;">
+                Pages appear below as they finish — feel free to watch live,
+                or check back in a couple of minutes.
+            </p>
+            <p style="margin: 12px 0 0 0; font-size: 13px; opacity: 0.85;">
+                {done} of {total} pages done · {pct}%
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # Also hide Streamlit's sidebar entirely so the focus is total
+    st.markdown(
+        """
+        <style>
+        [data-testid="stSidebar"] { display: none !important; }
+        [data-testid="collapsedControl"] { display: none !important; }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Wizard snapshot keys — persisted before the Cashfree mobile redirect and
 # rehydrated on return so the user lands back on their book, not the home page.
@@ -2977,11 +3066,18 @@ def main():
         
         return
 
+    # ── FOCUS MODE ─────────────────────────────────────────────────
+    # If we're mid-generation for a paid book, suppress all other UI and
+    # render only the focus header (plus Step 2's image-gen loop below).
+    _focus_mode = _is_in_focus_mode()
+    if _focus_mode:
+        _render_focus_header()
+
     # Determine admin status
     _current_user_email_nav = st.session_state.auth_user.get("email", "")
     _is_admin_nav = _current_user_email_nav in ADMIN_EMAILS
 
-    if not _is_admin_nav:
+    if not _focus_mode and not _is_admin_nav:
         # Non-admin: hide sidebar entirely, show compact top bar
         st.markdown(
             """
@@ -3024,8 +3120,8 @@ def main():
                 sign_out()
                 st.rerun()
         st.divider()
-    else:
-        # Admin: full sidebar
+    elif not _focus_mode:
+        # Admin: full sidebar (suppressed in focus mode)
         with st.sidebar:
             # User info and logout
             user_email = st.session_state.auth_user.get("email", "")
@@ -3325,8 +3421,8 @@ def main():
     age = st.session_state.wiz_age
     language = st.session_state.wiz_language
     
-    # Step 1: Story Review
-    if st.session_state.generated_story and not st.session_state.story_approved:
+    # Step 1: Story Review (skipped in focus mode — already approved)
+    if not _focus_mode and st.session_state.generated_story and not st.session_state.story_approved:
         st.header("📖 Step 1: Review & Edit Story")
         st.markdown("Review each page below. You can edit the text for any page. Click 'Approve Story' when ready.")
 
