@@ -2537,6 +2537,138 @@ def render_custom_wizard():
 
 
 
+
+# ---------------------------------------------------------------------------
+# AUTO-RESUME — restore in-progress book on page reload
+# ---------------------------------------------------------------------------
+# Mobile browsers aggressively evict backgrounded tabs. When the tab is
+# reloaded, Streamlit gives the new connection a fresh session_state. The
+# story, the in-flight generation, the edits — all gone from memory.
+#
+# Most of the data is already persisted to MongoDB (_save_images_now writes
+# story + journey_state to book_history after each image). What was missing
+# was the auto-restore. This helper fills that gap: on every fresh session,
+# if the user has an unfinished book in book_history, load it back into
+# session_state. They land on the right step automatically — same pattern
+# as Notion/Linear/ChatGPT.
+#
+# The user can still click 'Home' or 'My Books' to leave; we don't lock
+# them in. We just default to where they last were.
+
+def _auto_resume_in_progress_book() -> bool:
+    """Returns True if a book was restored, False otherwise."""
+    # One-shot per session
+    if st.session_state.get("_auto_resumed"):
+        return False
+    # Don't override if a book is already live in session
+    if st.session_state.get("generated_story"):
+        st.session_state["_auto_resumed"] = True
+        return False
+    # Need an authenticated user
+    user_id = get_current_user_id()
+    if not user_id:
+        return False
+
+    try:
+        from mongo_client import book_history_col
+        col = book_history_col()
+        # Most recent book that is NOT marked completed (step3 with images approved)
+        # We look at the metadata.journey_state.current_step to decide.
+        candidates = list(
+            col.find({"user_id": user_id})
+               .sort("metadata.timestamp", -1)
+               .limit(5)
+        )
+    except Exception as e:
+        logger.warning(f"_auto_resume_in_progress_book: query failed: {e}")
+        st.session_state["_auto_resumed"] = True
+        return False
+
+    in_progress = None
+    for row in candidates:
+        js = (row.get("metadata") or {}).get("journey_state", {}) or {}
+        step = js.get("current_step", "step1")
+        all_approved = js.get("all_images_approved", False)
+        # Completed = made it to step3 and approved all images
+        if step == "step3" and all_approved:
+            continue
+        # Must have at least a story to be worth resuming
+        if not row.get("story_data") or not row["story_data"].get("pages"):
+            continue
+        in_progress = row
+        break
+
+    if not in_progress:
+        st.session_state["_auto_resumed"] = True
+        return False
+
+    # Restore session_state from the row — same shape as _load_gallery_book
+    # but we DO point at the user's own doc so further saves go to the same
+    # row, and we don't block auto-gen.
+    try:
+        story_data = in_progress.get("story_data", {})
+        meta = in_progress.get("metadata", {})
+        journey_state = meta.get("journey_state", {})
+
+        st.session_state.generated_story = story_data
+        st.session_state.current_child_name = in_progress.get("child_name", "")
+        st.session_state.current_book_history_id = in_progress.get("_id")
+        st.session_state.book_mode = "custom"
+        st.session_state.wiz_generate_trigger = False
+
+        # Restore images — only valid (non-None) ones
+        saved_imgs = in_progress.get("images", [])
+        decoded = decode_stored_images(saved_imgs) if saved_imgs else []
+        st.session_state.generated_images = decoded or []
+
+        st.session_state.story_approved = journey_state.get("story_approved", False)
+        st.session_state.all_images_approved = journey_state.get("all_images_approved", False)
+        st.session_state.image_approvals = journey_state.get("image_approvals", {}) or {}
+        st.session_state.edited_story_pages = journey_state.get("edited_story_pages", {}) or {}
+        st.session_state.edited_image_prompts = journey_state.get("edited_image_prompts", {}) or {}
+
+        # If the user had already paid for this book (we infer from
+        # story_approved=True), restore the payment status too. Otherwise
+        # the focus mode / Step 2 gate won't fire and they'll see the
+        # payment screen again even though they already paid.
+        if journey_state.get("story_approved"):
+            # We don't know the exact delivery option from book_history,
+            # but we can read it from the matching purchases collection.
+            try:
+                from payments import get_user_purchases
+                purchases = get_user_purchases(user_id) or []
+                # Find a purchase for this book (or just the most recent paid one)
+                _book_paid = any(
+                    p.get("status") in ("PAID", "paid", "COMPLETED", "completed")
+                    for p in purchases
+                )
+                if _book_paid:
+                    st.session_state.current_book_payment_status = (
+                        st.session_state.get("current_book_payment_status") or "story_paid"
+                    )
+                    if not st.session_state.get("book_delivery_option"):
+                        st.session_state.book_delivery_option = "download"
+            except Exception as _pe:
+                logger.warning(f"auto-resume payment-status lookup: {_pe}")
+
+        st.session_state["_auto_resumed"] = True
+        n_imgs = sum(1 for i in st.session_state.generated_images if i is not None)
+        total = len(story_data.get("pages", []))
+        logger.info(f"Auto-resumed book {in_progress.get('_id')}: {n_imgs}/{total} images done")
+        try:
+            st.toast(
+                f"📖 Resumed your book ({n_imgs}/{total} pages done)",
+                icon="📖",
+            )
+        except Exception:
+            pass
+        return True
+    except Exception as e:
+        logger.warning(f"_auto_resume_in_progress_book: restore failed: {e}")
+        st.session_state["_auto_resumed"] = True
+        return False
+
+
 # ---------------------------------------------------------------------------
 # FOCUS MODE — single-task UI while a paid book is generating images
 # ---------------------------------------------------------------------------
@@ -2721,6 +2853,8 @@ def main():
             _delete_session_token(old_token)
         except Exception:
             pass
+        # Clear auto-resume flag so the next user starts clean
+        st.session_state.pop("_auto_resumed", None)
 
     # Google OIDC: mirror st.user into our session after st.login()
     if not is_authenticated():
@@ -2734,6 +2868,21 @@ def main():
     ):
         render_otp_page()
         return
+
+    # ── AUTO-RESUME ─────────────────────────────────────────────────────
+    # After auth restoration, if the user has no live story in session but
+    # has an unfinished book in MongoDB, restore it. Single-shot per
+    # session. Skips when a Cashfree return is in the URL (the cf handler
+    # below handles that path via the wizard snapshot).
+    if (
+        is_authenticated()
+        and not st.session_state.get("_auto_resumed")
+        and not st.query_params.get("cf_order_id")
+        and not st.query_params.get("cf_link_id")
+        and not st.session_state.get("show_history")
+        and not st.session_state.get("show_community")
+    ):
+        _auto_resume_in_progress_book()
 
     # Auth gate
     if not is_authenticated():
@@ -3098,6 +3247,11 @@ def main():
                 st.session_state.wiz_generate_trigger = False
                 st.session_state.show_history = False
                 st.session_state.show_community = False
+                # Mark as 'no resume this session' — user explicitly chose home.
+                # We DON'T clear _auto_resumed because that would re-trigger
+                # the restore on the next rerun. Instead, leave it set to
+                # True so resume stays suppressed for this session.
+                st.session_state["_auto_resumed"] = True
                 st.rerun()
         with nav_history:
             if st.button("My Books", use_container_width=True):
