@@ -3575,285 +3575,334 @@ def main():
     age = st.session_state.wiz_age
     language = st.session_state.wiz_language
     
-    # Step 1: Story Review (skipped in focus mode — already approved)
+    # ─────────────────────────────────────────────────────────────────────
+    # Step 1: Story Review — redesigned for clear hierarchy (skip in focus)
+    # ─────────────────────────────────────────────────────────────────────
     if not _focus_mode and st.session_state.generated_story and not st.session_state.story_approved:
-        st.header("📖 Step 1: Review & Edit Story")
-        st.markdown("Review each page below. You can edit the text for any page. Click 'Approve Story' when ready.")
-
-        # Determine admin status once for the whole Step 1 block
-        _s1_email = st.session_state.get("user_email") or (st.session_state.get("auth_user") or {}).get("email", "")
-        _s1_is_admin = _s1_email in ADMIN_EMAILS
-
         pages = st.session_state.generated_story.get("pages", [])
-        
-        # Debug: Validate story has pages
-        if not pages or len(pages) == 0:
+        total_pages = len(pages)
+
+        # ── Sanity / empty-story handling ───────────────────────────────
+        if not pages:
             st.error("⚠️ Story loaded but has no pages. The story data may be incomplete.")
             with st.expander("Debug: Story Data", expanded=True):
                 st.write("Story keys:", list(st.session_state.generated_story.keys()) if isinstance(st.session_state.generated_story, dict) else "Not a dict")
                 st.write("Pages count:", len(pages))
                 st.json(st.session_state.generated_story)
             return
-        
-        # Display all pages (not collapsed) with edit capability
-        for i, page in enumerate(pages):
-            page_num = page.get('page_number', i+1)
-            
-            # Get edited text or use original
-            edited_text = st.session_state.edited_story_pages.get(i, page.get("text", ""))
-            # Get edited image prompt or use original
-            edited_image_prompt = st.session_state.edited_image_prompts.get(i, page.get("image_prompt", ""))
-            
-            st.subheader(f"📄 Page {page_num}")
-            
-            # Editable story text area
-            new_text = st.text_area(
-                f"Story Text (Page {page_num})",
-                value=edited_text,
-                key=f"story_text_{i}",
-                height=100,
-                help="Edit the story text for this page"
-            )
-            
-            # Save edited text
-            if new_text != page.get("text", ""):
-                st.session_state.edited_story_pages[i] = new_text
-                # Update the story data
-                st.session_state.generated_story["pages"][i]["text"] = new_text
-            
-            # Editable image prompt area — admin only
-            if _s1_is_admin:
-                st.write("**Image Prompt:**")
-                new_image_prompt = st.text_area(
-                    f"Image Prompt (Page {page_num})",
-                    value=edited_image_prompt,
-                    key=f"image_prompt_{i}",
-                    height=80,
-                    help="Edit the image prompt to change how the image will be generated. Make sure to include the visual anchor description."
-                )
-                # Save edited image prompt
-                if new_image_prompt != page.get("image_prompt", ""):
-                    st.session_state.edited_image_prompts[i] = new_image_prompt
-                    st.session_state.generated_story["pages"][i]["image_prompt"] = new_image_prompt
-            
-            # Page actions: Regenerate from this page, Move up/down
-            col_action1, col_action2, col_action3 = st.columns([1, 1, 1])
-            with col_action1:
-                if st.button(f"🔄 Regenerate from Page {page_num}", key=f"regen_from_page_{i}", use_container_width=True):
-                    st.session_state[f"_regen_flag_{i}"] = True
-                    st.session_state[f"regen_page_prompt_{i}"] = ""
-                    st.rerun()
-            with col_action2:
-                if i > 0:
-                    if st.button(f"⬆️ Move Up", key=f"move_page_up_{i}", use_container_width=True):
-                        # Swap pages
-                        pages = st.session_state.generated_story["pages"]
-                        pages[i], pages[i-1] = pages[i-1], pages[i]
-                        # Update page numbers
-                        for idx, p in enumerate(pages):
-                            p["page_number"] = idx + 1
-                        st.session_state.generated_story["pages"] = pages
-                        # Clear images and approvals since order changed
-                        st.session_state.generated_images = []
-                        st.session_state.image_approvals = {}
-                        st.session_state.all_images_approved = False
-                        st.rerun()
-            with col_action3:
-                if i < len(pages) - 1:
-                    if st.button(f"⬇️ Move Down", key=f"move_page_down_{i}", use_container_width=True):
-                        # Swap pages
-                        pages = st.session_state.generated_story["pages"]
-                        pages[i], pages[i+1] = pages[i+1], pages[i]
-                        # Update page numbers
-                        for idx, p in enumerate(pages):
-                            p["page_number"] = idx + 1
-                        st.session_state.generated_story["pages"] = pages
-                        # Clear images and approvals since order changed
-                        st.session_state.generated_images = []
-                        st.session_state.image_approvals = {}
-                        st.session_state.all_images_approved = False
-                        st.rerun()
-            
-            # Show regenerate prompt if requested
-            if st.session_state.get(f"_regen_flag_{i}", False):
-                st.write("---")
-                st.write(f"**Regenerate Story from Page {page_num} onwards:**")
-                regen_prompt = st.text_area(
-                    f"Instructions for regenerating from Page {page_num}",
-                    value=st.session_state.get(f"regen_page_prompt_{i}", ""),
-                    key=f"regen_prompt_input_{i}",
-                    height=100,
-                    placeholder="e.g., Make the character braver, Add more dialogue, Change the ending..."
-                )
-                col_apply, col_cancel_regen = st.columns([1, 1])
-                with col_apply:
-                    if st.button(f"✨ Apply Changes", key=f"apply_regen_{i}", type="primary", use_container_width=True):
-                        if regen_prompt.strip():
-                            # Regenerate story from this page onwards
-                            with st.spinner(f"Regenerating story from page {page_num}..."):
-                                regenerated_story = regenerate_story_from_page(
-                                    api_key,
-                                    st.session_state.generated_story,
-                                    i,
-                                    regen_prompt,
-                                    st.session_state.current_child_name or child_name,
-                                    age,
-                                    language
-                                )
-                                if regenerated_story:
-                                    st.session_state.generated_story = regenerated_story
-                                    # CRITICAL: Clear ALL images when story is regenerated to prevent mismatch
-                                    st.session_state.generated_images = []
-                                    st.session_state.image_approvals = {}
-                                    st.session_state.all_images_approved = False
-                                    st.session_state.edited_story_pages = {k: v for k, v in st.session_state.edited_story_pages.items() if k < i}
-                                    st.session_state.edited_image_prompts = {k: v for k, v in st.session_state.edited_image_prompts.items() if k < i}
-                                    st.session_state.pdf_path = None
-                                    st.session_state.pdf_generation_key = None
-                                    st.session_state.story_approved = False
-                                    st.session_state[f"_regen_flag_{i}"] = False
-                                    st.success(f"✅ Story regenerated from page {page_num} onwards! All images cleared - please regenerate them.")
-                                    st.rerun()
-                                else:
-                                    st.error("Failed to regenerate story. Please try again.")
-                        else:
-                            st.warning("Please enter instructions for regeneration")
-                with col_cancel_regen:
-                    if st.button("❌ Cancel", key=f"cancel_regen_{i}", use_container_width=True):
-                        st.session_state[f"_regen_flag_{i}"] = False
-                        st.rerun()
-            
-            with col_action2:
-                if i > 0:
-                    if st.button(f"⬆️ Move Up", key=f"move_up_story_{i}", use_container_width=True):
-                        # Swap pages
-                        pages[i], pages[i-1] = pages[i-1], pages[i]
-                        # Update page numbers
-                        for idx, p in enumerate(pages):
-                            p["page_number"] = idx + 1
-                        st.session_state.generated_story["pages"] = pages
-                        # Reorder edited data if exists
-                        if i in st.session_state.edited_story_pages:
-                            temp = st.session_state.edited_story_pages.get(i)
-                            st.session_state.edited_story_pages[i] = st.session_state.edited_story_pages.get(i-1, "")
-                            st.session_state.edited_story_pages[i-1] = temp
-                        if i in st.session_state.edited_image_prompts:
-                            temp = st.session_state.edited_image_prompts.get(i)
-                            st.session_state.edited_image_prompts[i] = st.session_state.edited_image_prompts.get(i-1, "")
-                            st.session_state.edited_image_prompts[i-1] = temp
-                        st.session_state.generated_images = []  # Clear images when reordering
-                        st.rerun()
-            with col_action3:
-                if i < len(pages) - 1:
-                    if st.button(f"⬇️ Move Down", key=f"move_down_story_{i}", use_container_width=True):
-                        # Swap pages
-                        pages[i], pages[i+1] = pages[i+1], pages[i]
-                        # Update page numbers
-                        for idx, p in enumerate(pages):
-                            p["page_number"] = idx + 1
-                        st.session_state.generated_story["pages"] = pages
-                        # Reorder edited data if exists
-                        if i in st.session_state.edited_story_pages:
-                            temp = st.session_state.edited_story_pages.get(i)
-                            st.session_state.edited_story_pages[i] = st.session_state.edited_story_pages.get(i+1, "")
-                            st.session_state.edited_story_pages[i+1] = temp
-                        if i in st.session_state.edited_image_prompts:
-                            temp = st.session_state.edited_image_prompts.get(i)
-                            st.session_state.edited_image_prompts[i] = st.session_state.edited_image_prompts.get(i+1, "")
-                            st.session_state.edited_image_prompts[i+1] = temp
-                        st.session_state.generated_images = []  # Clear images when reordering
-                        st.rerun()
-            
-            st.divider()
-        
-        # Follow-up Prompt Section
-        st.divider()
-        st.subheader("✨ Refine Story with Follow-up Prompt")
-        st.markdown("Want to change the story? Enter instructions below to refine it while keeping the existing storyline.")
-        
-        followup_prompt = st.text_area(
-            "Follow-up Instructions",
-            placeholder="e.g., Make the story more adventurous, Add more dialogue, Change the ending to be more positive, Make the character braver...",
-            height=100,
-            help="Describe what you'd like to change or improve in the story"
+
+        # ── Admin check (used by per-page Advanced expander) ────────────
+        _s1_email = st.session_state.get("user_email") or (st.session_state.get("auth_user") or {}).get("email", "")
+        _s1_is_admin = _s1_email in ADMIN_EMAILS
+
+        # ── Header: title + page count ──────────────────────────────────
+        _story_title = (
+            st.session_state.generated_story.get("title")
+            or f"{st.session_state.current_child_name or child_name}'s Storybook"
         )
-        
-        if st.button("🔄 Refine Story with Follow-up", type="secondary", use_container_width=True):
-            if followup_prompt.strip():
-                with st.spinner("🔄 Refining story based on your instructions..."):
-                    original_story = st.session_state.generated_story.copy()  # Keep a copy for comparison
-                    refined_story = refine_story_with_followup(
-                        api_key, 
-                        original_story,
-                        followup_prompt,
-                        child_name,
-                        age,
-                        language
+        st.markdown(
+            f"""<div style="margin: 8px 0 4px 0;">
+              <h2 style="margin:0;font-weight:700;letter-spacing:-0.5px;">
+                ✨ Your story is ready
+              </h2>
+              <p style="margin:4px 0 0 0;color:#6b7280;font-size:14px;">
+                <strong>{_story_title}</strong> · {total_pages} pages ·
+                written for {st.session_state.current_child_name or child_name}
+              </p>
+            </div>""",
+            unsafe_allow_html=True,
+        )
+
+        # ── Helper: shared 'approve' and 'regen-all' actions ────────────
+        def _do_approve():
+            # Apply pending edits before approving
+            for _i, _p in enumerate(pages):
+                if _i in st.session_state.edited_story_pages:
+                    st.session_state.generated_story["pages"][_i]["text"] = (
+                        st.session_state.edited_story_pages[_i]
                     )
-                    if refined_story:
-                        # Check if story actually changed - compare page by page
-                        original_pages = original_story.get("pages", [])
-                        refined_pages = refined_story.get("pages", [])
-                        
-                        changed_count = 0
-                        for i, (orig_page, ref_page) in enumerate(zip(original_pages, refined_pages)):
-                            orig_text = orig_page.get("text", "").strip()
-                            ref_text = ref_page.get("text", "").strip()
-                            if orig_text != ref_text:
-                                changed_count += 1
-                        
-                        if changed_count == 0:
-                            st.error("❌ The refined story is IDENTICAL to the original. The AI did not apply your changes.")
-                            st.info("💡 **Tips to get better results:**")
-                            st.markdown("""
-                            - Be very specific about what to change (e.g., 'Change page 3 to have the character be braver')
-                            - Mention specific pages or scenes to modify
-                            - Use action words (e.g., 'add', 'remove', 'change', 'make more')
-                            - Try rephrasing your request differently
-                            """)
-                            # Don't update the story if nothing changed
-                        else:
-                            # Update the story in session state
-                            st.session_state.generated_story = refined_story
-                            # CRITICAL: Clear images when story changes to prevent mismatch
+            st.session_state.story_approved = True
+            st.session_state.just_approved_story = True
+            if st.session_state.generated_story and st.session_state.current_child_name:
+                save_story(st.session_state.generated_story, st.session_state.current_child_name)
+            st.rerun()
+
+        def _do_regen_all():
+            st.session_state.generated_story = None
+            st.session_state.edited_story_pages = {}
+            st.session_state.edited_image_prompts = {}
+            st.rerun()
+
+        def _render_cta_bar(suffix: str):
+            """Primary 'Make my book' + secondary 'Try a different story'.
+            Rendered top and bottom so the user never has to scroll to find it."""
+            cta1, cta2 = st.columns([2, 1])
+            with cta1:
+                if st.button(
+                    "✅ Looks great — make my book",
+                    type="primary",
+                    use_container_width=True,
+                    key=f"approve_{suffix}",
+                ):
+                    _do_approve()
+            with cta2:
+                if st.button(
+                    "🔄 Try a different story",
+                    use_container_width=True,
+                    key=f"regen_all_{suffix}",
+                ):
+                    _do_regen_all()
+
+        # ── TOP CTA BAR ─────────────────────────────────────────────────
+        _render_cta_bar("top")
+        st.divider()
+
+        # ── Per-page cards ──────────────────────────────────────────────
+        for i, page in enumerate(pages):
+            page_num = page.get("page_number", i + 1)
+            edited_text = st.session_state.edited_story_pages.get(i, page.get("text", ""))
+
+            with st.container(border=True):
+                st.markdown(
+                    f"<div style='color:#6b7280;font-size:13px;font-weight:600;"
+                    f"margin-bottom:6px;'>Page {page_num} of {total_pages}</div>",
+                    unsafe_allow_html=True,
+                )
+
+                # Inline-editable story text (no label, no button — just type)
+                new_text = st.text_area(
+                    f"Page {page_num} story text",
+                    value=edited_text,
+                    key=f"story_text_{i}",
+                    height=110,
+                    label_visibility="collapsed",
+                )
+                if new_text != page.get("text", ""):
+                    st.session_state.edited_story_pages[i] = new_text
+                    st.session_state.generated_story["pages"][i]["text"] = new_text
+
+                # ── Single per-page actions menu (popover) ──────────────
+                with st.popover("⋮ Page actions", use_container_width=False):
+                    # Move Up
+                    if i > 0:
+                        if st.button("⬆ Move up", key=f"mu_{i}", use_container_width=True):
+                            pgs = st.session_state.generated_story["pages"]
+                            pgs[i], pgs[i - 1] = pgs[i - 1], pgs[i]
+                            for idx, p in enumerate(pgs):
+                                p["page_number"] = idx + 1
+                            st.session_state.generated_story["pages"] = pgs
+                            # Reorder edit dicts in lock-step
+                            _esp = st.session_state.edited_story_pages
+                            _esp[i], _esp[i - 1] = _esp.get(i - 1, ""), _esp.get(i, "")
+                            _eip = st.session_state.edited_image_prompts
+                            _eip[i], _eip[i - 1] = _eip.get(i - 1, ""), _eip.get(i, "")
+                            # Image order is now stale
                             st.session_state.generated_images = []
                             st.session_state.image_approvals = {}
                             st.session_state.all_images_approved = False
-                            st.session_state.pdf_path = None
-                            st.session_state.pdf_generation_key = None
-                            # Reset all edits so the new story is displayed
-                            st.session_state.edited_story_pages = {}
-                            st.session_state.edited_image_prompts = {}
-                            # Reset approval state so user can review the refined story
-                            st.session_state.story_approved = False
-                            st.success(f"✅ Story refined! {changed_count} out of {len(original_pages)} pages were modified. Review the updated version below.")
                             st.rerun()
-                    else:
-                        st.error("Failed to refine story. Please try again or check the error message above.")
-            else:
-                st.warning("Please enter follow-up instructions")
-        
+
+                    # Move Down
+                    if i < total_pages - 1:
+                        if st.button("⬇ Move down", key=f"md_{i}", use_container_width=True):
+                            pgs = st.session_state.generated_story["pages"]
+                            pgs[i], pgs[i + 1] = pgs[i + 1], pgs[i]
+                            for idx, p in enumerate(pgs):
+                                p["page_number"] = idx + 1
+                            st.session_state.generated_story["pages"] = pgs
+                            _esp = st.session_state.edited_story_pages
+                            _esp[i], _esp[i + 1] = _esp.get(i + 1, ""), _esp.get(i, "")
+                            _eip = st.session_state.edited_image_prompts
+                            _eip[i], _eip[i + 1] = _eip.get(i + 1, ""), _eip.get(i, "")
+                            st.session_state.generated_images = []
+                            st.session_state.image_approvals = {}
+                            st.session_state.all_images_approved = False
+                            st.rerun()
+
+                    # Rewrite from this page on
+                    if st.button(
+                        "🔄 Rewrite from this page on",
+                        key=f"rfh_{i}",
+                        use_container_width=True,
+                    ):
+                        st.session_state[f"_regen_flag_{i}"] = True
+                        st.session_state[f"regen_page_prompt_{i}"] = ""
+                        st.rerun()
+
+                    # Delete page
+                    if total_pages > 1:
+                        if st.button(
+                            "🗑 Delete this page",
+                            key=f"delp_{i}",
+                            use_container_width=True,
+                        ):
+                            pgs = st.session_state.generated_story["pages"]
+                            del pgs[i]
+                            for idx, p in enumerate(pgs):
+                                p["page_number"] = idx + 1
+                            st.session_state.generated_story["pages"] = pgs
+                            # Drop edit-state for this index; shift higher ones down
+                            new_esp = {}
+                            for k, v in st.session_state.edited_story_pages.items():
+                                if k == i:
+                                    continue
+                                new_esp[k - 1 if k > i else k] = v
+                            st.session_state.edited_story_pages = new_esp
+                            new_eip = {}
+                            for k, v in st.session_state.edited_image_prompts.items():
+                                if k == i:
+                                    continue
+                                new_eip[k - 1 if k > i else k] = v
+                            st.session_state.edited_image_prompts = new_eip
+                            st.session_state.generated_images = []
+                            st.session_state.image_approvals = {}
+                            st.session_state.all_images_approved = False
+                            st.rerun()
+
+                # ── Admin only: image prompt editor in an expander ──────
+                if _s1_is_admin:
+                    with st.expander("Advanced: image prompt"):
+                        edited_image_prompt = st.session_state.edited_image_prompts.get(
+                            i, page.get("image_prompt", "")
+                        )
+                        new_image_prompt = st.text_area(
+                            f"Image Prompt (Page {page_num})",
+                            value=edited_image_prompt,
+                            key=f"image_prompt_{i}",
+                            height=80,
+                            help="Edit the image prompt to change how the image will be generated.",
+                            label_visibility="collapsed",
+                        )
+                        if new_image_prompt != page.get("image_prompt", ""):
+                            st.session_state.edited_image_prompts[i] = new_image_prompt
+                            st.session_state.generated_story["pages"][i]["image_prompt"] = new_image_prompt
+
+                # ── Inline 'Rewrite from this page on' form ─────────────
+                if st.session_state.get(f"_regen_flag_{i}", False):
+                    st.markdown(
+                        f"<div style='background:#fef3c7;border-radius:8px;"
+                        f"padding:12px;margin-top:10px;'>"
+                        f"<strong>Rewrite from page {page_num} onwards</strong>"
+                        f"</div>",
+                        unsafe_allow_html=True,
+                    )
+                    regen_prompt = st.text_area(
+                        f"What should change from page {page_num} on?",
+                        value=st.session_state.get(f"regen_page_prompt_{i}", ""),
+                        key=f"regen_prompt_input_{i}",
+                        height=90,
+                        placeholder="e.g., Make the character braver · Add more dialogue · Change the ending…",
+                    )
+                    col_apply, col_cancel = st.columns(2)
+                    with col_apply:
+                        if st.button(
+                            "✨ Apply changes",
+                            key=f"apply_regen_{i}",
+                            type="primary",
+                            use_container_width=True,
+                        ):
+                            if regen_prompt.strip():
+                                with st.spinner(f"Rewriting from page {page_num}…"):
+                                    regenerated_story = regenerate_story_from_page(
+                                        api_key,
+                                        st.session_state.generated_story,
+                                        i,
+                                        regen_prompt,
+                                        st.session_state.current_child_name or child_name,
+                                        age,
+                                        language,
+                                    )
+                                    if regenerated_story:
+                                        st.session_state.generated_story = regenerated_story
+                                        st.session_state.generated_images = []
+                                        st.session_state.image_approvals = {}
+                                        st.session_state.all_images_approved = False
+                                        st.session_state.edited_story_pages = {
+                                            k: v for k, v in st.session_state.edited_story_pages.items() if k < i
+                                        }
+                                        st.session_state.edited_image_prompts = {
+                                            k: v for k, v in st.session_state.edited_image_prompts.items() if k < i
+                                        }
+                                        st.session_state.pdf_path = None
+                                        st.session_state.pdf_generation_key = None
+                                        st.session_state.story_approved = False
+                                        st.session_state[f"_regen_flag_{i}"] = False
+                                        st.success(f"✅ Rewrote from page {page_num} onwards.")
+                                        st.rerun()
+                                    else:
+                                        st.error("Couldn't rewrite the story. Please try again.")
+                            else:
+                                st.warning("Please describe what to change.")
+                    with col_cancel:
+                        if st.button(
+                            "✖ Cancel",
+                            key=f"cancel_regen_{i}",
+                            use_container_width=True,
+                        ):
+                            st.session_state[f"_regen_flag_{i}"] = False
+                            st.rerun()
+
+        # ── BOTTOM CTA BAR (mirrors the top one) ────────────────────────
         st.divider()
-        
-        # Single approve button at the bottom
-        col1, col2 = st.columns([1, 1])
-        with col1:
-            if st.button("✅ Approve Story", type="primary", use_container_width=True):
-                # Apply all edits before approving
-                for i, page in enumerate(pages):
-                    if i in st.session_state.edited_story_pages:
-                        st.session_state.generated_story["pages"][i]["text"] = st.session_state.edited_story_pages[i]
-                st.session_state.story_approved = True
-                st.session_state.just_approved_story = True
-                # Auto-save story with updated journey state
-                if st.session_state.generated_story and st.session_state.current_child_name:
-                    save_story(st.session_state.generated_story, st.session_state.current_child_name)
-                st.rerun()
-        with col2:
-            if st.button("🔄 Regenerate Story from Scratch", use_container_width=True):
-                st.session_state.generated_story = None
-                st.session_state.edited_story_pages = {}
-                st.rerun()
+        _render_cta_bar("bot")
+
+        # ── Advanced: full-story follow-up (power feature, collapsed) ──
+        with st.expander("✨ Advanced — refine the whole story with one instruction"):
+            st.caption(
+                "Describe a change to apply across the story (e.g. 'make the "
+                "ending more positive'). For changes to a specific page, use "
+                "that page's ⋮ menu instead."
+            )
+            followup_prompt = st.text_area(
+                "Instructions",
+                placeholder="e.g., Make the story more adventurous · Add more dialogue · Change the ending…",
+                height=90,
+                key="followup_prompt_input",
+                label_visibility="collapsed",
+            )
+            if st.button("🔄 Refine the whole story", use_container_width=True, key="apply_followup"):
+                if followup_prompt.strip():
+                    with st.spinner("Refining the story…"):
+                        original_story = st.session_state.generated_story.copy()
+                        refined_story = refine_story_with_followup(
+                            api_key,
+                            original_story,
+                            followup_prompt,
+                            child_name,
+                            age,
+                            language,
+                        )
+                        if refined_story:
+                            original_pages = original_story.get("pages", [])
+                            refined_pages = refined_story.get("pages", [])
+                            changed_count = sum(
+                                1
+                                for o, r in zip(original_pages, refined_pages)
+                                if o.get("text", "").strip() != r.get("text", "").strip()
+                            )
+                            if changed_count == 0:
+                                st.error(
+                                    "The refined story is identical to the original. "
+                                    "Try being more specific — name the page or the change."
+                                )
+                            else:
+                                st.session_state.generated_story = refined_story
+                                st.session_state.generated_images = []
+                                st.session_state.image_approvals = {}
+                                st.session_state.all_images_approved = False
+                                st.session_state.pdf_path = None
+                                st.session_state.pdf_generation_key = None
+                                st.session_state.edited_story_pages = {}
+                                st.session_state.edited_image_prompts = {}
+                                st.session_state.story_approved = False
+                                st.success(
+                                    f"✅ Refined — {changed_count} of {len(original_pages)} pages updated."
+                                )
+                                st.rerun()
+                        else:
+                            st.error("Couldn't refine the story. Please try again.")
+                else:
+                    st.warning("Please describe what to change.")
 
     # ─────────────────────────────────────────────────────────────────────────
     # Step 1.5: Choose delivery method & pay — after story approval, before images
