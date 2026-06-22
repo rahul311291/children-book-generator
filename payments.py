@@ -337,6 +337,11 @@ def record_purchase(user_id: str, link_id: str, amount_inr: int, metadata: dict)
                 "child_name": (metadata or {}).get("child_name", ""),
                 "book_kind": (metadata or {}).get("book_kind", "template"),
                 "purpose": (metadata or {}).get("purpose", ""),
+                # Top-level for fast lookup — used by has_paid_for_book to
+                # link a purchase to a specific book_history row, and to
+                # tell download from print+deliver on payment-status restore.
+                "book_history_id": (metadata or {}).get("book_history_id", ""),
+                "gate": (metadata or {}).get("gate", ""),
                 "paid_at": datetime.utcnow(),
             }},
             upsert=True,
@@ -365,6 +370,43 @@ def get_user_purchases(user_id: str) -> list:
     except Exception as e:
         logger.error(f"get_user_purchases: {e}")
         return []
+
+
+def has_paid_for_book(user_id: str, book_history_id: str = "", child_name: str = "",
+                      book_kind: str = "custom") -> Optional[dict]:
+    """Return the most recent purchase for this (user, book) or None.
+
+    Two-stage lookup:
+      1. Direct match by book_history_id (set on every order created after
+         this fix landed).
+      2. Fallback: match by (user_id, child_name, book_kind) for purchases
+         recorded before we started writing book_history_id into metadata.
+
+    The returned doc has 'gate' which the caller uses to pick the right
+    payment_status / delivery_option on restore (story_paid + download vs.
+    print_paid + print_deliver).
+    """
+    try:
+        from mongo_client import purchases_col
+        if book_history_id:
+            doc = purchases_col().find_one(
+                {"user_id": user_id, "book_history_id": book_history_id},
+                sort=[("paid_at", -1)],
+            )
+            if doc:
+                return doc
+        if child_name:
+            doc = purchases_col().find_one(
+                {"user_id": user_id, "child_name": child_name, "book_kind": book_kind},
+                sort=[("paid_at", -1)],
+            )
+            if doc:
+                return doc
+        return None
+    except Exception as e:
+        logger.error(f"has_paid_for_book: {e}")
+        return None
+
 
 
 # ---------------------------------------------------------------------------

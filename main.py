@@ -81,6 +81,7 @@ from reportlab.lib.colors import HexColor, black, white
 from PIL import Image
 import io
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Page configuration
 st.set_page_config(
@@ -1355,6 +1356,136 @@ def generate_story_with_gemini(api_key: str, child_name: str, age: int, gender: 
             st.code(traceback.format_exc())
         return None
 
+
+# ---------------------------------------------------------------------------
+# Thread-safe image generator (no st.* access). Used by the parallel batch
+# generation path. The single-image / regenerate paths still call
+# generate_image_with_imagen below, which has st.* hooks for inline UI updates.
+# ---------------------------------------------------------------------------
+
+# Max parallel image requests. 3 is conservative for Gemini Tier-1 (~10 IPM):
+# 3 in flight × ~20s per image ≈ ~9 RPM peak, safely under the limit. Override
+# with the IMAGE_GEN_CONCURRENCY env var if your tier allows more.
+import os as _os_imggen
+IMAGE_GEN_CONCURRENCY = int(_os_imggen.environ.get("IMAGE_GEN_CONCURRENCY", "3"))
+
+
+def _generate_image_threadsafe(
+    api_key: str,
+    prompt: str,
+    image_style: str,
+    reference_image_b64,
+    openrouter_key: str,
+    _outer_attempts: int = 2,
+):
+    """Pure function — never touches st.*. Returns (PIL.Image | None, error_str | None).
+
+    Retry layers (outer → inner):
+      _outer_attempts (this fn)  → up to 2 full passes, 5s apart
+        vertex_client.call_gemini_image    → up to 3 attempts per model,
+                                              8s/20s/45s on 429, 4s/10s/25s on
+                                              5xx, 2s/5s/10s on network errors,
+                                              honours Retry-After header
+        generate_image_with_openrouter     → loops over 3 OpenRouter models
+
+    So a single page is only marked failed after Gemini's full retry budget,
+    Imagen's full budget, OpenRouter's 3 models, then ONE more full pass
+    5s later. In practice that's ~30+ attempts across backends per page
+    before we give up.
+    """
+    last_err = None
+    for _pass in range(max(1, _outer_attempts)):
+        if _pass > 0:
+            # Brief pause before the second full pass. Gemini transients
+            # almost always clear within a few seconds.
+            time.sleep(5)
+            logger.info(f"_generate_image_threadsafe: outer retry pass {_pass+1}/{_outer_attempts}")
+        try:
+            # Upgrade cartoon styles to face-preserving portrait when refs are present.
+            has_ref = bool(
+                (isinstance(reference_image_b64, list) and reference_image_b64)
+                or (reference_image_b64 and not isinstance(reference_image_b64, list))
+            )
+            eff_style = image_style
+            if has_ref and eff_style in (
+                "Cartoon/Animated (3D Pixar Style)", "Cartoon (2D Flat Style)"
+            ):
+                eff_style = "Photo Reference Portrait"
+
+            style_modifiers = get_image_style(eff_style)
+            no_text_instruction = (
+                "CRITICAL REQUIREMENT - ABSOLUTELY NO TEXT: This image must "
+                "contain ZERO text, ZERO words, ZERO letters, ZERO numbers, "
+                "ZERO speech bubbles, ZERO captions, ZERO signs, ZERO labels, "
+                "ZERO writing of any kind. This is a pure illustration for a "
+                "children's book - visual art only."
+            )
+
+            scene_keywords = (
+                "wide shot", "panorama", "aerial", "crowd scene", "crowd of",
+                "dozens of", "hundreds of", "grand scale", "epic scale",
+                "stadium", "ocean view", "mountain vista",
+            )
+            is_scene = any(k in prompt.lower() for k in scene_keywords)
+            scene_instruction = (
+                "WIDE CINEMATIC SHOT — capture the full scene and environment. "
+                "DO NOT crop to faces or close-up portraits. Show the whole setting."
+                if is_scene else ""
+            )
+
+            photo_instruction = ""
+            face_match_prefix = ""
+            if has_ref:
+                face_match_prefix = (
+                    "REFERENCE PHOTO PROVIDED — render the child with the same "
+                    "face shape, skin tone, hair, and features as the reference. "
+                )
+                photo_instruction = (
+                    "Match the face of the child to the reference photo. "
+                    "Preserve identifying features."
+                )
+
+            style_prompt = (
+                f"{face_match_prefix}"
+                f"{no_text_instruction}. "
+                f"{scene_instruction} "
+                f"{photo_instruction} "
+                f"{prompt}. "
+                f"{style_modifiers}. "
+                f"{no_text_instruction}"
+            )
+
+            from vertex_client import call_gemini_image
+            data_url = call_gemini_image(
+                style_prompt, api_key=api_key, reference_image_b64=reference_image_b64
+            )
+            if data_url:
+                image_bytes = base64.b64decode(data_url.split(",", 1)[1])
+                return Image.open(io.BytesIO(image_bytes)).convert("RGB"), None
+
+            # Vertex/Gemini returned nothing — try OpenRouter
+            if openrouter_key:
+                fallback = generate_image_with_openrouter(openrouter_key, prompt, image_style)
+                if fallback:
+                    return fallback, None
+
+            last_err = "No image returned from any backend"
+            # Fall through to next outer pass (if any)
+            continue
+        except Exception as e:
+            # Last-ditch: OpenRouter fallback on exception
+            try:
+                if openrouter_key:
+                    fallback = generate_image_with_openrouter(openrouter_key, prompt, image_style)
+                    if fallback:
+                        return fallback, None
+            except Exception:
+                pass
+            last_err = str(e)
+            continue
+    return None, last_err or "All backends failed after retries"
+
+
 def generate_image_with_imagen(
     api_key: str,
     prompt: str,
@@ -2405,6 +2536,232 @@ def render_custom_wizard():
                 st.rerun()
 
 
+
+
+# ---------------------------------------------------------------------------
+# AUTO-RESUME — restore in-progress book on page reload
+# ---------------------------------------------------------------------------
+# Mobile browsers aggressively evict backgrounded tabs. When the tab is
+# reloaded, Streamlit gives the new connection a fresh session_state. The
+# story, the in-flight generation, the edits — all gone from memory.
+#
+# Most of the data is already persisted to MongoDB (_save_images_now writes
+# story + journey_state to book_history after each image). What was missing
+# was the auto-restore. This helper fills that gap: on every fresh session,
+# if the user has an unfinished book in book_history, load it back into
+# session_state. They land on the right step automatically — same pattern
+# as Notion/Linear/ChatGPT.
+#
+# The user can still click 'Home' or 'My Books' to leave; we don't lock
+# them in. We just default to where they last were.
+
+def _auto_resume_in_progress_book() -> bool:
+    """Returns True if a book was restored, False otherwise."""
+    # One-shot per session
+    if st.session_state.get("_auto_resumed"):
+        return False
+    # Don't override if a book is already live in session
+    if st.session_state.get("generated_story"):
+        st.session_state["_auto_resumed"] = True
+        return False
+    # Need an authenticated user
+    user_id = get_current_user_id()
+    if not user_id:
+        return False
+
+    try:
+        from mongo_client import book_history_col
+        col = book_history_col()
+        # Most recent book that is NOT marked completed (step3 with images approved)
+        # We look at the metadata.journey_state.current_step to decide.
+        candidates = list(
+            col.find({"user_id": user_id})
+               .sort("metadata.timestamp", -1)
+               .limit(5)
+        )
+    except Exception as e:
+        logger.warning(f"_auto_resume_in_progress_book: query failed: {e}")
+        st.session_state["_auto_resumed"] = True
+        return False
+
+    in_progress = None
+    for row in candidates:
+        js = (row.get("metadata") or {}).get("journey_state", {}) or {}
+        step = js.get("current_step", "step1")
+        all_approved = js.get("all_images_approved", False)
+        # Completed = made it to step3 and approved all images
+        if step == "step3" and all_approved:
+            continue
+        # Must have at least a story to be worth resuming
+        if not row.get("story_data") or not row["story_data"].get("pages"):
+            continue
+        in_progress = row
+        break
+
+    if not in_progress:
+        st.session_state["_auto_resumed"] = True
+        return False
+
+    # Restore session_state from the row — same shape as _load_gallery_book
+    # but we DO point at the user's own doc so further saves go to the same
+    # row, and we don't block auto-gen.
+    try:
+        story_data = in_progress.get("story_data", {})
+        meta = in_progress.get("metadata", {})
+        journey_state = meta.get("journey_state", {})
+
+        st.session_state.generated_story = story_data
+        st.session_state.current_child_name = in_progress.get("child_name", "")
+        st.session_state.current_book_history_id = in_progress.get("_id")
+        st.session_state.book_mode = "custom"
+        st.session_state.wiz_generate_trigger = False
+
+        # Restore images — only valid (non-None) ones
+        saved_imgs = in_progress.get("images", [])
+        decoded = decode_stored_images(saved_imgs) if saved_imgs else []
+        st.session_state.generated_images = decoded or []
+
+        st.session_state.story_approved = journey_state.get("story_approved", False)
+        st.session_state.all_images_approved = journey_state.get("all_images_approved", False)
+        st.session_state.image_approvals = journey_state.get("image_approvals", {}) or {}
+        st.session_state.edited_story_pages = journey_state.get("edited_story_pages", {}) or {}
+        st.session_state.edited_image_prompts = journey_state.get("edited_image_prompts", {}) or {}
+
+        # If the user had already paid for this book (we infer from
+        # story_approved=True), restore the payment status too. Otherwise
+        # the focus mode / Step 2 gate won't fire and they'll see the
+        # payment screen again even though they already paid.
+        # Restore payment status by looking up an actual purchase for THIS
+        # book. The old check filtered on a non-existent 'status' field and
+        # always returned False — causing paid users to get re-asked to pay.
+        try:
+            from payments import has_paid_for_book
+            _paid = has_paid_for_book(
+                user_id,
+                book_history_id=in_progress.get("_id", "") or "",
+                child_name=in_progress.get("child_name", "") or "",
+            )
+            if _paid:
+                _gate = (_paid.get("gate") or "").lower()
+                if _gate == "print_deliver_choice":
+                    st.session_state.current_book_payment_status = "print_paid"
+                    st.session_state.book_delivery_option = "print_deliver"
+                else:
+                    # download_choice (or unknown legacy) → digital download
+                    st.session_state.current_book_payment_status = "story_paid"
+                    st.session_state.book_delivery_option = "download"
+                logger.info(
+                    f"Auto-resume restored payment: {st.session_state.current_book_payment_status}"
+                )
+        except Exception as _pe:
+            logger.warning(f"auto-resume payment-status lookup: {_pe}")
+
+        st.session_state["_auto_resumed"] = True
+        n_imgs = sum(1 for i in st.session_state.generated_images if i is not None)
+        total = len(story_data.get("pages", []))
+        logger.info(f"Auto-resumed book {in_progress.get('_id')}: {n_imgs}/{total} images done")
+        try:
+            st.toast(
+                f"📖 Resumed your book ({n_imgs}/{total} pages done)",
+                icon="📖",
+            )
+        except Exception:
+            pass
+        return True
+    except Exception as e:
+        logger.warning(f"_auto_resume_in_progress_book: restore failed: {e}")
+        st.session_state["_auto_resumed"] = True
+        return False
+
+
+# ---------------------------------------------------------------------------
+# FOCUS MODE — single-task UI while a paid book is generating images
+# ---------------------------------------------------------------------------
+# Triggered when:
+#   - user has a generated_story
+#   - story is approved
+#   - they've paid (story_paid / print_paid / download_paid)
+#   - not all images are done yet
+#
+# While true, main() suppresses the nav bar, the landing page, and the
+# Step 1 review section. Only this focus header + the existing Step 2
+# image-gen loop render. When the last image finishes, focus releases
+# automatically and the normal review UI appears.
+
+def _is_in_focus_mode() -> bool:
+    if not st.session_state.get("generated_story"):
+        return False
+    if not st.session_state.get("story_approved"):
+        return False
+    if st.session_state.get("current_book_payment_status") not in (
+        "story_paid", "print_paid", "download_paid"
+    ):
+        return False
+    # All images done? Then we're past focus mode (into review/download)
+    pages = st.session_state.generated_story.get("pages", [])
+    total = len(pages)
+    if total == 0:
+        return False
+    imgs = st.session_state.get("generated_images", []) or []
+    valid = sum(1 for i in imgs if i is not None)
+    if valid >= total and st.session_state.get("all_images_approved"):
+        return False
+    return True
+
+
+def _render_focus_header() -> None:
+    """Big, reassuring header that fills the top of the screen so the user
+    lands on it directly after payment — no scrolling required."""
+    pages = st.session_state.generated_story.get("pages", []) if st.session_state.get("generated_story") else []
+    total = len(pages)
+    imgs = st.session_state.get("generated_images", []) or []
+    done = sum(1 for i in imgs if i is not None)
+    child = (
+        st.session_state.get("current_child_name")
+        or st.session_state.get("wiz_child_name")
+        or "your"
+    )
+    pct = int(100 * done / total) if total else 0
+
+    st.markdown(
+        f"""
+        <div style="
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 16px;
+            padding: 28px 24px;
+            text-align: center;
+            margin: 8px 0 20px 0;
+            box-shadow: 0 8px 24px rgba(102, 126, 234, 0.25);
+        ">
+            <div style="font-size: 48px; line-height: 1; margin-bottom: 8px;">📖✨</div>
+            <h2 style="margin: 0 0 4px 0; font-weight: 700; letter-spacing: -0.5px;">
+                {child}'s storybook is being created
+            </h2>
+            <p style="margin: 0; opacity: 0.92; font-size: 15px;">
+                Pages appear below as they finish — feel free to watch live,
+                or check back in a couple of minutes.
+            </p>
+            <p style="margin: 12px 0 0 0; font-size: 13px; opacity: 0.85;">
+                {done} of {total} pages done · {pct}%
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # Also hide Streamlit's sidebar entirely so the focus is total
+    st.markdown(
+        """
+        <style>
+        [data-testid="stSidebar"] { display: none !important; }
+        [data-testid="collapsedControl"] { display: none !important; }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Wizard snapshot keys — persisted before the Cashfree mobile redirect and
 # rehydrated on return so the user lands back on their book, not the home page.
@@ -2501,6 +2858,8 @@ def main():
             _delete_session_token(old_token)
         except Exception:
             pass
+        # Clear auto-resume flag so the next user starts clean
+        st.session_state.pop("_auto_resumed", None)
 
     # Google OIDC: mirror st.user into our session after st.login()
     if not is_authenticated():
@@ -2514,6 +2873,21 @@ def main():
     ):
         render_otp_page()
         return
+
+    # ── AUTO-RESUME ─────────────────────────────────────────────────────
+    # After auth restoration, if the user has no live story in session but
+    # has an unfinished book in MongoDB, restore it. Single-shot per
+    # session. Skips when a Cashfree return is in the URL (the cf handler
+    # below handles that path via the wizard snapshot).
+    if (
+        is_authenticated()
+        and not st.session_state.get("_auto_resumed")
+        and not st.query_params.get("cf_order_id")
+        and not st.query_params.get("cf_link_id")
+        and not st.session_state.get("show_history")
+        and not st.session_state.get("show_community")
+    ):
+        _auto_resume_in_progress_book()
 
     # Auth gate
     if not is_authenticated():
@@ -2645,6 +3019,10 @@ def main():
                     st.session_state.cf_pending_order_id = None
                     st.session_state.cf_payment_session_id = None
                     st.session_state.pending_payment_gate = None
+                    # Trigger the scrollIntoView('#image-generation-section')
+                    # script below so the user lands at their book, not the
+                    # nav bar at the top of the page.
+                    st.session_state.just_approved_story = True
                     st.toast("✅ Payment confirmed — generating your book!", icon="✅")
                 else:
                     st.warning(f"Payment status from Cashfree: {_ord_status}. If you completed payment, click 'Verify Payment' below.")
@@ -2801,6 +3179,26 @@ def main():
                                         st.session_state.edited_story_pages = journey_state.get("edited_story_pages", {})
                                         st.session_state.edited_image_prompts = journey_state.get("edited_image_prompts", {})
 
+                                        # ── Restore payment status (paid books skip Step 1.5) ─
+                                        try:
+                                            from payments import has_paid_for_book
+                                            _hl_paid = has_paid_for_book(
+                                                get_current_user_id() or "",
+                                                book_history_id=story_info.get("db_id", "") or "",
+                                                child_name=loaded_data.get("child_name", "") or "",
+                                            )
+                                            if _hl_paid:
+                                                _hl_gate = (_hl_paid.get("gate") or "").lower()
+                                                if _hl_gate == "print_deliver_choice":
+                                                    st.session_state.current_book_payment_status = "print_paid"
+                                                    st.session_state.book_delivery_option = "print_deliver"
+                                                else:
+                                                    st.session_state.current_book_payment_status = "story_paid"
+                                                    st.session_state.book_delivery_option = "download"
+                                                logger.info("My Books load: restored payment status")
+                                        except Exception as _hle:
+                                            logger.warning(f"My Books load: payment-status lookup failed: {_hle}")
+
                                         # ── Restore saved images ─────────────────────────
                                         if not story_data.get("template_id"):
                                             saved_imgs = loaded_data.get("images", [])
@@ -2821,7 +3219,23 @@ def main():
                                                 st.session_state.all_images_approved = journey_state.get("all_images_approved", False)
 
                                         # ── Set flag so Step 2 won't auto-generate on load ──
-                                        st.session_state._loaded_from_history = True
+                                        # EXCEPT for paid books with missing images — those should
+                                        # resume generating automatically (the user already paid,
+                                        # they want the book finished, not a 'press Generate' gate).
+                                        _hl_pay_status = st.session_state.get("current_book_payment_status")
+                                        _hl_has_missing = (
+                                            story_data.get("pages")
+                                            and any(
+                                                (i is None) for i in
+                                                (st.session_state.get("generated_images") or [])
+                                            )
+                                            or len(st.session_state.get("generated_images") or [])
+                                                < len(story_data.get("pages", []))
+                                        )
+                                        if _hl_pay_status in ("story_paid", "print_paid", "download_paid") and _hl_has_missing:
+                                            st.session_state._loaded_from_history = False
+                                        else:
+                                            st.session_state._loaded_from_history = True
 
                                         st.session_state.pdf_path = None
                                         st.session_state.pdf_generation_key = None
@@ -2842,11 +3256,18 @@ def main():
         
         return
 
+    # ── FOCUS MODE ─────────────────────────────────────────────────
+    # If we're mid-generation for a paid book, suppress all other UI and
+    # render only the focus header (plus Step 2's image-gen loop below).
+    _focus_mode = _is_in_focus_mode()
+    if _focus_mode:
+        _render_focus_header()
+
     # Determine admin status
     _current_user_email_nav = st.session_state.auth_user.get("email", "")
     _is_admin_nav = _current_user_email_nav in ADMIN_EMAILS
 
-    if not _is_admin_nav:
+    if not _focus_mode and not _is_admin_nav:
         # Non-admin: hide sidebar entirely, show compact top bar
         st.markdown(
             """
@@ -2867,6 +3288,11 @@ def main():
                 st.session_state.wiz_generate_trigger = False
                 st.session_state.show_history = False
                 st.session_state.show_community = False
+                # Mark as 'no resume this session' — user explicitly chose home.
+                # We DON'T clear _auto_resumed because that would re-trigger
+                # the restore on the next rerun. Instead, leave it set to
+                # True so resume stays suppressed for this session.
+                st.session_state["_auto_resumed"] = True
                 st.rerun()
         with nav_history:
             if st.button("My Books", use_container_width=True):
@@ -2889,8 +3315,8 @@ def main():
                 sign_out()
                 st.rerun()
         st.divider()
-    else:
-        # Admin: full sidebar
+    elif not _focus_mode:
+        # Admin: full sidebar (suppressed in focus mode)
         with st.sidebar:
             # User info and logout
             user_email = st.session_state.auth_user.get("email", "")
@@ -3190,285 +3616,334 @@ def main():
     age = st.session_state.wiz_age
     language = st.session_state.wiz_language
     
-    # Step 1: Story Review
-    if st.session_state.generated_story and not st.session_state.story_approved:
-        st.header("📖 Step 1: Review & Edit Story")
-        st.markdown("Review each page below. You can edit the text for any page. Click 'Approve Story' when ready.")
-
-        # Determine admin status once for the whole Step 1 block
-        _s1_email = st.session_state.get("user_email") or (st.session_state.get("auth_user") or {}).get("email", "")
-        _s1_is_admin = _s1_email in ADMIN_EMAILS
-
+    # ─────────────────────────────────────────────────────────────────────
+    # Step 1: Story Review — redesigned for clear hierarchy (skip in focus)
+    # ─────────────────────────────────────────────────────────────────────
+    if not _focus_mode and st.session_state.generated_story and not st.session_state.story_approved:
         pages = st.session_state.generated_story.get("pages", [])
-        
-        # Debug: Validate story has pages
-        if not pages or len(pages) == 0:
+        total_pages = len(pages)
+
+        # ── Sanity / empty-story handling ───────────────────────────────
+        if not pages:
             st.error("⚠️ Story loaded but has no pages. The story data may be incomplete.")
             with st.expander("Debug: Story Data", expanded=True):
                 st.write("Story keys:", list(st.session_state.generated_story.keys()) if isinstance(st.session_state.generated_story, dict) else "Not a dict")
                 st.write("Pages count:", len(pages))
                 st.json(st.session_state.generated_story)
             return
-        
-        # Display all pages (not collapsed) with edit capability
-        for i, page in enumerate(pages):
-            page_num = page.get('page_number', i+1)
-            
-            # Get edited text or use original
-            edited_text = st.session_state.edited_story_pages.get(i, page.get("text", ""))
-            # Get edited image prompt or use original
-            edited_image_prompt = st.session_state.edited_image_prompts.get(i, page.get("image_prompt", ""))
-            
-            st.subheader(f"📄 Page {page_num}")
-            
-            # Editable story text area
-            new_text = st.text_area(
-                f"Story Text (Page {page_num})",
-                value=edited_text,
-                key=f"story_text_{i}",
-                height=100,
-                help="Edit the story text for this page"
-            )
-            
-            # Save edited text
-            if new_text != page.get("text", ""):
-                st.session_state.edited_story_pages[i] = new_text
-                # Update the story data
-                st.session_state.generated_story["pages"][i]["text"] = new_text
-            
-            # Editable image prompt area — admin only
-            if _s1_is_admin:
-                st.write("**Image Prompt:**")
-                new_image_prompt = st.text_area(
-                    f"Image Prompt (Page {page_num})",
-                    value=edited_image_prompt,
-                    key=f"image_prompt_{i}",
-                    height=80,
-                    help="Edit the image prompt to change how the image will be generated. Make sure to include the visual anchor description."
-                )
-                # Save edited image prompt
-                if new_image_prompt != page.get("image_prompt", ""):
-                    st.session_state.edited_image_prompts[i] = new_image_prompt
-                    st.session_state.generated_story["pages"][i]["image_prompt"] = new_image_prompt
-            
-            # Page actions: Regenerate from this page, Move up/down
-            col_action1, col_action2, col_action3 = st.columns([1, 1, 1])
-            with col_action1:
-                if st.button(f"🔄 Regenerate from Page {page_num}", key=f"regen_from_page_{i}", use_container_width=True):
-                    st.session_state[f"_regen_flag_{i}"] = True
-                    st.session_state[f"regen_page_prompt_{i}"] = ""
-                    st.rerun()
-            with col_action2:
-                if i > 0:
-                    if st.button(f"⬆️ Move Up", key=f"move_page_up_{i}", use_container_width=True):
-                        # Swap pages
-                        pages = st.session_state.generated_story["pages"]
-                        pages[i], pages[i-1] = pages[i-1], pages[i]
-                        # Update page numbers
-                        for idx, p in enumerate(pages):
-                            p["page_number"] = idx + 1
-                        st.session_state.generated_story["pages"] = pages
-                        # Clear images and approvals since order changed
-                        st.session_state.generated_images = []
-                        st.session_state.image_approvals = {}
-                        st.session_state.all_images_approved = False
-                        st.rerun()
-            with col_action3:
-                if i < len(pages) - 1:
-                    if st.button(f"⬇️ Move Down", key=f"move_page_down_{i}", use_container_width=True):
-                        # Swap pages
-                        pages = st.session_state.generated_story["pages"]
-                        pages[i], pages[i+1] = pages[i+1], pages[i]
-                        # Update page numbers
-                        for idx, p in enumerate(pages):
-                            p["page_number"] = idx + 1
-                        st.session_state.generated_story["pages"] = pages
-                        # Clear images and approvals since order changed
-                        st.session_state.generated_images = []
-                        st.session_state.image_approvals = {}
-                        st.session_state.all_images_approved = False
-                        st.rerun()
-            
-            # Show regenerate prompt if requested
-            if st.session_state.get(f"_regen_flag_{i}", False):
-                st.write("---")
-                st.write(f"**Regenerate Story from Page {page_num} onwards:**")
-                regen_prompt = st.text_area(
-                    f"Instructions for regenerating from Page {page_num}",
-                    value=st.session_state.get(f"regen_page_prompt_{i}", ""),
-                    key=f"regen_prompt_input_{i}",
-                    height=100,
-                    placeholder="e.g., Make the character braver, Add more dialogue, Change the ending..."
-                )
-                col_apply, col_cancel_regen = st.columns([1, 1])
-                with col_apply:
-                    if st.button(f"✨ Apply Changes", key=f"apply_regen_{i}", type="primary", use_container_width=True):
-                        if regen_prompt.strip():
-                            # Regenerate story from this page onwards
-                            with st.spinner(f"Regenerating story from page {page_num}..."):
-                                regenerated_story = regenerate_story_from_page(
-                                    api_key,
-                                    st.session_state.generated_story,
-                                    i,
-                                    regen_prompt,
-                                    st.session_state.current_child_name or child_name,
-                                    age,
-                                    language
-                                )
-                                if regenerated_story:
-                                    st.session_state.generated_story = regenerated_story
-                                    # CRITICAL: Clear ALL images when story is regenerated to prevent mismatch
-                                    st.session_state.generated_images = []
-                                    st.session_state.image_approvals = {}
-                                    st.session_state.all_images_approved = False
-                                    st.session_state.edited_story_pages = {k: v for k, v in st.session_state.edited_story_pages.items() if k < i}
-                                    st.session_state.edited_image_prompts = {k: v for k, v in st.session_state.edited_image_prompts.items() if k < i}
-                                    st.session_state.pdf_path = None
-                                    st.session_state.pdf_generation_key = None
-                                    st.session_state.story_approved = False
-                                    st.session_state[f"_regen_flag_{i}"] = False
-                                    st.success(f"✅ Story regenerated from page {page_num} onwards! All images cleared - please regenerate them.")
-                                    st.rerun()
-                                else:
-                                    st.error("Failed to regenerate story. Please try again.")
-                        else:
-                            st.warning("Please enter instructions for regeneration")
-                with col_cancel_regen:
-                    if st.button("❌ Cancel", key=f"cancel_regen_{i}", use_container_width=True):
-                        st.session_state[f"_regen_flag_{i}"] = False
-                        st.rerun()
-            
-            with col_action2:
-                if i > 0:
-                    if st.button(f"⬆️ Move Up", key=f"move_up_story_{i}", use_container_width=True):
-                        # Swap pages
-                        pages[i], pages[i-1] = pages[i-1], pages[i]
-                        # Update page numbers
-                        for idx, p in enumerate(pages):
-                            p["page_number"] = idx + 1
-                        st.session_state.generated_story["pages"] = pages
-                        # Reorder edited data if exists
-                        if i in st.session_state.edited_story_pages:
-                            temp = st.session_state.edited_story_pages.get(i)
-                            st.session_state.edited_story_pages[i] = st.session_state.edited_story_pages.get(i-1, "")
-                            st.session_state.edited_story_pages[i-1] = temp
-                        if i in st.session_state.edited_image_prompts:
-                            temp = st.session_state.edited_image_prompts.get(i)
-                            st.session_state.edited_image_prompts[i] = st.session_state.edited_image_prompts.get(i-1, "")
-                            st.session_state.edited_image_prompts[i-1] = temp
-                        st.session_state.generated_images = []  # Clear images when reordering
-                        st.rerun()
-            with col_action3:
-                if i < len(pages) - 1:
-                    if st.button(f"⬇️ Move Down", key=f"move_down_story_{i}", use_container_width=True):
-                        # Swap pages
-                        pages[i], pages[i+1] = pages[i+1], pages[i]
-                        # Update page numbers
-                        for idx, p in enumerate(pages):
-                            p["page_number"] = idx + 1
-                        st.session_state.generated_story["pages"] = pages
-                        # Reorder edited data if exists
-                        if i in st.session_state.edited_story_pages:
-                            temp = st.session_state.edited_story_pages.get(i)
-                            st.session_state.edited_story_pages[i] = st.session_state.edited_story_pages.get(i+1, "")
-                            st.session_state.edited_story_pages[i+1] = temp
-                        if i in st.session_state.edited_image_prompts:
-                            temp = st.session_state.edited_image_prompts.get(i)
-                            st.session_state.edited_image_prompts[i] = st.session_state.edited_image_prompts.get(i+1, "")
-                            st.session_state.edited_image_prompts[i+1] = temp
-                        st.session_state.generated_images = []  # Clear images when reordering
-                        st.rerun()
-            
-            st.divider()
-        
-        # Follow-up Prompt Section
-        st.divider()
-        st.subheader("✨ Refine Story with Follow-up Prompt")
-        st.markdown("Want to change the story? Enter instructions below to refine it while keeping the existing storyline.")
-        
-        followup_prompt = st.text_area(
-            "Follow-up Instructions",
-            placeholder="e.g., Make the story more adventurous, Add more dialogue, Change the ending to be more positive, Make the character braver...",
-            height=100,
-            help="Describe what you'd like to change or improve in the story"
+
+        # ── Admin check (used by per-page Advanced expander) ────────────
+        _s1_email = st.session_state.get("user_email") or (st.session_state.get("auth_user") or {}).get("email", "")
+        _s1_is_admin = _s1_email in ADMIN_EMAILS
+
+        # ── Header: title + page count ──────────────────────────────────
+        _story_title = (
+            st.session_state.generated_story.get("title")
+            or f"{st.session_state.current_child_name or child_name}'s Storybook"
         )
-        
-        if st.button("🔄 Refine Story with Follow-up", type="secondary", use_container_width=True):
-            if followup_prompt.strip():
-                with st.spinner("🔄 Refining story based on your instructions..."):
-                    original_story = st.session_state.generated_story.copy()  # Keep a copy for comparison
-                    refined_story = refine_story_with_followup(
-                        api_key, 
-                        original_story,
-                        followup_prompt,
-                        child_name,
-                        age,
-                        language
+        st.markdown(
+            f"""<div style="margin: 8px 0 4px 0;">
+              <h2 style="margin:0;font-weight:700;letter-spacing:-0.5px;">
+                ✨ Your story is ready
+              </h2>
+              <p style="margin:4px 0 0 0;color:#6b7280;font-size:14px;">
+                <strong>{_story_title}</strong> · {total_pages} pages ·
+                written for {st.session_state.current_child_name or child_name}
+              </p>
+            </div>""",
+            unsafe_allow_html=True,
+        )
+
+        # ── Helper: shared 'approve' and 'regen-all' actions ────────────
+        def _do_approve():
+            # Apply pending edits before approving
+            for _i, _p in enumerate(pages):
+                if _i in st.session_state.edited_story_pages:
+                    st.session_state.generated_story["pages"][_i]["text"] = (
+                        st.session_state.edited_story_pages[_i]
                     )
-                    if refined_story:
-                        # Check if story actually changed - compare page by page
-                        original_pages = original_story.get("pages", [])
-                        refined_pages = refined_story.get("pages", [])
-                        
-                        changed_count = 0
-                        for i, (orig_page, ref_page) in enumerate(zip(original_pages, refined_pages)):
-                            orig_text = orig_page.get("text", "").strip()
-                            ref_text = ref_page.get("text", "").strip()
-                            if orig_text != ref_text:
-                                changed_count += 1
-                        
-                        if changed_count == 0:
-                            st.error("❌ The refined story is IDENTICAL to the original. The AI did not apply your changes.")
-                            st.info("💡 **Tips to get better results:**")
-                            st.markdown("""
-                            - Be very specific about what to change (e.g., 'Change page 3 to have the character be braver')
-                            - Mention specific pages or scenes to modify
-                            - Use action words (e.g., 'add', 'remove', 'change', 'make more')
-                            - Try rephrasing your request differently
-                            """)
-                            # Don't update the story if nothing changed
-                        else:
-                            # Update the story in session state
-                            st.session_state.generated_story = refined_story
-                            # CRITICAL: Clear images when story changes to prevent mismatch
+            st.session_state.story_approved = True
+            st.session_state.just_approved_story = True
+            if st.session_state.generated_story and st.session_state.current_child_name:
+                save_story(st.session_state.generated_story, st.session_state.current_child_name)
+            st.rerun()
+
+        def _do_regen_all():
+            st.session_state.generated_story = None
+            st.session_state.edited_story_pages = {}
+            st.session_state.edited_image_prompts = {}
+            st.rerun()
+
+        def _render_cta_bar(suffix: str):
+            """Primary 'Make my book' + secondary 'Try a different story'.
+            Rendered top and bottom so the user never has to scroll to find it."""
+            cta1, cta2 = st.columns([2, 1])
+            with cta1:
+                if st.button(
+                    "✅ Looks great — make my book",
+                    type="primary",
+                    use_container_width=True,
+                    key=f"approve_{suffix}",
+                ):
+                    _do_approve()
+            with cta2:
+                if st.button(
+                    "🔄 Try a different story",
+                    use_container_width=True,
+                    key=f"regen_all_{suffix}",
+                ):
+                    _do_regen_all()
+
+        # ── TOP CTA BAR ─────────────────────────────────────────────────
+        _render_cta_bar("top")
+        st.divider()
+
+        # ── Per-page cards ──────────────────────────────────────────────
+        for i, page in enumerate(pages):
+            page_num = page.get("page_number", i + 1)
+            edited_text = st.session_state.edited_story_pages.get(i, page.get("text", ""))
+
+            with st.container(border=True):
+                st.markdown(
+                    f"<div style='color:#6b7280;font-size:13px;font-weight:600;"
+                    f"margin-bottom:6px;'>Page {page_num} of {total_pages}</div>",
+                    unsafe_allow_html=True,
+                )
+
+                # Inline-editable story text (no label, no button — just type)
+                new_text = st.text_area(
+                    f"Page {page_num} story text",
+                    value=edited_text,
+                    key=f"story_text_{i}",
+                    height=110,
+                    label_visibility="collapsed",
+                )
+                if new_text != page.get("text", ""):
+                    st.session_state.edited_story_pages[i] = new_text
+                    st.session_state.generated_story["pages"][i]["text"] = new_text
+
+                # ── Single per-page actions menu (popover) ──────────────
+                with st.popover("⋮ Page actions", use_container_width=False):
+                    # Move Up
+                    if i > 0:
+                        if st.button("⬆ Move up", key=f"mu_{i}", use_container_width=True):
+                            pgs = st.session_state.generated_story["pages"]
+                            pgs[i], pgs[i - 1] = pgs[i - 1], pgs[i]
+                            for idx, p in enumerate(pgs):
+                                p["page_number"] = idx + 1
+                            st.session_state.generated_story["pages"] = pgs
+                            # Reorder edit dicts in lock-step
+                            _esp = st.session_state.edited_story_pages
+                            _esp[i], _esp[i - 1] = _esp.get(i - 1, ""), _esp.get(i, "")
+                            _eip = st.session_state.edited_image_prompts
+                            _eip[i], _eip[i - 1] = _eip.get(i - 1, ""), _eip.get(i, "")
+                            # Image order is now stale
                             st.session_state.generated_images = []
                             st.session_state.image_approvals = {}
                             st.session_state.all_images_approved = False
-                            st.session_state.pdf_path = None
-                            st.session_state.pdf_generation_key = None
-                            # Reset all edits so the new story is displayed
-                            st.session_state.edited_story_pages = {}
-                            st.session_state.edited_image_prompts = {}
-                            # Reset approval state so user can review the refined story
-                            st.session_state.story_approved = False
-                            st.success(f"✅ Story refined! {changed_count} out of {len(original_pages)} pages were modified. Review the updated version below.")
                             st.rerun()
-                    else:
-                        st.error("Failed to refine story. Please try again or check the error message above.")
-            else:
-                st.warning("Please enter follow-up instructions")
-        
+
+                    # Move Down
+                    if i < total_pages - 1:
+                        if st.button("⬇ Move down", key=f"md_{i}", use_container_width=True):
+                            pgs = st.session_state.generated_story["pages"]
+                            pgs[i], pgs[i + 1] = pgs[i + 1], pgs[i]
+                            for idx, p in enumerate(pgs):
+                                p["page_number"] = idx + 1
+                            st.session_state.generated_story["pages"] = pgs
+                            _esp = st.session_state.edited_story_pages
+                            _esp[i], _esp[i + 1] = _esp.get(i + 1, ""), _esp.get(i, "")
+                            _eip = st.session_state.edited_image_prompts
+                            _eip[i], _eip[i + 1] = _eip.get(i + 1, ""), _eip.get(i, "")
+                            st.session_state.generated_images = []
+                            st.session_state.image_approvals = {}
+                            st.session_state.all_images_approved = False
+                            st.rerun()
+
+                    # Rewrite from this page on
+                    if st.button(
+                        "🔄 Rewrite from this page on",
+                        key=f"rfh_{i}",
+                        use_container_width=True,
+                    ):
+                        st.session_state[f"_regen_flag_{i}"] = True
+                        st.session_state[f"regen_page_prompt_{i}"] = ""
+                        st.rerun()
+
+                    # Delete page
+                    if total_pages > 1:
+                        if st.button(
+                            "🗑 Delete this page",
+                            key=f"delp_{i}",
+                            use_container_width=True,
+                        ):
+                            pgs = st.session_state.generated_story["pages"]
+                            del pgs[i]
+                            for idx, p in enumerate(pgs):
+                                p["page_number"] = idx + 1
+                            st.session_state.generated_story["pages"] = pgs
+                            # Drop edit-state for this index; shift higher ones down
+                            new_esp = {}
+                            for k, v in st.session_state.edited_story_pages.items():
+                                if k == i:
+                                    continue
+                                new_esp[k - 1 if k > i else k] = v
+                            st.session_state.edited_story_pages = new_esp
+                            new_eip = {}
+                            for k, v in st.session_state.edited_image_prompts.items():
+                                if k == i:
+                                    continue
+                                new_eip[k - 1 if k > i else k] = v
+                            st.session_state.edited_image_prompts = new_eip
+                            st.session_state.generated_images = []
+                            st.session_state.image_approvals = {}
+                            st.session_state.all_images_approved = False
+                            st.rerun()
+
+                # ── Admin only: image prompt editor in an expander ──────
+                if _s1_is_admin:
+                    with st.expander("Advanced: image prompt"):
+                        edited_image_prompt = st.session_state.edited_image_prompts.get(
+                            i, page.get("image_prompt", "")
+                        )
+                        new_image_prompt = st.text_area(
+                            f"Image Prompt (Page {page_num})",
+                            value=edited_image_prompt,
+                            key=f"image_prompt_{i}",
+                            height=80,
+                            help="Edit the image prompt to change how the image will be generated.",
+                            label_visibility="collapsed",
+                        )
+                        if new_image_prompt != page.get("image_prompt", ""):
+                            st.session_state.edited_image_prompts[i] = new_image_prompt
+                            st.session_state.generated_story["pages"][i]["image_prompt"] = new_image_prompt
+
+                # ── Inline 'Rewrite from this page on' form ─────────────
+                if st.session_state.get(f"_regen_flag_{i}", False):
+                    st.markdown(
+                        f"<div style='background:#fef3c7;border-radius:8px;"
+                        f"padding:12px;margin-top:10px;'>"
+                        f"<strong>Rewrite from page {page_num} onwards</strong>"
+                        f"</div>",
+                        unsafe_allow_html=True,
+                    )
+                    regen_prompt = st.text_area(
+                        f"What should change from page {page_num} on?",
+                        value=st.session_state.get(f"regen_page_prompt_{i}", ""),
+                        key=f"regen_prompt_input_{i}",
+                        height=90,
+                        placeholder="e.g., Make the character braver · Add more dialogue · Change the ending…",
+                    )
+                    col_apply, col_cancel = st.columns(2)
+                    with col_apply:
+                        if st.button(
+                            "✨ Apply changes",
+                            key=f"apply_regen_{i}",
+                            type="primary",
+                            use_container_width=True,
+                        ):
+                            if regen_prompt.strip():
+                                with st.spinner(f"Rewriting from page {page_num}…"):
+                                    regenerated_story = regenerate_story_from_page(
+                                        api_key,
+                                        st.session_state.generated_story,
+                                        i,
+                                        regen_prompt,
+                                        st.session_state.current_child_name or child_name,
+                                        age,
+                                        language,
+                                    )
+                                    if regenerated_story:
+                                        st.session_state.generated_story = regenerated_story
+                                        st.session_state.generated_images = []
+                                        st.session_state.image_approvals = {}
+                                        st.session_state.all_images_approved = False
+                                        st.session_state.edited_story_pages = {
+                                            k: v for k, v in st.session_state.edited_story_pages.items() if k < i
+                                        }
+                                        st.session_state.edited_image_prompts = {
+                                            k: v for k, v in st.session_state.edited_image_prompts.items() if k < i
+                                        }
+                                        st.session_state.pdf_path = None
+                                        st.session_state.pdf_generation_key = None
+                                        st.session_state.story_approved = False
+                                        st.session_state[f"_regen_flag_{i}"] = False
+                                        st.success(f"✅ Rewrote from page {page_num} onwards.")
+                                        st.rerun()
+                                    else:
+                                        st.error("Couldn't rewrite the story. Please try again.")
+                            else:
+                                st.warning("Please describe what to change.")
+                    with col_cancel:
+                        if st.button(
+                            "✖ Cancel",
+                            key=f"cancel_regen_{i}",
+                            use_container_width=True,
+                        ):
+                            st.session_state[f"_regen_flag_{i}"] = False
+                            st.rerun()
+
+        # ── BOTTOM CTA BAR (mirrors the top one) ────────────────────────
         st.divider()
-        
-        # Single approve button at the bottom
-        col1, col2 = st.columns([1, 1])
-        with col1:
-            if st.button("✅ Approve Story", type="primary", use_container_width=True):
-                # Apply all edits before approving
-                for i, page in enumerate(pages):
-                    if i in st.session_state.edited_story_pages:
-                        st.session_state.generated_story["pages"][i]["text"] = st.session_state.edited_story_pages[i]
-                st.session_state.story_approved = True
-                st.session_state.just_approved_story = True
-                # Auto-save story with updated journey state
-                if st.session_state.generated_story and st.session_state.current_child_name:
-                    save_story(st.session_state.generated_story, st.session_state.current_child_name)
-                st.rerun()
-        with col2:
-            if st.button("🔄 Regenerate Story from Scratch", use_container_width=True):
-                st.session_state.generated_story = None
-                st.session_state.edited_story_pages = {}
-                st.rerun()
+        _render_cta_bar("bot")
+
+        # ── Advanced: full-story follow-up (power feature, collapsed) ──
+        with st.expander("✨ Advanced — refine the whole story with one instruction"):
+            st.caption(
+                "Describe a change to apply across the story (e.g. 'make the "
+                "ending more positive'). For changes to a specific page, use "
+                "that page's ⋮ menu instead."
+            )
+            followup_prompt = st.text_area(
+                "Instructions",
+                placeholder="e.g., Make the story more adventurous · Add more dialogue · Change the ending…",
+                height=90,
+                key="followup_prompt_input",
+                label_visibility="collapsed",
+            )
+            if st.button("🔄 Refine the whole story", use_container_width=True, key="apply_followup"):
+                if followup_prompt.strip():
+                    with st.spinner("Refining the story…"):
+                        original_story = st.session_state.generated_story.copy()
+                        refined_story = refine_story_with_followup(
+                            api_key,
+                            original_story,
+                            followup_prompt,
+                            child_name,
+                            age,
+                            language,
+                        )
+                        if refined_story:
+                            original_pages = original_story.get("pages", [])
+                            refined_pages = refined_story.get("pages", [])
+                            changed_count = sum(
+                                1
+                                for o, r in zip(original_pages, refined_pages)
+                                if o.get("text", "").strip() != r.get("text", "").strip()
+                            )
+                            if changed_count == 0:
+                                st.error(
+                                    "The refined story is identical to the original. "
+                                    "Try being more specific — name the page or the change."
+                                )
+                            else:
+                                st.session_state.generated_story = refined_story
+                                st.session_state.generated_images = []
+                                st.session_state.image_approvals = {}
+                                st.session_state.all_images_approved = False
+                                st.session_state.pdf_path = None
+                                st.session_state.pdf_generation_key = None
+                                st.session_state.edited_story_pages = {}
+                                st.session_state.edited_image_prompts = {}
+                                st.session_state.story_approved = False
+                                st.success(
+                                    f"✅ Refined — {changed_count} of {len(original_pages)} pages updated."
+                                )
+                                st.rerun()
+                        else:
+                            st.error("Couldn't refine the story. Please try again.")
+                else:
+                    st.warning("Please describe what to change.")
 
     # ─────────────────────────────────────────────────────────────────────────
     # Step 1.5: Choose delivery method & pay — after story approval, before images
@@ -3655,7 +4130,8 @@ def main():
                             f"Storybook digital download for {_choice_child}",
                             customer_phone=_choice_phone,
                             metadata={"book_kind": "custom", "product": "pdf_download",
-                                      "gate": "download_choice", "child_name": _choice_child},
+                                      "gate": "download_choice", "child_name": _choice_child,
+                                      "book_history_id": st.session_state.get("current_book_history_id") or ""},
                         )
                     if _res_dl and _res_dl.get("payment_session_id"):
                         _ord_id_dl = _res_dl["order_id"]
@@ -3698,7 +4174,8 @@ def main():
                             f"Printed storybook for {_choice_child}",
                             customer_phone=_choice_phone,
                             metadata={"book_kind": "custom", "product": "print_deliver",
-                                      "gate": "print_deliver_choice", "child_name": _choice_child},
+                                      "gate": "print_deliver_choice", "child_name": _choice_child,
+                                      "book_history_id": st.session_state.get("current_book_history_id") or ""},
                         )
                     if _res_pd and _res_pd.get("payment_session_id"):
                         _ord_id_pd = _res_pd["order_id"]
@@ -3851,22 +4328,161 @@ def main():
                             st.session_state._loaded_from_history = False
                             st.rerun()
                     else:
-                        with st.spinner(f"Generating image {missing_idx + 1}/{total_pages}..."):
-                            page = pages[missing_idx]
-                            # Admin may have saved a custom prompt; otherwise assemble lazily
-                            if missing_idx in st.session_state.edited_image_prompts:
-                                image_prompt = st.session_state.edited_image_prompts[missing_idx]
+                        # ── PARALLEL GENERATION ────────────────────────────
+                        # Gather every still-missing index, assemble prompts in
+                        # the main thread (session_state isn't thread-safe),
+                        # then dispatch a bounded pool of workers. Single rerun
+                        # at the end. Net: ~3× faster than one-image-per-rerun,
+                        # and the rerun overhead (story cards, iframes) only
+                        # runs once instead of N times.
+                        missing_indices = [
+                            i for i in range(gen_limit)
+                            if i >= len(st.session_state.generated_images)
+                            or st.session_state.generated_images[i] is None
+                        ]
+                        # Ensure list is large enough for all writes
+                        while len(st.session_state.generated_images) < gen_limit:
+                            st.session_state.generated_images.append(None)
+
+                        # Resolve session-dependent inputs ONCE on the main thread
+                        _eff_style = (
+                            st.session_state.get("wiz_image_style")
+                            or st.session_state.get("image_style", "Cartoon/Animated (3D Pixar Style)")
+                        )
+                        _ref_b64 = st.session_state.get("wiz_reference_photos_b64") or None
+                        _or_key = st.session_state.get("openrouter_api_key", "") or ""
+                        _va = st.session_state.generated_story.get("visual_anchor", "")
+                        _sc = st.session_state.generated_story.get("secondary_characters", [])
+                        _fmt = _resolve_book_format()
+
+                        # Build (idx, prompt) pairs
+                        jobs = []
+                        for idx in missing_indices:
+                            page = pages[idx]
+                            if idx in st.session_state.edited_image_prompts:
+                                p = st.session_state.edited_image_prompts[idx]
                             else:
-                                _va = st.session_state.generated_story.get("visual_anchor", "")
-                                _sc = st.session_state.generated_story.get("secondary_characters", [])
-                                image_prompt = _assemble_image_prompt(page, _va, _resolve_book_format(), _sc)
-                            logger.info(f"Generating image for page {missing_idx + 1} with prompt: {image_prompt[:150]}...")
-                            img = generate_image_with_imagen(api_key, image_prompt, image_index=missing_idx)
-                            # Ensure list is large enough
-                            while len(st.session_state.generated_images) <= missing_idx:
-                                st.session_state.generated_images.append(None)
-                            st.session_state.generated_images[missing_idx] = img
+                                p = _assemble_image_prompt(page, _va, _fmt, _sc)
+                            jobs.append((idx, p))
+
+                        if jobs:
+                            st.markdown(
+                                f"### 🎨 Your storybook is coming to life — "
+                                f"{len(jobs)} page{'s' if len(jobs) != 1 else ''}"
+                            )
+                            st.caption(
+                                "Pages appear here as they finish — you don't "
+                                "need to wait for the whole book."
+                            )
+                            progress = st.progress(0.0, text=f"0 / {len(jobs)} done")
+
+                            # ── Live grid of placeholders ─────────────────
+                            # One st.empty() per page. Each one gets filled by
+                            # the as_completed loop the moment its future
+                            # resolves, so the user watches the book build up
+                            # page by page instead of waiting for a single
+                            # rerun at the end. 2 columns on mobile-friendly
+                            # widths; pages render in page-order.
+                            N_COLS = 2
+                            grid_rows = []
+                            ordered_indices = sorted(idx for idx, _ in jobs)
+                            for row_start in range(0, len(ordered_indices), N_COLS):
+                                grid_rows.append(st.columns(N_COLS))
+                            placeholders = {}
+                            for slot, idx in enumerate(ordered_indices):
+                                row = slot // N_COLS
+                                col = slot % N_COLS
+                                with grid_rows[row][col]:
+                                    placeholders[idx] = st.empty()
+                                    with placeholders[idx].container():
+                                        st.markdown(
+                                            f"<div style='background:#f3f4f6;"
+                                            f"border:2px dashed #d1d5db;"
+                                            f"border-radius:12px;padding:48px 16px;"
+                                            f"text-align:center;color:#6b7280;"
+                                            f"font-size:14px;min-height:220px;"
+                                            f"display:flex;flex-direction:column;"
+                                            f"justify-content:center;align-items:center;'>"
+                                            f"<div style='font-size:28px;'>⏳</div>"
+                                            f"<div style='margin-top:8px;'>"
+                                            f"Page {idx+1} — preparing…</div></div>",
+                                            unsafe_allow_html=True,
+                                        )
+
+                            done = 0
+                            errors = {}
+                            logger.info(
+                                f"Parallel image gen: {len(jobs)} jobs, "
+                                f"max_workers={IMAGE_GEN_CONCURRENCY}"
+                            )
+                            with ThreadPoolExecutor(max_workers=IMAGE_GEN_CONCURRENCY) as _pool:
+                                fut_to_idx = {
+                                    _pool.submit(
+                                        _generate_image_threadsafe,
+                                        api_key, prompt, _eff_style, _ref_b64, _or_key,
+                                    ): idx
+                                    for idx, prompt in jobs
+                                }
+                                for fut in as_completed(fut_to_idx):
+                                    idx = fut_to_idx[fut]
+                                    try:
+                                        img, err = fut.result()
+                                    except Exception as e:
+                                        img, err = None, str(e)
+                                    if img is not None:
+                                        st.session_state.generated_images[idx] = img
+                                        # Render the finished image into its
+                                        # placeholder — user sees it instantly.
+                                        with placeholders[idx].container():
+                                            st.image(
+                                                img,
+                                                caption=f"Page {idx+1}",
+                                                use_container_width=True,
+                                            )
+                                    else:
+                                        st.session_state.generated_images[idx] = Image.new(
+                                            "RGB", (384, 512), color=(200, 200, 200)
+                                        )
+                                        errors[idx] = {
+                                            "error": err or "Unknown",
+                                            "full_error": err or "Unknown",
+                                            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+                                            "attempt": 1,
+                                        }
+                                        logger.error(f"Image gen failed for page {idx+1}: {err}")
+                                        with placeholders[idx].container():
+                                            st.markdown(
+                                                f"<div style='background:#fef2f2;"
+                                                f"border:2px solid #fca5a5;"
+                                                f"border-radius:12px;padding:24px;"
+                                                f"text-align:center;color:#991b1b;"
+                                                f"font-size:13px;min-height:220px;"
+                                                f"display:flex;flex-direction:column;"
+                                                f"justify-content:center;'>"
+                                                f"<div style='font-size:28px;'>⚠️</div>"
+                                                f"<div style='margin-top:8px;font-weight:600;'>"
+                                                f"Page {idx+1} failed</div>"
+                                                f"<div style='margin-top:4px;font-size:11px;'>"
+                                                f"{(err or 'Unknown')[:80]}</div>"
+                                                f"<div style='margin-top:6px;font-size:11px;'>"
+                                                f"You can regenerate it below.</div>"
+                                                f"</div>",
+                                                unsafe_allow_html=True,
+                                            )
+                                    done += 1
+                                    progress.progress(
+                                        done / len(jobs),
+                                        text=f"{done} / {len(jobs)} done",
+                                    )
+
+                            # Merge errors into session state
+                            for idx, info in errors.items():
+                                st.session_state.image_generation_errors[idx] = info
+
                             _save_images_now()
+                            # Brief pause so the last image is visible before
+                            # the rerun swaps in the full review UI.
+                            time.sleep(0.8)
                             st.rerun()
         
         # ── Image display: admin full review vs non-admin preview cards ────────
