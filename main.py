@@ -2631,25 +2631,30 @@ def _auto_resume_in_progress_book() -> bool:
         # story_approved=True), restore the payment status too. Otherwise
         # the focus mode / Step 2 gate won't fire and they'll see the
         # payment screen again even though they already paid.
-        if journey_state.get("story_approved"):
-            # We don't know the exact delivery option from book_history,
-            # but we can read it from the matching purchases collection.
-            try:
-                from payments import get_user_purchases
-                purchases = get_user_purchases(user_id) or []
-                # Find a purchase for this book (or just the most recent paid one)
-                _book_paid = any(
-                    p.get("status") in ("PAID", "paid", "COMPLETED", "completed")
-                    for p in purchases
+        # Restore payment status by looking up an actual purchase for THIS
+        # book. The old check filtered on a non-existent 'status' field and
+        # always returned False — causing paid users to get re-asked to pay.
+        try:
+            from payments import has_paid_for_book
+            _paid = has_paid_for_book(
+                user_id,
+                book_history_id=in_progress.get("_id", "") or "",
+                child_name=in_progress.get("child_name", "") or "",
+            )
+            if _paid:
+                _gate = (_paid.get("gate") or "").lower()
+                if _gate == "print_deliver_choice":
+                    st.session_state.current_book_payment_status = "print_paid"
+                    st.session_state.book_delivery_option = "print_deliver"
+                else:
+                    # download_choice (or unknown legacy) → digital download
+                    st.session_state.current_book_payment_status = "story_paid"
+                    st.session_state.book_delivery_option = "download"
+                logger.info(
+                    f"Auto-resume restored payment: {st.session_state.current_book_payment_status}"
                 )
-                if _book_paid:
-                    st.session_state.current_book_payment_status = (
-                        st.session_state.get("current_book_payment_status") or "story_paid"
-                    )
-                    if not st.session_state.get("book_delivery_option"):
-                        st.session_state.book_delivery_option = "download"
-            except Exception as _pe:
-                logger.warning(f"auto-resume payment-status lookup: {_pe}")
+        except Exception as _pe:
+            logger.warning(f"auto-resume payment-status lookup: {_pe}")
 
         st.session_state["_auto_resumed"] = True
         n_imgs = sum(1 for i in st.session_state.generated_images if i is not None)
@@ -3174,6 +3179,26 @@ def main():
                                         st.session_state.edited_story_pages = journey_state.get("edited_story_pages", {})
                                         st.session_state.edited_image_prompts = journey_state.get("edited_image_prompts", {})
 
+                                        # ── Restore payment status (paid books skip Step 1.5) ─
+                                        try:
+                                            from payments import has_paid_for_book
+                                            _hl_paid = has_paid_for_book(
+                                                get_current_user_id() or "",
+                                                book_history_id=story_info.get("db_id", "") or "",
+                                                child_name=loaded_data.get("child_name", "") or "",
+                                            )
+                                            if _hl_paid:
+                                                _hl_gate = (_hl_paid.get("gate") or "").lower()
+                                                if _hl_gate == "print_deliver_choice":
+                                                    st.session_state.current_book_payment_status = "print_paid"
+                                                    st.session_state.book_delivery_option = "print_deliver"
+                                                else:
+                                                    st.session_state.current_book_payment_status = "story_paid"
+                                                    st.session_state.book_delivery_option = "download"
+                                                logger.info("My Books load: restored payment status")
+                                        except Exception as _hle:
+                                            logger.warning(f"My Books load: payment-status lookup failed: {_hle}")
+
                                         # ── Restore saved images ─────────────────────────
                                         if not story_data.get("template_id"):
                                             saved_imgs = loaded_data.get("images", [])
@@ -3194,7 +3219,23 @@ def main():
                                                 st.session_state.all_images_approved = journey_state.get("all_images_approved", False)
 
                                         # ── Set flag so Step 2 won't auto-generate on load ──
-                                        st.session_state._loaded_from_history = True
+                                        # EXCEPT for paid books with missing images — those should
+                                        # resume generating automatically (the user already paid,
+                                        # they want the book finished, not a 'press Generate' gate).
+                                        _hl_pay_status = st.session_state.get("current_book_payment_status")
+                                        _hl_has_missing = (
+                                            story_data.get("pages")
+                                            and any(
+                                                (i is None) for i in
+                                                (st.session_state.get("generated_images") or [])
+                                            )
+                                            or len(st.session_state.get("generated_images") or [])
+                                                < len(story_data.get("pages", []))
+                                        )
+                                        if _hl_pay_status in ("story_paid", "print_paid", "download_paid") and _hl_has_missing:
+                                            st.session_state._loaded_from_history = False
+                                        else:
+                                            st.session_state._loaded_from_history = True
 
                                         st.session_state.pdf_path = None
                                         st.session_state.pdf_generation_key = None
@@ -4089,7 +4130,8 @@ def main():
                             f"Storybook digital download for {_choice_child}",
                             customer_phone=_choice_phone,
                             metadata={"book_kind": "custom", "product": "pdf_download",
-                                      "gate": "download_choice", "child_name": _choice_child},
+                                      "gate": "download_choice", "child_name": _choice_child,
+                                      "book_history_id": st.session_state.get("current_book_history_id") or ""},
                         )
                     if _res_dl and _res_dl.get("payment_session_id"):
                         _ord_id_dl = _res_dl["order_id"]
@@ -4132,7 +4174,8 @@ def main():
                             f"Printed storybook for {_choice_child}",
                             customer_phone=_choice_phone,
                             metadata={"book_kind": "custom", "product": "print_deliver",
-                                      "gate": "print_deliver_choice", "child_name": _choice_child},
+                                      "gate": "print_deliver_choice", "child_name": _choice_child,
+                                      "book_history_id": st.session_state.get("current_book_history_id") or ""},
                         )
                     if _res_pd and _res_pd.get("payment_session_id"):
                         _ord_id_pd = _res_pd["order_id"]
