@@ -2689,15 +2689,17 @@ def _auto_resume_in_progress_book() -> bool:
 # automatically and the normal review UI appears.
 
 def _is_in_focus_mode() -> bool:
+    """Focus mode is OPT-IN now. We only enter it when somebody explicitly
+    set _focus_mode_active — typically the cf_status=SUCCESS handler right
+    after the user pays, or the 'Continue generating' banner button after
+    an auto-resume. We never INFER focus from payment + missing images —
+    that previously trapped users on reload because focus mode also hid
+    the navigation, leaving no way out if generation couldn't proceed."""
+    if not st.session_state.get("_focus_mode_active"):
+        return False
+    # Releases automatically when generation is fully done and approved
     if not st.session_state.get("generated_story"):
         return False
-    if not st.session_state.get("story_approved"):
-        return False
-    if st.session_state.get("current_book_payment_status") not in (
-        "story_paid", "print_paid", "download_paid"
-    ):
-        return False
-    # All images done? Then we're past focus mode (into review/download)
     pages = st.session_state.generated_story.get("pages", [])
     total = len(pages)
     if total == 0:
@@ -2705,13 +2707,71 @@ def _is_in_focus_mode() -> bool:
     imgs = st.session_state.get("generated_images", []) or []
     valid = sum(1 for i in imgs if i is not None)
     if valid >= total and st.session_state.get("all_images_approved"):
+        st.session_state["_focus_mode_active"] = False
         return False
     return True
 
 
+
+def _render_in_progress_banner() -> None:
+    """When auto-resume restored an unfinished book and we're NOT already
+    in focus mode, show a banner offering the user a one-click way to
+    continue generating. Avoids the previous trap of forcing focus mode on
+    every reload — but still gives the user a fast path back into it."""
+    if st.session_state.get("_focus_mode_active"):
+        return
+    if not st.session_state.get("generated_story"):
+        return
+    if not st.session_state.get("story_approved"):
+        return
+    if st.session_state.get("current_book_payment_status") not in (
+        "story_paid", "print_paid", "download_paid"
+    ):
+        return
+    pages = st.session_state.generated_story.get("pages", [])
+    total = len(pages)
+    imgs = st.session_state.get("generated_images", []) or []
+    done = sum(1 for i in imgs if i is not None)
+    if total == 0 or done >= total:
+        return
+
+    child = (
+        st.session_state.get("current_child_name")
+        or st.session_state.get("wiz_child_name")
+        or "your"
+    )
+
+    banner_l, banner_r = st.columns([3, 1])
+    with banner_l:
+        st.markdown(
+            f"""
+            <div style="background:#eff6ff;border:1px solid #bfdbfe;
+                 border-radius:10px;padding:12px 16px;margin-bottom:8px;">
+              <strong style="color:#1d4ed8;">📖 You have a book in progress</strong><br>
+              <span style="color:#475569;font-size:13px;">
+                {child}'s storybook · {done} of {total} pages done · payment confirmed
+              </span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with banner_r:
+        if st.button(
+            "▶ Continue generating",
+            type="primary",
+            use_container_width=True,
+            key="resume_banner_continue",
+        ):
+            st.session_state["_focus_mode_active"] = True
+            st.session_state["_loaded_from_history"] = False
+            st.rerun()
+
+
 def _render_focus_header() -> None:
-    """Big, reassuring header that fills the top of the screen so the user
-    lands on it directly after payment — no scrolling required."""
+    """Header + escape hatches. Renders a gradient title card with progress,
+    then a row of small action buttons (Home / My Books / Show full app)
+    so the user can ALWAYS leave focus mode regardless of what's happening
+    in the generation loop below."""
     pages = st.session_state.generated_story.get("pages", []) if st.session_state.get("generated_story") else []
     total = len(pages)
     imgs = st.session_state.get("generated_images", []) or []
@@ -2723,6 +2783,30 @@ def _render_focus_header() -> None:
     )
     pct = int(100 * done / total) if total else 0
 
+    # ── ESCAPE BAR (always rendered FIRST so it's never hidden by a
+    # broken card below) ───────────────────────────────────────────
+    esc_home, esc_books, esc_full, _esc_spacer = st.columns([1, 1, 1.4, 2])
+    with esc_home:
+        if st.button("🏠 Home", use_container_width=True, key="focus_esc_home"):
+            reset_story_state()
+            st.session_state.book_mode = None
+            st.session_state.wizard_step = 0
+            st.session_state["_focus_mode_active"] = False
+            st.session_state["_auto_resumed"] = True  # don't immediately re-resume
+            st.rerun()
+    with esc_books:
+        if st.button("📚 My Books", use_container_width=True, key="focus_esc_books"):
+            st.session_state["_focus_mode_active"] = False
+            st.session_state.show_history = True
+            st.rerun()
+    with esc_full:
+        if st.button("← Show full app", use_container_width=True, key="focus_esc_exit"):
+            # Leave focus but keep the in-progress book in session_state —
+            # user sees normal nav + can resume from the banner.
+            st.session_state["_focus_mode_active"] = False
+            st.rerun()
+
+    # ── Big gradient card ──────────────────────────────────────────
     st.markdown(
         f"""
         <div style="
@@ -2750,7 +2834,8 @@ def _render_focus_header() -> None:
         unsafe_allow_html=True,
     )
 
-    # Also hide Streamlit's sidebar entirely so the focus is total
+    # Hide Streamlit's sidebar in focus mode (the escape buttons above
+    # cover navigation; sidebar would clutter the focus).
     st.markdown(
         """
         <style>
@@ -3023,6 +3108,12 @@ def main():
                     # script below so the user lands at their book, not the
                     # nav bar at the top of the page.
                     st.session_state.just_approved_story = True
+                    # Engage focus mode for the active generation session.
+                    # This is the moment to do it — user just paid, knows
+                    # they're waiting for a book. After a reload, auto-resume
+                    # does NOT re-engage focus; user gets the normal nav +
+                    # a 'continue generating' banner instead.
+                    st.session_state["_focus_mode_active"] = True
                     st.toast("✅ Payment confirmed — generating your book!", icon="✅")
                 else:
                     st.warning(f"Payment status from Cashfree: {_ord_status}. If you completed payment, click 'Verify Payment' below.")
@@ -3257,11 +3348,15 @@ def main():
         return
 
     # ── FOCUS MODE ─────────────────────────────────────────────────
-    # If we're mid-generation for a paid book, suppress all other UI and
-    # render only the focus header (plus Step 2's image-gen loop below).
+    # Opt-in only (set by cf_status=SUCCESS handler or the resume banner).
+    # When active: render the focus header with built-in escape buttons.
+    # When NOT active but there's a paid in-progress book: render a small
+    # banner offering the user one click back into focus mode.
     _focus_mode = _is_in_focus_mode()
     if _focus_mode:
         _render_focus_header()
+    else:
+        _render_in_progress_banner()
 
     # Determine admin status
     _current_user_email_nav = st.session_state.auth_user.get("email", "")
@@ -3288,10 +3383,9 @@ def main():
                 st.session_state.wiz_generate_trigger = False
                 st.session_state.show_history = False
                 st.session_state.show_community = False
-                # Mark as 'no resume this session' — user explicitly chose home.
-                # We DON'T clear _auto_resumed because that would re-trigger
-                # the restore on the next rerun. Instead, leave it set to
-                # True so resume stays suppressed for this session.
+                st.session_state["_focus_mode_active"] = False
+                # Suppress further auto-resume for this session — user
+                # explicitly chose to start fresh.
                 st.session_state["_auto_resumed"] = True
                 st.rerun()
         with nav_history:
