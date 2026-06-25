@@ -38,15 +38,38 @@ _TEXT_MODELS = [
     "gemini-1.5-pro",    # Gemini 1.5 Pro (stable)
     "gemini-1.5-flash",  # Gemini 1.5 Flash (stable)
 ]
+# Order matters: tried top-to-bottom, first 200-with-image wins.
+# Per Google migration notice (email 2026), Imagen 4 endpoints will be
+# discontinued on 2026-08-17; recommended migration target is
+# gemini-3.1-flash-image (same cost, better performance). We put it on
+# top so all new gens flow through the new model immediately; older
+# Gemini-image and Imagen models stay below as fallbacks until they're
+# actually shut off.
 _GEMINI_IMAGE_MODELS = [
-    "gemini-2.5-flash-image",               # Gemini 2.5 Flash image GA
-    "gemini-2.0-flash-preview-image-generation",
-    "gemini-2.0-flash-exp",
+    "gemini-3.1-flash-image",                       # Primary (migration target)
+    "gemini-2.5-flash-image",                       # GA fallback
+    "gemini-2.0-flash-preview-image-generation",    # Preview fallback
+    "gemini-2.0-flash-exp",                         # Older preview fallback
 ]
+# These will return 404 after 2026-08-17. Kept ONLY because they may be
+# the only thing enabled in some projects today; safe to delete once
+# gemini-3.1-flash-image is verified working in production.
 _IMAGEN_MODELS = [
-    "imagen-4.0-generate-001",
+    "imagen-4.0-generate-001",       # discontinues 2026-08-17 → use gemini-3.1-flash-image
     "imagen-3.0-generate-001",
 ]
+
+import threading as _threading
+_last_image_errors = _threading.local()
+
+
+def get_last_image_errors() -> list:
+    """Return the per-backend error messages from the most recent
+    call_gemini_image invocation on THIS thread. Used by main.py's
+    threadsafe worker to surface real failure details to the user."""
+    return list(getattr(_last_image_errors, "errors", []) or [])
+
+
 
 
 # ---------------------------------------------------------------------------
@@ -211,33 +234,9 @@ def call_gemini_text(
             except Exception:
                 pass
 
-    # --- Google AI fallback ---
-    if not api_key:
-        return None
-    for model in ["gemini-2.0-flash-001", "gemini-2.0-flash-exp", "gemini-1.5-pro", "gemini-1.5-flash"]:
-        try:
-            r = requests.post(
-                f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
-                headers={"Content-Type": "application/json"},
-                json={
-                    "contents": [{"parts": [{"text": prompt}]}],
-                    "generationConfig": {
-                        "temperature": temperature,
-                        "topK": 40,
-                        "topP": 0.95,
-                        "maxOutputTokens": max_tokens,
-                    },
-                },
-                params={"key": api_key},
-                timeout=120,
-            )
-            if r.status_code == 200:
-                text = _extract(r.json())
-                if text:
-                    logger.info(f"Google AI text OK: {model}")
-                    return text
-        except Exception as e:
-            logger.warning(f"Google AI text {model} error: {e}")
+    # Vertex-only — Google AI direct fallback intentionally removed.
+    # If Vertex didn't return text, we return None and let the caller
+    # surface the per-model errors collected in vertex_errors.
     return None
 
 
@@ -274,6 +273,9 @@ def call_gemini_image(
 
     # --- Vertex AI ---
     vertex_img_errors = []
+    # Reset thread-local error list so callers can read it after this
+    # invocation returns None / falls through.
+    _last_image_errors.errors = vertex_img_errors
     if is_vertex_configured():
         try:
             tok = _token(raise_on_error=True)
@@ -427,31 +429,14 @@ def call_gemini_image(
             except Exception:
                 pass
 
-    # --- Google AI fallback ---
-    if not api_key:
-        return None
-    try:
-        r = requests.post(
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent",
-            headers={"Content-Type": "application/json"},
-            json={
-                "contents": [{"parts": _build_parts(True)}],
-                "generationConfig": {
-                    "temperature": 0.4,
-                    "topK": 32,
-                    "topP": 1,
-                    "imageConfig": {"aspectRatio": "3:4", "imageSize": "2K"},
-                },
-            },
-            params={"key": api_key},
-            timeout=180,
+    # Vertex-only — Google AI direct fallback intentionally removed.
+    # When Vertex isn't configured at all, tell the user clearly so the
+    # 'no image' error in the UI is actionable instead of mysterious.
+    if not is_vertex_configured() and not vertex_img_errors:
+        vertex_img_errors.append(
+            "Vertex AI not configured. Set VERTEX_PROJECT_ID + "
+            "GOOGLE_SERVICE_ACCOUNT_JSON in Streamlit secrets, or paste "
+            "them into the admin sidebar's Vertex AI panel."
         )
-        if r.status_code == 200:
-            for p in r.json().get("candidates", [{}])[0].get("content", {}).get("parts", []):
-                if "inlineData" in p:
-                    logger.info("Google AI image OK")
-                    return f"data:image/png;base64,{p['inlineData']['data']}"
-        logger.warning(f"Google AI image → {r.status_code}: {r.text[:150]}")
-    except Exception as e:
-        logger.warning(f"Google AI image error: {e}")
+    _last_image_errors.errors = vertex_img_errors
     return None
