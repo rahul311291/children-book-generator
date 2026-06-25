@@ -46,10 +46,20 @@ _TEXT_MODELS = [
 # Gemini-image and Imagen models stay below as fallbacks until they're
 # actually shut off.
 _GEMINI_IMAGE_MODELS = [
-    "gemini-3.1-flash-image",                       # Primary (migration target)
-    "gemini-2.5-flash-image",                       # GA fallback
-    "gemini-2.0-flash-preview-image-generation",    # Preview fallback
-    "gemini-2.0-flash-exp",                         # Older preview fallback
+    # Confirmed available in user's Model Garden (June 2026): 'Gemini 3 Pro
+    # Image Preview' aka Nano Banana Pro. Global-endpoint only. Try this
+    # first — it's the highest-quality image model we know is enabled.
+    "gemini-3-pro-image-preview",
+    # GA variant (if/when it lands in this project)
+    "gemini-3-pro-image",
+    # Older GA fallback, still works in most projects
+    "gemini-2.5-flash-image",
+    # Mentioned in Google's June 2026 migration email but not yet visible
+    # in the user's Model Garden — kept here in case it rolls out later.
+    "gemini-3.1-flash-image",
+    # Older preview fallbacks
+    "gemini-2.0-flash-preview-image-generation",
+    "gemini-2.0-flash-exp",
 ]
 # These will return 404 after 2026-08-17. Kept ONLY because they may be
 # the only thing enabled in some projects today; safe to delete once
