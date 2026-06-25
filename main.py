@@ -4335,8 +4335,14 @@ def main():
                     st.rerun()
             with col2:
                 if st.button("⏭️ Skip to PDF (No Images)", type="secondary", use_container_width=True):
-                    # Create placeholder images so PDF can be generated
-                    from PIL import Image
+                    # Create placeholder images so PDF can be generated.
+                    # NOTE: Do NOT re-import PIL.Image here — a local-scope
+                    # 'from PIL import Image' would shadow the module-level
+                    # import for the WHOLE main() function (Python treats
+                    # any name assigned anywhere in a function as local),
+                    # raising UnboundLocalError every time the parallel gen
+                    # loop tries Image.new() further down without first
+                    # running this branch.
                     placeholder = Image.new('RGB', (384, 512), color=(240, 240, 240))
                     st.session_state.generated_images = [placeholder] * total_pages
                     st.rerun()
