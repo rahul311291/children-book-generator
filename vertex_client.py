@@ -234,33 +234,9 @@ def call_gemini_text(
             except Exception:
                 pass
 
-    # --- Google AI fallback ---
-    if not api_key:
-        return None
-    for model in ["gemini-2.0-flash-001", "gemini-2.0-flash-exp", "gemini-1.5-pro", "gemini-1.5-flash"]:
-        try:
-            r = requests.post(
-                f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
-                headers={"Content-Type": "application/json"},
-                json={
-                    "contents": [{"parts": [{"text": prompt}]}],
-                    "generationConfig": {
-                        "temperature": temperature,
-                        "topK": 40,
-                        "topP": 0.95,
-                        "maxOutputTokens": max_tokens,
-                    },
-                },
-                params={"key": api_key},
-                timeout=120,
-            )
-            if r.status_code == 200:
-                text = _extract(r.json())
-                if text:
-                    logger.info(f"Google AI text OK: {model}")
-                    return text
-        except Exception as e:
-            logger.warning(f"Google AI text {model} error: {e}")
+    # Vertex-only — Google AI direct fallback intentionally removed.
+    # If Vertex didn't return text, we return None and let the caller
+    # surface the per-model errors collected in vertex_errors.
     return None
 
 
@@ -453,42 +429,14 @@ def call_gemini_image(
             except Exception:
                 pass
 
-    # --- Google AI fallback ---
-    if not api_key:
-        return None
-    try:
-        r = requests.post(
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent",
-            headers={"Content-Type": "application/json"},
-            json={
-                "contents": [{"parts": _build_parts(True)}],
-                "generationConfig": {
-                    "temperature": 0.4,
-                    "topK": 32,
-                    "topP": 1,
-                    "imageConfig": {"aspectRatio": "3:4", "imageSize": "2K"},
-                },
-            },
-            params={"key": api_key},
-            timeout=180,
-        )
-        if r.status_code == 200:
-            for p in r.json().get("candidates", [{}])[0].get("content", {}).get("parts", []):
-                if "inlineData" in p:
-                    logger.info("Google AI image OK")
-                    return f"data:image/png;base64,{p['inlineData']['data']}"
-        msg = f"Google AI direct: HTTP {r.status_code} — {r.text[:200]}"
-        logger.warning(msg)
-        vertex_img_errors.append(msg)
-    except Exception as e:
-        msg = f"Google AI direct: {e}"
-        logger.warning(msg)
-        vertex_img_errors.append(msg)
-    # Vertex AI not configured at all: tell the user clearly.
-    if not vertex_img_errors:
+    # Vertex-only — Google AI direct fallback intentionally removed.
+    # When Vertex isn't configured at all, tell the user clearly so the
+    # 'no image' error in the UI is actionable instead of mysterious.
+    if not is_vertex_configured() and not vertex_img_errors:
         vertex_img_errors.append(
-            "No image backend is configured. Set GEMINI_API_KEY or configure "
-            "Vertex AI (Project + Service Account JSON) in the admin sidebar."
+            "Vertex AI not configured. Set VERTEX_PROJECT_ID + "
+            "GOOGLE_SERVICE_ACCOUNT_JSON in Streamlit secrets, or paste "
+            "them into the admin sidebar's Vertex AI panel."
         )
     _last_image_errors.errors = vertex_img_errors
     return None

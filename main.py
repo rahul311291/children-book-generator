@@ -1463,13 +1463,8 @@ def _generate_image_threadsafe(
                 image_bytes = base64.b64decode(data_url.split(",", 1)[1])
                 return Image.open(io.BytesIO(image_bytes)).convert("RGB"), None
 
-            # Vertex/Gemini returned nothing — try OpenRouter
-            if openrouter_key:
-                fallback = generate_image_with_openrouter(openrouter_key, prompt, image_style)
-                if fallback:
-                    return fallback, None
-
-            # Pull real per-backend errors out of vertex_client's thread-
+            # Vertex-only — no OpenRouter fallback. Pull real per-backend
+            # errors out of vertex_client's thread-
             # local so the user sees what actually failed instead of a
             # generic 'No image returned from any backend'.
             try:
@@ -1484,15 +1479,7 @@ def _generate_image_threadsafe(
             # Fall through to next outer pass (if any)
             continue
         except Exception as e:
-            # Last-ditch: OpenRouter fallback on exception
-            try:
-                if openrouter_key:
-                    fallback = generate_image_with_openrouter(openrouter_key, prompt, image_style)
-                    if fallback:
-                        return fallback, None
-            except Exception:
-                pass
-            # Include the backend-level errors when present — they're
+            # Vertex-only — include backend-level errors when present — they're
             # usually more diagnostic than the outer exception text.
             try:
                 from vertex_client import get_last_image_errors as _glie2
@@ -1618,14 +1605,7 @@ def generate_image_with_imagen(
             time.sleep(2)
             return generate_image_with_imagen(api_key, prompt, retry_count + 1, image_style, image_index, reference_image_b64)
 
-        # Try OpenRouter as final fallback
-        openrouter_key = st.session_state.get("openrouter_api_key", "")
-        if openrouter_key:
-            fallback = generate_image_with_openrouter(openrouter_key, prompt, image_style)
-            if fallback:
-                logger.info("OpenRouter fallback image generation succeeded")
-                return fallback
-
+        # Vertex-only — no OpenRouter fallback.
         if image_index is not None:
             st.session_state.image_generation_errors[image_index] = error_details
 
@@ -2933,27 +2913,14 @@ def _restore_wizard_snapshot(snap: dict) -> None:
 # Priority: session_state (sidebar / DB-restored) > env > st.secrets.
 # Session-state values always win — this only fills GAPS, never overrides.
 def _hydrate_api_keys_from_env_or_secrets() -> None:
-    import os as _os
-    # GEMINI_API_KEY
-    if not st.session_state.get("api_key"):
-        v = _os.getenv("GEMINI_API_KEY", "")
-        if not v:
-            try:
-                v = str(st.secrets.get("GEMINI_API_KEY", "") or "")
-            except Exception:
-                v = ""
-        if v:
-            st.session_state.api_key = v
-    # OPENROUTER_API_KEY
-    if not st.session_state.get("openrouter_api_key"):
-        v = _os.getenv("OPENROUTER_API_KEY", "")
-        if not v:
-            try:
-                v = str(st.secrets.get("OPENROUTER_API_KEY", "") or "")
-            except Exception:
-                v = ""
-        if v:
-            st.session_state.openrouter_api_key = v
+    """No-op now. We previously hydrated GEMINI_API_KEY / OPENROUTER_API_KEY
+    from env / st.secrets here, but the app moved to Vertex-only — those
+    code paths are gone. Vertex credentials are hydrated by
+    vertex_client._cfg() which reads VERTEX_PROJECT_ID + VERTEX_LOCATION +
+    GOOGLE_SERVICE_ACCOUNT_JSON from session_state → env → st.secrets at
+    each call site. This function is kept so future external callers
+    don't break, and to record the rationale here."""
+    return
 
 
 def main():
@@ -3522,49 +3489,15 @@ def main():
 
             st.divider()
 
-            # API Key Input - persisted per user
-            st.subheader("API Keys")
-
-            # Gemini API Key
-            current_key = st.session_state.api_key
-            api_key_sidebar = st.text_input(
-                "Google Gemini API Key",
-                type="password",
-                value=current_key,
-                help="Primary key for story and image generation via Google Gemini.",
+            # Vertex AI is the ONLY image / text backend. Gemini API key
+            # and OpenRouter inputs were removed when we moved to a
+            # Vertex-only configuration (the user has Vertex credits).
+            st.subheader("Vertex AI (only backend)")
+            st.caption(
+                "All text and image generation runs through Vertex AI. "
+                "Configure once; non-admin users inherit these credentials."
             )
-            if api_key_sidebar != current_key:
-                st.session_state.api_key = api_key_sidebar
-                user_id = get_current_user_id()
-                if user_id and api_key_sidebar:
-                    save_user_api_key(user_id, api_key_sidebar)
-
-            if api_key_sidebar:
-                st.caption(f"Gemini key saved ({len(api_key_sidebar)} chars)")
-            else:
-                st.caption("No Gemini key set.")
-
-            # OpenRouter API Key (backup for image generation)
-            current_or_key = st.session_state.openrouter_api_key
-            openrouter_key_input = st.text_input(
-                "OpenRouter API Key (backup)",
-                type="password",
-                value=current_or_key,
-                help="Backup key for image generation via OpenRouter (uses Gemini models). Used automatically when Gemini fails.",
-            )
-            if openrouter_key_input != current_or_key:
-                st.session_state.openrouter_api_key = openrouter_key_input
-                user_id = get_current_user_id()
-                if user_id and openrouter_key_input:
-                    save_user_openrouter_key(user_id, openrouter_key_input)
-
-            if openrouter_key_input:
-                st.caption(f"OpenRouter key saved ({len(openrouter_key_input)} chars)")
-            else:
-                st.caption("No OpenRouter key — Gemini only.")
-
-            # Vertex AI (Google Cloud) credentials
-            with st.expander("Vertex AI (Google Cloud)", expanded=bool(st.session_state.vertex_project_id)):
+            with st.expander("Vertex AI (Google Cloud)", expanded=True):
                 user_id_v = get_current_user_id()
 
                 current_vproject = st.session_state.vertex_project_id
@@ -4415,9 +4348,13 @@ def main():
 
             # Check if API key or Vertex AI is available for image generation
             from vertex_client import is_vertex_configured
-            if not api_key and not is_vertex_configured():
-                st.error("⚠️ **API Key Required for Image Generation**")
-                st.info("👈 Please enter a Google Gemini API key or configure Vertex AI in the sidebar to generate images.")
+            if not is_vertex_configured():
+                st.error("⚠️ **Vertex AI not configured**")
+                st.info(
+                    "Set `VERTEX_PROJECT_ID` and `GOOGLE_SERVICE_ACCOUNT_JSON` "
+                    "in Streamlit secrets, or paste them into the admin "
+                    "sidebar's Vertex AI panel."
+                )
                 return
 
             # Check if any specific image needs regeneration
