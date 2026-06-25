@@ -1469,7 +1469,18 @@ def _generate_image_threadsafe(
                 if fallback:
                     return fallback, None
 
-            last_err = "No image returned from any backend"
+            # Pull real per-backend errors out of vertex_client's thread-
+            # local so the user sees what actually failed instead of a
+            # generic 'No image returned from any backend'.
+            try:
+                from vertex_client import get_last_image_errors as _glie
+                _detail = _glie()
+            except Exception:
+                _detail = []
+            if _detail:
+                last_err = " | ".join(str(e)[:160] for e in _detail[:2])
+            else:
+                last_err = "No image returned from any backend"
             # Fall through to next outer pass (if any)
             continue
         except Exception as e:
@@ -1481,7 +1492,19 @@ def _generate_image_threadsafe(
                         return fallback, None
             except Exception:
                 pass
-            last_err = str(e)
+            # Include the backend-level errors when present — they're
+            # usually more diagnostic than the outer exception text.
+            try:
+                from vertex_client import get_last_image_errors as _glie2
+                _detail2 = _glie2()
+            except Exception:
+                _detail2 = []
+            if _detail2:
+                last_err = str(e) + " | " + " | ".join(
+                    str(x)[:120] for x in _detail2[:2]
+                )
+            else:
+                last_err = str(e)
             continue
     return None, last_err or "All backends failed after retries"
 
@@ -4562,8 +4585,12 @@ def main():
                                                 f"<div style='font-size:28px;'>⚠️</div>"
                                                 f"<div style='margin-top:8px;font-weight:600;'>"
                                                 f"Page {idx+1} failed</div>"
-                                                f"<div style='margin-top:4px;font-size:11px;'>"
-                                                f"{(err or 'Unknown')[:80]}</div>"
+                                                f"<div style='margin-top:4px;font-size:11px;line-height:1.35;"
+                                                f"word-wrap:break-word;text-align:left;"
+                                                f"background:rgba(255,255,255,0.5);"
+                                                f"padding:6px;border-radius:4px;"
+                                                f"max-height:120px;overflow:auto;'>"
+                                                f"{(err or 'Unknown')[:600]}</div>"
                                                 f"<div style='margin-top:6px;font-size:11px;'>"
                                                 f"You can regenerate it below.</div>"
                                                 f"</div>",

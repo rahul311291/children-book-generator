@@ -48,6 +48,18 @@ _IMAGEN_MODELS = [
     "imagen-3.0-generate-001",
 ]
 
+import threading as _threading
+_last_image_errors = _threading.local()
+
+
+def get_last_image_errors() -> list:
+    """Return the per-backend error messages from the most recent
+    call_gemini_image invocation on THIS thread. Used by main.py's
+    threadsafe worker to surface real failure details to the user."""
+    return list(getattr(_last_image_errors, "errors", []) or [])
+
+
+
 
 # ---------------------------------------------------------------------------
 # Config helpers
@@ -274,6 +286,9 @@ def call_gemini_image(
 
     # --- Vertex AI ---
     vertex_img_errors = []
+    # Reset thread-local error list so callers can read it after this
+    # invocation returns None / falls through.
+    _last_image_errors.errors = vertex_img_errors
     if is_vertex_configured():
         try:
             tok = _token(raise_on_error=True)
@@ -451,7 +466,18 @@ def call_gemini_image(
                 if "inlineData" in p:
                     logger.info("Google AI image OK")
                     return f"data:image/png;base64,{p['inlineData']['data']}"
-        logger.warning(f"Google AI image → {r.status_code}: {r.text[:150]}")
+        msg = f"Google AI direct: HTTP {r.status_code} — {r.text[:200]}"
+        logger.warning(msg)
+        vertex_img_errors.append(msg)
     except Exception as e:
-        logger.warning(f"Google AI image error: {e}")
+        msg = f"Google AI direct: {e}"
+        logger.warning(msg)
+        vertex_img_errors.append(msg)
+    # Vertex AI not configured at all: tell the user clearly.
+    if not vertex_img_errors:
+        vertex_img_errors.append(
+            "No image backend is configured. Set GEMINI_API_KEY or configure "
+            "Vertex AI (Project + Service Account JSON) in the admin sidebar."
+        )
+    _last_image_errors.errors = vertex_img_errors
     return None
