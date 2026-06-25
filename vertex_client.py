@@ -38,13 +38,24 @@ _TEXT_MODELS = [
     "gemini-1.5-pro",    # Gemini 1.5 Pro (stable)
     "gemini-1.5-flash",  # Gemini 1.5 Flash (stable)
 ]
+# Order matters: tried top-to-bottom, first 200-with-image wins.
+# Per Google migration notice (email 2026), Imagen 4 endpoints will be
+# discontinued on 2026-08-17; recommended migration target is
+# gemini-3.1-flash-image (same cost, better performance). We put it on
+# top so all new gens flow through the new model immediately; older
+# Gemini-image and Imagen models stay below as fallbacks until they're
+# actually shut off.
 _GEMINI_IMAGE_MODELS = [
-    "gemini-2.5-flash-image",               # Gemini 2.5 Flash image GA
-    "gemini-2.0-flash-preview-image-generation",
-    "gemini-2.0-flash-exp",
+    "gemini-3.1-flash-image",                       # Primary (migration target)
+    "gemini-2.5-flash-image",                       # GA fallback
+    "gemini-2.0-flash-preview-image-generation",    # Preview fallback
+    "gemini-2.0-flash-exp",                         # Older preview fallback
 ]
+# These will return 404 after 2026-08-17. Kept ONLY because they may be
+# the only thing enabled in some projects today; safe to delete once
+# gemini-3.1-flash-image is verified working in production.
 _IMAGEN_MODELS = [
-    "imagen-4.0-generate-001",
+    "imagen-4.0-generate-001",       # discontinues 2026-08-17 → use gemini-3.1-flash-image
     "imagen-3.0-generate-001",
 ]
 
