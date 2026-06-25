@@ -2920,6 +2920,42 @@ def _restore_wizard_snapshot(snap: dict) -> None:
             st.session_state[k] = v
 
 
+
+# ---------------------------------------------------------------------------
+# API key fallback: env / st.secrets → session_state
+# ---------------------------------------------------------------------------
+# Mirrors the Vertex pattern in vertex_client._cfg(). We want the Gemini
+# API key (and OpenRouter key) to come from a regular secret store when
+# possible, NOT only from a key the admin pasted into the sidebar. This
+# keeps the app working even when the admin's MongoDB row hasn't been
+# populated yet (fresh install, key rotation, etc.).
+#
+# Priority: session_state (sidebar / DB-restored) > env > st.secrets.
+# Session-state values always win — this only fills GAPS, never overrides.
+def _hydrate_api_keys_from_env_or_secrets() -> None:
+    import os as _os
+    # GEMINI_API_KEY
+    if not st.session_state.get("api_key"):
+        v = _os.getenv("GEMINI_API_KEY", "")
+        if not v:
+            try:
+                v = str(st.secrets.get("GEMINI_API_KEY", "") or "")
+            except Exception:
+                v = ""
+        if v:
+            st.session_state.api_key = v
+    # OPENROUTER_API_KEY
+    if not st.session_state.get("openrouter_api_key"):
+        v = _os.getenv("OPENROUTER_API_KEY", "")
+        if not v:
+            try:
+                v = str(st.secrets.get("OPENROUTER_API_KEY", "") or "")
+            except Exception:
+                v = ""
+        if v:
+            st.session_state.openrouter_api_key = v
+
+
 def main():
     # ------------------------------------------------------------------ #
     # Cookie-backed persistent sessions (7-day login)
@@ -2934,6 +2970,7 @@ def main():
         pass
 
     init_auth_state()
+    _hydrate_api_keys_from_env_or_secrets()
 
     # CookieManager often returns empty on the very first render.
     # Allow one rerun for the JS component to hydrate.
