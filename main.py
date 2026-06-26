@@ -836,8 +836,11 @@ def load_story(filepath) -> Dict:
         st.error(error_msg)
         import traceback
         logger.error(f"Error loading story from {filepath}: {traceback.format_exc()}")
-        with st.expander("Error Details", expanded=False):
-            st.code(traceback.format_exc())
+        # Dev-only: details go to server logs. Admin gets an
+        # in-app expander; customers see a generic friendly error.
+        if _is_current_user_admin():
+            with st.expander("Error Details (admin only)", expanded=False):
+                st.code(traceback.format_exc())
         return None
 
 def get_story_history():
@@ -1066,8 +1069,11 @@ CRITICAL: Output ONLY the JSON, no additional text before or after."""
         logger.error(error_msg, exc_info=True)
         st.error(f"❌ {error_msg}")
         import traceback
-        with st.expander("Error Details", expanded=False):
-            st.code(traceback.format_exc())
+        # Dev-only: details go to server logs. Admin gets an
+        # in-app expander; customers see a generic friendly error.
+        if _is_current_user_admin():
+            with st.expander("Error Details (admin only)", expanded=False):
+                st.code(traceback.format_exc())
         return None
 
 def list_available_models(api_key: str):
@@ -1092,7 +1098,8 @@ def list_available_models(api_key: str):
         return []
 
 def refine_story_with_followup(api_key: str, existing_story: Dict, followup_prompt: str,
-                                child_name: str, age: int, language: str) -> Dict:
+                                child_name: str, age: int, language: str,
+                                wizard_brief: Optional[Dict] = None) -> Dict:
     """
     Edit the existing story boldly based on the user's revision instructions.
     The model receives the current story as REFERENCE but is explicitly told to
@@ -1114,9 +1121,34 @@ def refine_story_with_followup(api_key: str, existing_story: Dict, followup_prom
                        "pages": _lean_pages}
         story_json  = json.dumps(lean_story, indent=2, ensure_ascii=False)
 
+        # Render the original wizard brief if we have one — gives the model
+        # the SAME inputs that produced the first draft so the rewrite isn't
+        # done in a vacuum.
+        brief_block = ""
+        if wizard_brief:
+            _b = wizard_brief
+            brief_lines = []
+            if _b.get("story_type"):       brief_lines.append(f"Story type: {_b['story_type']}")
+            if _b.get("problem"):          brief_lines.append(f"Theme / plot / idea: {_b['problem']}")
+            if _b.get("hero_trait"):       brief_lines.append(f"Hero trait: {_b['hero_trait']}")
+            if _b.get("family_structure"): brief_lines.append(f"Family structure: {_b['family_structure']}")
+            if _b.get("character_choice"): brief_lines.append(f"Character preference: {_b['character_choice']}")
+            if _b.get("gender"):           brief_lines.append(f"Gender: {_b['gender']}")
+            if _b.get("image_style"):      brief_lines.append(f"Visual style: {_b['image_style']}")
+            if brief_lines:
+                brief_block = (
+                    "\n\n══════════════════════════════════════════════════════\n"
+                    "ORIGINAL BRIEF (the inputs the parent gave when starting):\n"
+                    "══════════════════════════════════════════════════════\n"
+                    + "\n".join(brief_lines)
+                    + "\n"
+                )
+
         prompt = f"""You are a professional children's book editor with full creative authority.
 Your job is to BOLDLY REWRITE this story based on the parent's instructions below.
-
+The original brief and the previous draft are BOTH provided as context — use
+them together to produce something fresh that honours the brief AND
+incorporates the new instructions.{brief_block}
 ══════════════════════════════════════════════════════
 PARENT'S REVISION INSTRUCTIONS (apply these in full):
 ══════════════════════════════════════════════════════
@@ -1277,8 +1309,11 @@ Output ONLY valid JSON, no markdown, no explanations."""
         logger.error(error_msg, exc_info=True)
         st.error(f"❌ {error_msg}")
         import traceback
-        with st.expander("Error Details", expanded=False):
-            st.code(traceback.format_exc())
+        # Dev-only: details go to server logs. Admin gets an
+        # in-app expander; customers see a generic friendly error.
+        if _is_current_user_admin():
+            with st.expander("Error Details (admin only)", expanded=False):
+                st.code(traceback.format_exc())
         return None
 
 def generate_story_with_gemini(api_key: str, child_name: str, age: int, gender: str,
@@ -1352,8 +1387,11 @@ def generate_story_with_gemini(api_key: str, child_name: str, age: int, gender: 
         logger.error(error_msg, exc_info=True)
         st.error(f"❌ {error_msg}")
         import traceback
-        with st.expander("Error Details", expanded=False):
-            st.code(traceback.format_exc())
+        # Dev-only: details go to server logs. Admin gets an
+        # in-app expander; customers see a generic friendly error.
+        if _is_current_user_admin():
+            with st.expander("Error Details (admin only)", expanded=False):
+                st.code(traceback.format_exc())
         return None
 
 
@@ -1634,7 +1672,7 @@ def generate_image_with_openrouter(openrouter_key: str, prompt: str, image_style
                 headers={
                     "Authorization": f"Bearer {openrouter_key}",
                     "Content-Type": "application/json",
-                    "HTTP-Referer": "https://children-book-generator.app",
+                    "HTTP-Referer": "https://example.com",
                     "X-Title": "Children's Book Generator",
                 },
                 json={
@@ -2939,17 +2977,54 @@ def main():
     init_auth_state()
     _hydrate_api_keys_from_env_or_secrets()
 
-    # CookieManager often returns empty on the very first render.
-    # Allow one rerun for the JS component to hydrate.
+    # ── Cookie hydration ───────────────────────────────────────────
+    # CookieManager.get() returns '' on the FIRST render because the JS
+    # component hasn't responded yet. We retry up to 3 times with brief
+    # pauses, rendering a 'Restoring your session…' splash so the user
+    # never sees the auth page flash before auto-login completes.
+    # Worst case is a payment return — the page is brand new, no
+    # session_state, and the cookie has to travel JS -> server -> rerun.
+    _has_payment_return = bool(
+        st.query_params.get("cf_order_id") or st.query_params.get("cf_link_id")
+    )
+    _max_cookie_retries = 4 if _has_payment_return else 3
     if not is_authenticated() and not _cookie_token:
-        if not st.session_state.get("_cookie_retry_done"):
-            st.session_state._cookie_retry_done = True
-            time.sleep(0.3)
+        _tries = int(st.session_state.get("_cookie_retry_count", 0) or 0)
+        if _tries < _max_cookie_retries:
+            st.session_state._cookie_retry_count = _tries + 1
+            # Splash so the user doesn't see the auth page flash
+            st.markdown(
+                """
+                <div style="display:flex;flex-direction:column;align-items:center;
+                            justify-content:center;min-height:60vh;color:#6b7280;">
+                  <div style="font-size:36px;margin-bottom:12px;">📖</div>
+                  <div style="font-size:16px;font-weight:600;color:#374151;">
+                    Restoring your session…
+                  </div>
+                  <div style="font-size:13px;margin-top:4px;">
+                    One moment.
+                  </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            # Hide the sidebar / collapse arrow on the splash so it stays clean
+            st.markdown(
+                """<style>
+                [data-testid="stSidebar"], [data-testid="collapsedControl"] {
+                    display: none !important;
+                }
+                </style>""",
+                unsafe_allow_html=True,
+            )
+            time.sleep(0.4 if _tries < 2 else 0.6)
             st.rerun()
 
     # Try to restore session from cookie if not already authenticated
     if not is_authenticated() and _cookie_token:
         if restore_session_from_token(_cookie_token):
+            # Clear the retry counter so a future logged-out user starts fresh
+            st.session_state.pop("_cookie_retry_count", None)
             st.rerun()
 
     # Set cookie after new login/signup
@@ -3712,11 +3787,17 @@ def main():
 
         # ── Sanity / empty-story handling ───────────────────────────────
         if not pages:
-            st.error("⚠️ Story loaded but has no pages. The story data may be incomplete.")
-            with st.expander("Debug: Story Data", expanded=True):
-                st.write("Story keys:", list(st.session_state.generated_story.keys()) if isinstance(st.session_state.generated_story, dict) else "Not a dict")
-                st.write("Pages count:", len(pages))
-                st.json(st.session_state.generated_story)
+            st.error(
+                "⚠️ Something went wrong loading your story — it came back "
+                "with no pages. Please try again, or start a fresh story "
+                "from Home."
+            )
+            # Admin can still see the raw structure for debugging
+            if _is_current_user_admin():
+                with st.expander("Raw story (admin only)", expanded=False):
+                    st.write("Story keys:", list(st.session_state.generated_story.keys()) if isinstance(st.session_state.generated_story, dict) else "Not a dict")
+                    st.write("Pages count:", len(pages))
+                    st.json(st.session_state.generated_story)
             return
 
         # ── Admin check (used by per-page Advanced expander) ────────────
@@ -3755,15 +3836,82 @@ def main():
                 save_story(st.session_state.generated_story, st.session_state.current_child_name)
             st.rerun()
 
-        def _do_regen_all():
+        def _open_regen_form():
+            st.session_state["_regen_with_context_open"] = True
+            st.rerun()
+
+        def _close_regen_form():
+            st.session_state.pop("_regen_with_context_open", None)
+            st.rerun()
+
+        def _do_regen_from_scratch():
+            """Hard reset — discard the story AND go back to the wizard.
+            Lives in the Advanced expander, not on the main CTA bar."""
             st.session_state.generated_story = None
             st.session_state.edited_story_pages = {}
             st.session_state.edited_image_prompts = {}
+            st.session_state.pop("_regen_with_context_open", None)
+            st.rerun()
+
+        def _do_refine_with_instructions(instr: str):
+            """Pass original brief + current story + new instructions to the
+            model and replace the in-progress story with what comes back."""
+            if not instr.strip():
+                st.warning("Please describe what you'd like to change.")
+                return
+            brief = {
+                "story_type":       st.session_state.get("wiz_story_type", ""),
+                "problem":          st.session_state.get("wiz_problem", ""),
+                "hero_trait":       st.session_state.get("wiz_hero_trait", ""),
+                "family_structure": st.session_state.get("wiz_family_structure", ""),
+                "character_choice": st.session_state.get("wiz_character_choice", ""),
+                "gender":           st.session_state.get("wiz_gender", ""),
+                "image_style":      st.session_state.get("wiz_image_style", ""),
+            }
+            with st.spinner("Rewriting your story with the new instructions…"):
+                refined = refine_story_with_followup(
+                    api_key,
+                    st.session_state.generated_story,
+                    instr,
+                    child_name,
+                    age,
+                    language,
+                    wizard_brief=brief,
+                )
+            if not refined:
+                return
+            orig_pages = st.session_state.generated_story.get("pages", [])
+            new_pages = refined.get("pages", [])
+            changed = sum(
+                1 for o, r in zip(orig_pages, new_pages)
+                if o.get("text", "").strip() != r.get("text", "").strip()
+            )
+            if changed == 0:
+                st.error(
+                    "The model returned a story identical to the previous one. "
+                    "Try being more specific — name a character, scene, or "
+                    "page you'd like to change."
+                )
+                return
+            st.session_state.generated_story = refined
+            st.session_state.generated_images = []
+            st.session_state.image_approvals = {}
+            st.session_state.all_images_approved = False
+            st.session_state.pdf_path = None
+            st.session_state.pdf_generation_key = None
+            st.session_state.edited_story_pages = {}
+            st.session_state.edited_image_prompts = {}
+            st.session_state.story_approved = False
+            st.session_state.pop("_regen_with_context_open", None)
+            st.success(f"Rewrote the story — {changed} of {len(orig_pages)} pages changed.")
             st.rerun()
 
         def _render_cta_bar(suffix: str):
-            """Primary 'Make my book' + secondary 'Try a different story'.
-            Rendered top and bottom so the user never has to scroll to find it."""
+            """Primary 'Make my book' + secondary 'Make changes'.
+            Rendered top and bottom so the user never has to scroll to find
+            them. 'Make changes' opens an inline form that calls the
+            full-context refine flow — original brief + current story +
+            new instructions all reach the model at once."""
             cta1, cta2 = st.columns([2, 1])
             with cta1:
                 if st.button(
@@ -3775,14 +3923,54 @@ def main():
                     _do_approve()
             with cta2:
                 if st.button(
-                    "🔄 Try a different story",
+                    "✏️ Make changes",
                     use_container_width=True,
                     key=f"regen_all_{suffix}",
                 ):
-                    _do_regen_all()
+                    _open_regen_form()
 
         # ── TOP CTA BAR ─────────────────────────────────────────────────
         _render_cta_bar("top")
+
+        # ── Inline 'Make changes' form (opens when _open_regen_form()) ──
+        if st.session_state.get("_regen_with_context_open"):
+            with st.container(border=True):
+                st.markdown(
+                    "<div style='font-weight:600;font-size:15px;margin-bottom:6px;'>"
+                    "What would you like to change?</div>"
+                    "<div style='color:#6b7280;font-size:13px;margin-bottom:10px;'>"
+                    "Be specific — name a character, a scene, the ending, etc. "
+                    "We'll keep the same setup but rewrite the story to fit your "
+                    "request.</div>",
+                    unsafe_allow_html=True,
+                )
+                instr_text = st.text_area(
+                    "Your change request",
+                    placeholder=(
+                        "e.g., Make Mia braver from page 3 onwards · "
+                        "Add a dog as a sidekick · Make the ending happier · "
+                        "Change the setting from a city to a forest"
+                    ),
+                    height=110,
+                    key="regen_context_instructions",
+                    label_visibility="collapsed",
+                )
+                col_apply, col_cancel = st.columns(2)
+                with col_apply:
+                    if st.button(
+                        "✨ Rewrite my story",
+                        type="primary",
+                        use_container_width=True,
+                        key="apply_regen_with_context",
+                    ):
+                        _do_refine_with_instructions(instr_text)
+                with col_cancel:
+                    if st.button(
+                        "✖ Cancel",
+                        use_container_width=True,
+                        key="cancel_regen_with_context",
+                    ):
+                        _close_regen_form()
         st.divider()
 
         # ── Per-page cards ──────────────────────────────────────────────
@@ -3988,6 +4176,14 @@ def main():
                 key="followup_prompt_input",
                 label_visibility="collapsed",
             )
+            if st.button(
+                "🗑 Start over from scratch (discard this story)",
+                use_container_width=True,
+                key="regen_from_scratch_advanced",
+                help="Throws away this story and the wizard inputs stay. You'll be sent back to the wizard.",
+            ):
+                _do_regen_from_scratch()
+            st.divider()
             if st.button("🔄 Refine the whole story", use_container_width=True, key="apply_followup"):
                 if followup_prompt.strip():
                     with st.spinner("Refining the story…"):

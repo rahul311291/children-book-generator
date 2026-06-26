@@ -230,10 +230,26 @@ def create_cashfree_order(
 
     # Return URL — Cashfree redirects here after embedded form completes
     # We pass the order_id so Streamlit can verify on return
-    _app_url = os.environ.get(
-        "STREAMLIT_URL",
-        "https://children-book-generator-bbjnvpkaqzuhwwlz83dmre.streamlit.app"
-    ).rstrip("/")
+    # Try STREAMLIT_URL first (legacy), then APP_BASE_URL (canonical), then
+    # st.secrets. If NOTHING is set, return an error rather than fall through
+    # to a hardcoded URL — silently using a stale URL would break the payment
+    # return path AND leak the URL pattern into logs.
+    _app_url = os.environ.get("STREAMLIT_URL", "") or os.environ.get("APP_BASE_URL", "")
+    if not _app_url:
+        try:
+            import streamlit as _st
+            _app_url = (
+                _st.secrets.get("STREAMLIT_URL", "")
+                or _st.secrets.get("APP_BASE_URL", "")
+            )
+        except Exception:
+            _app_url = ""
+    if not _app_url:
+        return {
+            "error": "Server misconfigured: APP_BASE_URL is not set. "
+                     "Set it in Streamlit secrets so payment returns work."
+        }
+    _app_url = _app_url.rstrip("/")
     _return_url = f"{_app_url}/?cf_order_id={order_id}&cf_status=SUCCESS"
 
     payload = {

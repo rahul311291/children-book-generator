@@ -2665,7 +2665,7 @@ def _call_openrouter_image(openrouter_key: str, prompt: str) -> Optional[str]:
                 headers={
                     "Authorization": f"Bearer {openrouter_key}",
                     "Content-Type": "application/json",
-                    "HTTP-Referer": "https://children-book-generator.app",
+                    "HTTP-Referer": "https://example.com",
                     "X-Title": "Children's Book Generator",
                 },
                 json={
