@@ -113,6 +113,8 @@ BOOK_FORMATS = [
     # ───────────────────────────────────────────────────────────────────
     {
         "id": "speech_bubble",
+        "advanced": True,
+        "advanced_reason": "AI image gen does not always leave clean space above characters for speech-bubble overlays. Output quality varies page-to-page.",
         "name": "Speech bubble / dialogue-led",
         "emoji": "💬",
         "badge": "Best for early readers",
@@ -140,6 +142,8 @@ BOOK_FORMATS = [
     # ───────────────────────────────────────────────────────────────────
     {
         "id": "spot_illustration",
+        "advanced": True,
+        "advanced_reason": "Vignette layouts with transparent backgrounds work ~60% of the time. Pages may need regenerating.",
         "name": "Spot illustration with flowing text",
         "emoji": "🪔",
         "badge": "Panchatantra / fable style",
@@ -166,6 +170,8 @@ BOOK_FORMATS = [
     # ───────────────────────────────────────────────────────────────────
     {
         "id": "comic_panels",
+        "advanced": True,
+        "advanced_reason": "Multi-panel composition is unreliable in current AI image models — output may be a single large illustration rather than separate panels.",
         "name": "Comic panel grid",
         "emoji": "💥",
         "badge": "ACK + Dog Man style",

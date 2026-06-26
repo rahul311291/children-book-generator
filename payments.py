@@ -32,8 +32,11 @@ FREE_IMAGES_PER_BOOK = 3
 PRICE_PER_PAGE_INR = 15  # kept for legacy per-page calc
 
 # Custom story — two-gate pricing
-CUSTOM_STORY_PRICE_INR = 350    # Gate 1: pay to unlock full story generation
-CUSTOM_DOWNLOAD_PRICE_INR = 650  # Gate 2: pay to download PDF or order print
+# Live (promotional) and regular (strikethrough) prices.
+# Show both in the UI so the customer sees the saving.
+CUSTOM_STORY_PRICE_INR         = 199    # Promotional live price for digital download
+CUSTOM_STORY_REGULAR_PRICE_INR = 350    # Strikethrough / "original" price
+CUSTOM_DOWNLOAD_PRICE_INR      = 650    # Print & Deliver price (unchanged)
 
 # Legacy flat pricing (kept for any existing references)
 PDF_PRICE_INR = CUSTOM_DOWNLOAD_PRICE_INR
@@ -186,8 +189,22 @@ def print_price_inr() -> int:
     return PRINT_PRICE_INR
 
 
+def custom_story_regular_price_inr() -> int:
+    """Strikethrough 'original' price for digital PDF. Display only — not charged."""
+    return CUSTOM_STORY_REGULAR_PRICE_INR
+
+
+def custom_story_promo_off_pct() -> int:
+    """Promotional discount % to display next to the strikethrough."""
+    reg = CUSTOM_STORY_REGULAR_PRICE_INR
+    live = CUSTOM_STORY_PRICE_INR
+    if reg <= 0 or live >= reg:
+        return 0
+    return round((reg - live) * 100 / reg)
+
+
 def custom_story_price_inr() -> int:
-    """Download option — ₹350 digital PDF."""
+    """Download option — promotional digital PDF price."""
     return CUSTOM_STORY_PRICE_INR
 
 
