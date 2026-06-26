@@ -836,8 +836,11 @@ def load_story(filepath) -> Dict:
         st.error(error_msg)
         import traceback
         logger.error(f"Error loading story from {filepath}: {traceback.format_exc()}")
-        with st.expander("Error Details", expanded=False):
-            st.code(traceback.format_exc())
+        # Dev-only: details go to server logs. Admin gets an
+        # in-app expander; customers see a generic friendly error.
+        if _is_current_user_admin():
+            with st.expander("Error Details (admin only)", expanded=False):
+                st.code(traceback.format_exc())
         return None
 
 def get_story_history():
@@ -1066,8 +1069,11 @@ CRITICAL: Output ONLY the JSON, no additional text before or after."""
         logger.error(error_msg, exc_info=True)
         st.error(f"❌ {error_msg}")
         import traceback
-        with st.expander("Error Details", expanded=False):
-            st.code(traceback.format_exc())
+        # Dev-only: details go to server logs. Admin gets an
+        # in-app expander; customers see a generic friendly error.
+        if _is_current_user_admin():
+            with st.expander("Error Details (admin only)", expanded=False):
+                st.code(traceback.format_exc())
         return None
 
 def list_available_models(api_key: str):
@@ -1092,7 +1098,8 @@ def list_available_models(api_key: str):
         return []
 
 def refine_story_with_followup(api_key: str, existing_story: Dict, followup_prompt: str,
-                                child_name: str, age: int, language: str) -> Dict:
+                                child_name: str, age: int, language: str,
+                                wizard_brief: Optional[Dict] = None) -> Dict:
     """
     Edit the existing story boldly based on the user's revision instructions.
     The model receives the current story as REFERENCE but is explicitly told to
@@ -1114,9 +1121,34 @@ def refine_story_with_followup(api_key: str, existing_story: Dict, followup_prom
                        "pages": _lean_pages}
         story_json  = json.dumps(lean_story, indent=2, ensure_ascii=False)
 
+        # Render the original wizard brief if we have one — gives the model
+        # the SAME inputs that produced the first draft so the rewrite isn't
+        # done in a vacuum.
+        brief_block = ""
+        if wizard_brief:
+            _b = wizard_brief
+            brief_lines = []
+            if _b.get("story_type"):       brief_lines.append(f"Story type: {_b['story_type']}")
+            if _b.get("problem"):          brief_lines.append(f"Theme / plot / idea: {_b['problem']}")
+            if _b.get("hero_trait"):       brief_lines.append(f"Hero trait: {_b['hero_trait']}")
+            if _b.get("family_structure"): brief_lines.append(f"Family structure: {_b['family_structure']}")
+            if _b.get("character_choice"): brief_lines.append(f"Character preference: {_b['character_choice']}")
+            if _b.get("gender"):           brief_lines.append(f"Gender: {_b['gender']}")
+            if _b.get("image_style"):      brief_lines.append(f"Visual style: {_b['image_style']}")
+            if brief_lines:
+                brief_block = (
+                    "\n\n══════════════════════════════════════════════════════\n"
+                    "ORIGINAL BRIEF (the inputs the parent gave when starting):\n"
+                    "══════════════════════════════════════════════════════\n"
+                    + "\n".join(brief_lines)
+                    + "\n"
+                )
+
         prompt = f"""You are a professional children's book editor with full creative authority.
 Your job is to BOLDLY REWRITE this story based on the parent's instructions below.
-
+The original brief and the previous draft are BOTH provided as context — use
+them together to produce something fresh that honours the brief AND
+incorporates the new instructions.{brief_block}
 ══════════════════════════════════════════════════════
 PARENT'S REVISION INSTRUCTIONS (apply these in full):
 ══════════════════════════════════════════════════════
@@ -1277,8 +1309,11 @@ Output ONLY valid JSON, no markdown, no explanations."""
         logger.error(error_msg, exc_info=True)
         st.error(f"❌ {error_msg}")
         import traceback
-        with st.expander("Error Details", expanded=False):
-            st.code(traceback.format_exc())
+        # Dev-only: details go to server logs. Admin gets an
+        # in-app expander; customers see a generic friendly error.
+        if _is_current_user_admin():
+            with st.expander("Error Details (admin only)", expanded=False):
+                st.code(traceback.format_exc())
         return None
 
 def generate_story_with_gemini(api_key: str, child_name: str, age: int, gender: str,
@@ -1352,8 +1387,11 @@ def generate_story_with_gemini(api_key: str, child_name: str, age: int, gender: 
         logger.error(error_msg, exc_info=True)
         st.error(f"❌ {error_msg}")
         import traceback
-        with st.expander("Error Details", expanded=False):
-            st.code(traceback.format_exc())
+        # Dev-only: details go to server logs. Admin gets an
+        # in-app expander; customers see a generic friendly error.
+        if _is_current_user_admin():
+            with st.expander("Error Details (admin only)", expanded=False):
+                st.code(traceback.format_exc())
         return None
 
 
@@ -1634,7 +1672,7 @@ def generate_image_with_openrouter(openrouter_key: str, prompt: str, image_style
                 headers={
                     "Authorization": f"Bearer {openrouter_key}",
                     "Content-Type": "application/json",
-                    "HTTP-Referer": "https://children-book-generator.app",
+                    "HTTP-Referer": "https://example.com",
                     "X-Title": "Children's Book Generator",
                 },
                 json={
@@ -2149,69 +2187,211 @@ def render_gallery():
 
 
 def render_landing():
-    """Home landing page: mode selection cards + gallery."""
-    # Hero
-    st.markdown("""
-    <div style="text-align:center;padding:2rem 0 1.5rem;">
-      <h1 style="font-size:2.8rem;font-weight:900;
-           background:linear-gradient(135deg,#667eea,#f093fb);
-           -webkit-background-clip:text;-webkit-text-fill-color:transparent;
-           background-clip:text;margin-bottom:0.3rem;">
-        Storytime Studio
-      </h1>
-      <p style="font-size:1.15rem;color:#666;margin:0;">
-        Beautiful storybooks where <b>your child</b> is the hero ✨
-      </p>
-    </div>
-    """, unsafe_allow_html=True)
+    """Production launch home page.
 
-    # Mode cards
-    col1, spacer, col2 = st.columns([5, 1, 5])
+    Layout:
+      1. Hero: bold headline + primary CTA + free-preview / promo discount strip.
+      2. Featured templates: 3-column grid with cover, tags, age, promo price.
+      3. 'Build your own custom story' secondary tile.
+      4. Community gallery (existing render_gallery).
+    """
+    # Templates (degrade gracefully if module missing)
+    _templates = []
+    if TEMPLATE_BOOKS_AVAILABLE or TEMPLATE_FLOW_AVAILABLE:
+        try:
+            from template_book_generator import get_available_templates
+            _templates = get_available_templates() or []
+        except Exception:
+            _templates = []
 
-    with col1:
-        st.markdown("""
-        <div style="background:linear-gradient(135deg,#f093fb 0%,#f5576c 100%);
-             border-radius:20px;padding:36px 28px;text-align:center;color:white;
-             box-shadow:0 8px 32px rgba(240,147,251,0.3);min-height:200px;">
-          <div style="font-size:56px;margin-bottom:12px;">📚</div>
-          <h2 style="margin:0 0 8px;font-size:1.6rem;font-weight:800;">Story Library</h2>
-          <p style="opacity:0.92;font-size:0.95rem;margin:0;line-height:1.5;">
-            Ready-made bestsellers personalized with your child's name —
-            instant books, with optional photo personalization.
-          </p>
-        </div>
-        """, unsafe_allow_html=True)
-        if TEMPLATE_BOOKS_AVAILABLE or TEMPLATE_FLOW_AVAILABLE:
-            if st.button("Browse the Library →", key="pick_template", use_container_width=True, type="primary"):
-                st.session_state.book_mode = "template"
-                st.rerun()
-        else:
-            st.caption("Template books are not available in this deployment.")
+    # Pricing for hero strip + cards
+    try:
+        from payments import (
+            custom_story_price_inr as _cs_price_fn,
+            custom_story_regular_price_inr as _cs_reg_fn,
+            custom_story_promo_off_pct as _cs_off_fn,
+        )
+        _promo_price   = _cs_price_fn()
+        _regular_price = _cs_reg_fn()
+        _promo_off_pct = _cs_off_fn()
+    except Exception:
+        _promo_price, _regular_price, _promo_off_pct = 199, 350, 43
 
-    with col2:
-        st.markdown("""
-        <div style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);
-             border-radius:20px;padding:36px 28px;text-align:center;color:white;
-             box-shadow:0 8px 32px rgba(102,126,234,0.3);min-height:200px;">
-          <div style="font-size:56px;margin-bottom:12px;">✨</div>
-          <h2 style="margin:0 0 8px;font-size:1.6rem;font-weight:800;">Custom Story</h2>
-          <p style="opacity:0.92;font-size:0.95rem;margin:0;line-height:1.5;">
-            Craft a one-of-a-kind story — choose your child's look,
-            personality, and the adventure they'll embark on.
-          </p>
-        </div>
-        """, unsafe_allow_html=True)
-        if st.button("Start Custom Story →", key="pick_custom", use_container_width=True):
+    # ── HERO ───────────────────────────────────────────────────────
+    hero_l, hero_r = st.columns([5, 4])
+    with hero_l:
+        st.markdown(
+            f"""
+            <div style="padding: 28px 0 0 0;">
+              <h1 style="font-size: 2.7rem; line-height: 1.1; font-weight: 900;
+                   color: #1a1a2e; letter-spacing: -1px; margin: 0 0 14px 0;">
+                Make your child the<br/>
+                <span style="background:linear-gradient(135deg,#667eea,#f093fb);
+                       -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+                       background-clip:text;">hero of their story</span>
+              </h1>
+              <p style="font-size: 1.1rem; color: #4b5563; margin: 0 0 24px 0;
+                   line-height: 1.5;">
+                A personalized storybook your child stars in. Print-ready in
+                minutes — a keepsake they'll treasure.
+              </p>
+              <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px;
+                   font-size:13px;color:#6b7280;flex-wrap:wrap;">
+                <span>✓ Free preview</span>
+                <span>·</span>
+                <span>✓ ~5 minutes</span>
+                <span>·</span>
+                <span>✓ {_promo_off_pct}% launch discount —
+                  <strong style='color:#1f2937;'>₹{_promo_price}</strong>
+                  <s style='color:#9ca3af;'>₹{_regular_price}</s></span>
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        if st.button("Personalize a book →", type="primary",
+                     use_container_width=True, key="hero_cta_primary"):
             st.session_state.book_mode = "custom"
             st.session_state.wizard_step = 1
             st.rerun()
+    with hero_r:
+        st.markdown(
+            """
+            <div style="background:linear-gradient(135deg,#fef3c7 0%,#fde68a 100%);
+                 border-radius:24px;padding:40px 28px;text-align:center;
+                 min-height:240px;display:flex;flex-direction:column;
+                 justify-content:center;align-items:center;
+                 box-shadow:0 12px 32px rgba(252,211,77,0.30);">
+              <div style="font-size:72px;line-height:1;margin-bottom:8px;">📖✨</div>
+              <div style="font-size:14px;color:#92400e;font-weight:600;">
+                Your child &middot; their name &middot; their face &middot; their adventure
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Gallery
+    # ── FEATURED TEMPLATES ─────────────────────────────────────────
+    if _templates:
+        st.markdown(
+            "<h2 style='font-size:1.5rem;font-weight:800;margin:24px 0 4px 0;'>"
+            "Pick a story to personalize</h2>"
+            "<p style='color:#6b7280;margin:0 0 16px 0;font-size:14px;'>"
+            "Ready-made bestsellers. Drop in your child's name and (optionally) "
+            "a photo — print-ready in minutes.</p>",
+            unsafe_allow_html=True,
+        )
+        for row_start in range(0, len(_templates), 3):
+            cols = st.columns(3)
+            for ci, tmpl in enumerate(_templates[row_start: row_start + 3]):
+                with cols[ci]:
+                    name      = tmpl.get("name", "Untitled")
+                    desc      = (tmpl.get("description", "") or "").replace("{name}", "your child")
+                    cover     = tmpl.get("cover_image", "")
+                    n_pages   = tmpl.get("total_pages", "")
+                    age_range = tmpl.get("age_range", "")
+                    tags      = tmpl.get("tags", []) or []
+                    pretty_name = name.replace("{name}", "your child")
+
+                    tag_pills = "".join(
+                        f"<span style='display:inline-block;background:#e0e7ff;"
+                        f"color:#3730a3;font-size:11px;font-weight:600;padding:2px 8px;"
+                        f"border-radius:999px;margin-right:4px;'>{t}</span>"
+                        for t in tags[:3]
+                    )
+                    if n_pages:
+                        tag_pills += (
+                            f"<span style='display:inline-block;background:#fee2e2;"
+                            f"color:#991b1b;font-size:11px;font-weight:600;padding:2px 8px;"
+                            f"border-radius:999px;margin-right:4px;'>{n_pages} pages</span>"
+                        )
+                    age_line = f"Ages {age_range}" if age_range else ""
+
+                    cover_html = (
+                        f"<div style='height:160px;background-image:url({cover});"
+                        f"background-size:cover;background-position:center;'></div>"
+                        if cover else
+                        f"<div style='height:160px;background:linear-gradient(135deg,"
+                        f"#e0e7ff,#fce7f3);display:flex;align-items:center;"
+                        f"justify-content:center;font-size:48px;'>📖</div>"
+                    )
+
+                    st.markdown(
+                        f"""
+                        <div style="background:#fff;border-radius:16px;overflow:hidden;
+                             border:1px solid #e5e7eb;box-shadow:0 4px 12px rgba(0,0,0,0.05);
+                             margin-bottom:8px;">
+                          {cover_html}
+                          <div style="padding:14px 16px 12px;">
+                            <div style="margin-bottom:6px;">{tag_pills}</div>
+                            <div style="color:#6b7280;font-size:12px;margin-bottom:4px;">{age_line}</div>
+                            <div style="font-weight:700;font-size:16px;color:#1a1a2e;
+                                 line-height:1.25;margin-bottom:4px;">{pretty_name}</div>
+                            <div style="color:#4b5563;font-size:13px;line-height:1.4;
+                                 height:54px;overflow:hidden;">{desc[:120]}{'…' if len(desc) > 120 else ''}</div>
+                            <div style="margin-top:12px;display:flex;align-items:baseline;gap:8px;">
+                              <span style='color:#9ca3af;text-decoration:line-through;
+                                    font-size:14px;'>₹{_regular_price}</span>
+                              <span style='font-size:22px;font-weight:800;color:#1f2937;'>₹{_promo_price}</span>
+                              <span style='background:#fef3c7;color:#92400e;font-size:11px;
+                                    font-weight:700;padding:2px 6px;border-radius:999px;'>
+                                {_promo_off_pct}% off
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                    if st.button(
+                        "Personalize",
+                        key=f"home_tpl_pick_{tmpl.get('id', name)}",
+                        use_container_width=True,
+                        type="primary",
+                    ):
+                        st.session_state.book_mode = "template"
+                        st.session_state.selected_template_id = tmpl.get("id", "")
+                        st.session_state.selected_template_name = name
+                        st.rerun()
+        st.markdown("<br>", unsafe_allow_html=True)
+
+    # ── CUSTOM-STORY SECONDARY TILE ────────────────────────────────
+    st.markdown(
+        """
+        <div style="background:linear-gradient(135deg,#1e1b4b 0%,#312e81 100%);
+             border-radius:20px;padding:32px 28px;color:white;margin: 12px 0;
+             box-shadow:0 12px 32px rgba(49,46,129,0.30);">
+          <div style="font-size:13px;opacity:0.85;font-weight:600;letter-spacing:1px;
+               text-transform:uppercase;margin-bottom:6px;">Or build your own</div>
+          <h2 style="font-size:1.6rem;font-weight:800;margin:0 0 6px 0;">
+            ✨ A completely custom story
+          </h2>
+          <p style="opacity:0.85;font-size:14px;margin:0;line-height:1.5;">
+            Tell us the theme, the lesson, your child's looks &mdash; we'll write
+            and illustrate a one-of-a-kind book.
+          </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    if st.button("Start a custom story", type="secondary",
+                 use_container_width=True, key="home_custom_cta"):
+        st.session_state.book_mode = "custom"
+        st.session_state.wizard_step = 1
+        st.rerun()
+
+    # ── COMMUNITY GALLERY ──────────────────────────────────────────
+    st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("---")
-    st.markdown("### 🌟 Books Created by Our Community")
-    st.caption("Every book made with this app — a growing library of personalized stories.")
+    st.markdown(
+        "<h3 style='font-size:1.2rem;font-weight:700;margin:16px 0 6px 0;'>"
+        "📚 Books made by other families</h3>"
+        "<p style='color:#6b7280;font-size:13px;margin:0 0 16px 0;'>"
+        "Every book made with this app — a growing library of personalized stories.</p>",
+        unsafe_allow_html=True,
+    )
     render_gallery()
 
 
@@ -2939,17 +3119,54 @@ def main():
     init_auth_state()
     _hydrate_api_keys_from_env_or_secrets()
 
-    # CookieManager often returns empty on the very first render.
-    # Allow one rerun for the JS component to hydrate.
+    # ── Cookie hydration ───────────────────────────────────────────
+    # CookieManager.get() returns '' on the FIRST render because the JS
+    # component hasn't responded yet. We retry up to 3 times with brief
+    # pauses, rendering a 'Restoring your session…' splash so the user
+    # never sees the auth page flash before auto-login completes.
+    # Worst case is a payment return — the page is brand new, no
+    # session_state, and the cookie has to travel JS -> server -> rerun.
+    _has_payment_return = bool(
+        st.query_params.get("cf_order_id") or st.query_params.get("cf_link_id")
+    )
+    _max_cookie_retries = 4 if _has_payment_return else 3
     if not is_authenticated() and not _cookie_token:
-        if not st.session_state.get("_cookie_retry_done"):
-            st.session_state._cookie_retry_done = True
-            time.sleep(0.3)
+        _tries = int(st.session_state.get("_cookie_retry_count", 0) or 0)
+        if _tries < _max_cookie_retries:
+            st.session_state._cookie_retry_count = _tries + 1
+            # Splash so the user doesn't see the auth page flash
+            st.markdown(
+                """
+                <div style="display:flex;flex-direction:column;align-items:center;
+                            justify-content:center;min-height:60vh;color:#6b7280;">
+                  <div style="font-size:36px;margin-bottom:12px;">📖</div>
+                  <div style="font-size:16px;font-weight:600;color:#374151;">
+                    Restoring your session…
+                  </div>
+                  <div style="font-size:13px;margin-top:4px;">
+                    One moment.
+                  </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            # Hide the sidebar / collapse arrow on the splash so it stays clean
+            st.markdown(
+                """<style>
+                [data-testid="stSidebar"], [data-testid="collapsedControl"] {
+                    display: none !important;
+                }
+                </style>""",
+                unsafe_allow_html=True,
+            )
+            time.sleep(0.4 if _tries < 2 else 0.6)
             st.rerun()
 
     # Try to restore session from cookie if not already authenticated
     if not is_authenticated() and _cookie_token:
         if restore_session_from_token(_cookie_token):
+            # Clear the retry counter so a future logged-out user starts fresh
+            st.session_state.pop("_cookie_retry_count", None)
             st.rerun()
 
     # Set cookie after new login/signup
@@ -3712,11 +3929,17 @@ def main():
 
         # ── Sanity / empty-story handling ───────────────────────────────
         if not pages:
-            st.error("⚠️ Story loaded but has no pages. The story data may be incomplete.")
-            with st.expander("Debug: Story Data", expanded=True):
-                st.write("Story keys:", list(st.session_state.generated_story.keys()) if isinstance(st.session_state.generated_story, dict) else "Not a dict")
-                st.write("Pages count:", len(pages))
-                st.json(st.session_state.generated_story)
+            st.error(
+                "⚠️ Something went wrong loading your story — it came back "
+                "with no pages. Please try again, or start a fresh story "
+                "from Home."
+            )
+            # Admin can still see the raw structure for debugging
+            if _is_current_user_admin():
+                with st.expander("Raw story (admin only)", expanded=False):
+                    st.write("Story keys:", list(st.session_state.generated_story.keys()) if isinstance(st.session_state.generated_story, dict) else "Not a dict")
+                    st.write("Pages count:", len(pages))
+                    st.json(st.session_state.generated_story)
             return
 
         # ── Admin check (used by per-page Advanced expander) ────────────
@@ -3755,15 +3978,82 @@ def main():
                 save_story(st.session_state.generated_story, st.session_state.current_child_name)
             st.rerun()
 
-        def _do_regen_all():
+        def _open_regen_form():
+            st.session_state["_regen_with_context_open"] = True
+            st.rerun()
+
+        def _close_regen_form():
+            st.session_state.pop("_regen_with_context_open", None)
+            st.rerun()
+
+        def _do_regen_from_scratch():
+            """Hard reset — discard the story AND go back to the wizard.
+            Lives in the Advanced expander, not on the main CTA bar."""
             st.session_state.generated_story = None
             st.session_state.edited_story_pages = {}
             st.session_state.edited_image_prompts = {}
+            st.session_state.pop("_regen_with_context_open", None)
+            st.rerun()
+
+        def _do_refine_with_instructions(instr: str):
+            """Pass original brief + current story + new instructions to the
+            model and replace the in-progress story with what comes back."""
+            if not instr.strip():
+                st.warning("Please describe what you'd like to change.")
+                return
+            brief = {
+                "story_type":       st.session_state.get("wiz_story_type", ""),
+                "problem":          st.session_state.get("wiz_problem", ""),
+                "hero_trait":       st.session_state.get("wiz_hero_trait", ""),
+                "family_structure": st.session_state.get("wiz_family_structure", ""),
+                "character_choice": st.session_state.get("wiz_character_choice", ""),
+                "gender":           st.session_state.get("wiz_gender", ""),
+                "image_style":      st.session_state.get("wiz_image_style", ""),
+            }
+            with st.spinner("Rewriting your story with the new instructions…"):
+                refined = refine_story_with_followup(
+                    api_key,
+                    st.session_state.generated_story,
+                    instr,
+                    child_name,
+                    age,
+                    language,
+                    wizard_brief=brief,
+                )
+            if not refined:
+                return
+            orig_pages = st.session_state.generated_story.get("pages", [])
+            new_pages = refined.get("pages", [])
+            changed = sum(
+                1 for o, r in zip(orig_pages, new_pages)
+                if o.get("text", "").strip() != r.get("text", "").strip()
+            )
+            if changed == 0:
+                st.error(
+                    "The model returned a story identical to the previous one. "
+                    "Try being more specific — name a character, scene, or "
+                    "page you'd like to change."
+                )
+                return
+            st.session_state.generated_story = refined
+            st.session_state.generated_images = []
+            st.session_state.image_approvals = {}
+            st.session_state.all_images_approved = False
+            st.session_state.pdf_path = None
+            st.session_state.pdf_generation_key = None
+            st.session_state.edited_story_pages = {}
+            st.session_state.edited_image_prompts = {}
+            st.session_state.story_approved = False
+            st.session_state.pop("_regen_with_context_open", None)
+            st.success(f"Rewrote the story — {changed} of {len(orig_pages)} pages changed.")
             st.rerun()
 
         def _render_cta_bar(suffix: str):
-            """Primary 'Make my book' + secondary 'Try a different story'.
-            Rendered top and bottom so the user never has to scroll to find it."""
+            """Primary 'Make my book' + secondary 'Make changes'.
+            Rendered top and bottom so the user never has to scroll to find
+            them. 'Make changes' opens an inline form that calls the
+            full-context refine flow — original brief + current story +
+            new instructions all reach the model at once."""
             cta1, cta2 = st.columns([2, 1])
             with cta1:
                 if st.button(
@@ -3775,14 +4065,54 @@ def main():
                     _do_approve()
             with cta2:
                 if st.button(
-                    "🔄 Try a different story",
+                    "✏️ Make changes",
                     use_container_width=True,
                     key=f"regen_all_{suffix}",
                 ):
-                    _do_regen_all()
+                    _open_regen_form()
 
         # ── TOP CTA BAR ─────────────────────────────────────────────────
         _render_cta_bar("top")
+
+        # ── Inline 'Make changes' form (opens when _open_regen_form()) ──
+        if st.session_state.get("_regen_with_context_open"):
+            with st.container(border=True):
+                st.markdown(
+                    "<div style='font-weight:600;font-size:15px;margin-bottom:6px;'>"
+                    "What would you like to change?</div>"
+                    "<div style='color:#6b7280;font-size:13px;margin-bottom:10px;'>"
+                    "Be specific — name a character, a scene, the ending, etc. "
+                    "We'll keep the same setup but rewrite the story to fit your "
+                    "request.</div>",
+                    unsafe_allow_html=True,
+                )
+                instr_text = st.text_area(
+                    "Your change request",
+                    placeholder=(
+                        "e.g., Make Mia braver from page 3 onwards · "
+                        "Add a dog as a sidekick · Make the ending happier · "
+                        "Change the setting from a city to a forest"
+                    ),
+                    height=110,
+                    key="regen_context_instructions",
+                    label_visibility="collapsed",
+                )
+                col_apply, col_cancel = st.columns(2)
+                with col_apply:
+                    if st.button(
+                        "✨ Rewrite my story",
+                        type="primary",
+                        use_container_width=True,
+                        key="apply_regen_with_context",
+                    ):
+                        _do_refine_with_instructions(instr_text)
+                with col_cancel:
+                    if st.button(
+                        "✖ Cancel",
+                        use_container_width=True,
+                        key="cancel_regen_with_context",
+                    ):
+                        _close_regen_form()
         st.divider()
 
         # ── Per-page cards ──────────────────────────────────────────────
@@ -3988,6 +4318,14 @@ def main():
                 key="followup_prompt_input",
                 label_visibility="collapsed",
             )
+            if st.button(
+                "🗑 Start over from scratch (discard this story)",
+                use_container_width=True,
+                key="regen_from_scratch_advanced",
+                help="Throws away this story and the wizard inputs stay. You'll be sent back to the wizard.",
+            ):
+                _do_regen_from_scratch()
+            st.divider()
             if st.button("🔄 Refine the whole story", use_container_width=True, key="apply_followup"):
                 if followup_prompt.strip():
                     with st.spinner("Refining the story…"):
@@ -4195,6 +4533,17 @@ def main():
 
             col_dl, col_pd = st.columns(2)
             with col_dl:
+                _strike_block = (
+                    f"<span style='font-size:16px;color:#9ca3af;"
+                    f"text-decoration:line-through;margin-right:8px;'>"
+                    f"₹{_dl_reg_price}</span>"
+                ) if _dl_reg_price and _dl_reg_price > _dl_price else ""
+                _badge_block = (
+                    f"<span style='display:inline-block;background:#fef3c7;"
+                    f"color:#92400e;font-size:12px;font-weight:700;padding:3px 8px;"
+                    f"border-radius:999px;margin-left:6px;vertical-align:middle;'>"
+                    f"{_dl_promo_off}% off</span>"
+                ) if _dl_promo_off > 0 else ""
                 st.markdown(
                     f"""<div style='background:#f0f7ff;border:2px solid #2563eb;border-radius:12px;
                     padding:20px;text-align:center;margin-bottom:12px;'>
@@ -4202,11 +4551,15 @@ def main():
                     <h3 style='color:#1e40af;margin:8px 0;'>Download PDF</h3>
                     <p style='color:#374151;font-size:14px;'>Get a digital copy instantly after images are
                     generated. Read on any device or print at home.</p>
-                    <div style='font-size:28px;font-weight:700;color:#1e40af;margin-top:8px;'>₹{_dl_price}</div>
+                    <div style='margin-top:8px;'>
+                      {_strike_block}
+                      <span style='font-size:28px;font-weight:700;color:#1e40af;'>₹{_dl_price}</span>
+                      {_badge_block}
+                    </div>
                     </div>""",
                     unsafe_allow_html=True,
                 )
-                if st.button(f"📥 Pay ₹{_dl_price} & Download", type="primary",
+                if st.button(f"📥 Pay ₹{_dl_price} & Download (₹{_dl_reg_price - _dl_price} off)", type="primary",
                              use_container_width=True, key="choice_pay_dl"):
                     if not _choice_vph(_choice_phone):
                         st.error("Please enter a valid 10-digit mobile number.")
