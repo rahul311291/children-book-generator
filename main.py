@@ -2253,6 +2253,8 @@ def _start_or_login(mode, template_id="", template_name=""):
         if mode == "template":
             st.session_state.selected_template_id = template_id
             st.session_state.selected_template_name = template_name
+            st.session_state.tpl_selected_id = template_id   # jump straight to detail
+            st.session_state.pop("tpl_book_data", None)
         elif mode == "custom":
             st.session_state.wizard_step = 1
     else:
@@ -3353,6 +3355,8 @@ def main():
         if _ps_mode == "template":
             st.session_state.selected_template_id = _ps_tid
             st.session_state.selected_template_name = _ps_tname
+            st.session_state.tpl_selected_id = _ps_tid
+            st.session_state.pop("tpl_book_data", None)
         elif _ps_mode == "custom":
             st.session_state.wizard_step = 1
 
