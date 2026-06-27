@@ -2226,6 +2226,41 @@ def _render_whatsapp_help():
     )
 
 
+def _public_nav():
+    """Minimal top bar for logged-out visitors browsing the public homepage."""
+    n1, _n2, n3 = st.columns([3, 3, 1.4])
+    with n1:
+        st.markdown(
+            '<div style="display:flex;align-items:center;gap:10px;padding-top:4px;">'
+            '<div style="width:34px;height:34px;border-radius:10px;background:var(--terra);'
+            'color:#FBF7F0;font-family:Spectral;font-weight:700;display:flex;align-items:center;'
+            'justify-content:center;">S</div>'
+            '<b style="font-family:Spectral;font-size:18px;">Storytime Studio</b></div>',
+            unsafe_allow_html=True,
+        )
+    with n3:
+        if st.button("Sign in", key="public_signin", type="primary", use_container_width=True):
+            st.session_state["_wants_auth"] = True
+            st.rerun()
+    st.divider()
+
+
+def _start_or_login(mode, template_id="", template_name=""):
+    """Start a book flow if signed in; otherwise route to sign-in and resume
+    the intended action after the visitor logs in."""
+    if is_authenticated():
+        st.session_state.book_mode = mode
+        if mode == "template":
+            st.session_state.selected_template_id = template_id
+            st.session_state.selected_template_name = template_name
+        elif mode == "custom":
+            st.session_state.wizard_step = 1
+    else:
+        st.session_state["_pending_start"] = (mode, template_id, template_name)
+        st.session_state["_wants_auth"] = True
+    st.rerun()
+
+
 def render_landing():
     """Storytime Studio storefront — Path B redesign (Lord Design handoff)."""
     import os
@@ -2260,6 +2295,22 @@ def render_landing():
         return ""
 
     # ── HERO ───────────────────────────────────────────────────────
+    # Continue an in-progress book (homepage-first; never auto-opened).
+    if st.session_state.get("_resumable_book_id") and not st.session_state.get("generated_story"):
+        _rb1, _rb2 = st.columns([3, 1])
+        with _rb1:
+            st.markdown(
+                '''<div class="ss-card" style="border-color:var(--clay-t);padding:15px 20px;margin-bottom:8px;">
+                <b style="font-family:Spectral;font-size:17px;">You have a book in progress</b>
+                <div style="color:var(--muted);font-size:13.5px;">Pick up right where you left off.</div></div>''',
+                unsafe_allow_html=True,
+            )
+        with _rb2:
+            st.markdown("<div style='height:18px;'></div>", unsafe_allow_html=True)
+            if st.button("Continue your book →", key="resume_in_progress", use_container_width=True):
+                if _auto_resume_in_progress_book(force=True):
+                    st.rerun()
+
     st.markdown(f'''<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:36px;align-items:center;padding:14px 0 6px;">
       <div>
         <span class="ss-pill clay">A keepsake they'll treasure for years</span>
@@ -2281,7 +2332,7 @@ def render_landing():
     hb1, hb2, _hbx = st.columns([1.3, 1.3, 2])
     with hb1:
         if st.button("Create a custom story →", type="primary", use_container_width=True, key="hero_custom"):
-            st.session_state.book_mode = "custom"; st.session_state.wizard_step = 1; st.rerun()
+            _start_or_login("custom")
     with hb2:
         st.markdown('<a href="#featured-books" style="display:block;text-align:center;padding:.62rem 1rem;border:1.5px solid var(--borderin);border-radius:999px;font-weight:700;color:var(--ink);text-decoration:none;">Browse the Story Library</a>', unsafe_allow_html=True)
 
@@ -2310,7 +2361,7 @@ def render_landing():
     with cpb:
         st.markdown('''<div class="ss-card" style="background:var(--ink);border-color:var(--ink);min-height:200px;"><span class="ss-pill" style="background:rgba(226,162,74,.18);color:var(--gold);">Custom Story</span><h3 style="margin:12px 0 8px;font-size:24px;color:#FBF7F0;">A one-of-a-kind adventure</h3><p style="color:#CDC3B5;font-size:14.5px;">You pick the world and the lesson — we write and illustrate a book that exists nowhere else.</p></div>''', unsafe_allow_html=True)
         if st.button("Start a custom story →", type="primary", use_container_width=True, key="twopath_custom"):
-            st.session_state.book_mode = "custom"; st.session_state.wizard_step = 1; st.rerun()
+            _start_or_login("custom")
 
     # ── FEATURED BOOKS ─────────────────────────────────────────────
     st.markdown('<div id="featured-books"></div>', unsafe_allow_html=True)
@@ -2322,21 +2373,26 @@ def render_landing():
             for ci, tmpl in enumerate(_templates[row:row + 4]):
                 gi = row + ci
                 with cols[ci]:
-                    name = (tmpl.get("name", "Untitled") or "").replace("{name}", "your child")
+                    raw_name = tmpl.get("name", "") or ""
+                    name = raw_name.replace("{name}", "your child") or "Untitled"
                     tags = tmpl.get("tags", []) or []
                     cat = tags[0] if tags else "Storybook"
                     age = tmpl.get("age_range", "")
                     src = _cover_for(gi)
-                    if src:
-                        st.markdown(image_cover_html(src), unsafe_allow_html=True)
-                    else:
-                        st.markdown(typo_cover_html(name, cat, gi), unsafe_allow_html=True)
+                    _cover_markup = image_cover_html(src) if src else typo_cover_html(name, cat, gi)
+                    _is_best = any(_k in raw_name for _k in ("When I Grow Up", "Snow White", "Space Adventure"))
+                    if _is_best:
+                        _cover_markup = (
+                            "<div style='position:relative;'>" + _cover_markup +
+                            "<span style='position:absolute;top:10px;right:10px;background:var(--gold);"
+                            "color:#3a2a06;font-size:10.5px;font-weight:800;letter-spacing:.04em;"
+                            "padding:4px 9px;border-radius:999px;box-shadow:0 4px 10px rgba(0,0,0,.2);"
+                            "z-index:3;'>★ BESTSELLER</span></div>"
+                        )
+                    st.markdown(_cover_markup, unsafe_allow_html=True)
                     st.markdown(f'<div style="margin:10px 0 2px;font-family:Spectral;font-weight:700;font-size:16px;line-height:1.15;">{name}</div><div style="font-size:12.5px;color:var(--muted2);margin-bottom:8px;">Ages {age} · from &#8377;{promo}</div>', unsafe_allow_html=True)
                     if st.button("Personalize", key=f"feat_{tmpl.get('id', gi)}", use_container_width=True):
-                        st.session_state.book_mode = "template"
-                        st.session_state.selected_template_id = tmpl.get("id", "")
-                        st.session_state.selected_template_name = tmpl.get("name", "")
-                        st.rerun()
+                        _start_or_login("template", tmpl.get("id", ""), tmpl.get("name", ""))
     else:
         st.info("Story library is loading…")
 
@@ -2349,7 +2405,7 @@ def render_landing():
     fb1, fb2, _fbx = st.columns([1.3, 1.3, 2])
     with fb1:
         if st.button("Create a custom story →", type="primary", use_container_width=True, key="final_custom"):
-            st.session_state.book_mode = "custom"; st.session_state.wizard_step = 1; st.rerun()
+            _start_or_login("custom")
     with fb2:
         st.markdown('<a href="#featured-books" style="display:block;text-align:center;padding:.62rem 1rem;border:1.5px solid var(--borderin);border-radius:999px;font-weight:700;color:var(--ink);text-decoration:none;">Browse books</a>', unsafe_allow_html=True)
 
@@ -2700,13 +2756,37 @@ def render_custom_wizard():
 # The user can still click 'Home' or 'My Books' to leave; we don't lock
 # them in. We just default to where they last were.
 
-def _auto_resume_in_progress_book() -> bool:
+def _detect_in_progress_book_id():
+    """Return the _id of the user's most recent in-progress book, or None.
+    Lightweight: fetches no images and mutates no session state."""
+    uid = get_current_user_id()
+    if not uid:
+        return None
+    try:
+        from mongo_client import book_history_col
+        rows = list(book_history_col().find(
+            {"user_id": uid},
+            {"_id": 1, "story_data.pages": 1, "metadata.journey_state": 1},
+        ).sort("metadata.timestamp", -1).limit(5))
+    except Exception:
+        return None
+    for row in rows:
+        js = (row.get("metadata") or {}).get("journey_state", {}) or {}
+        if js.get("current_step") == "step3" and js.get("all_images_approved"):
+            continue
+        if not (row.get("story_data") or {}).get("pages"):
+            continue
+        return row.get("_id")
+    return None
+
+
+def _auto_resume_in_progress_book(force: bool = False) -> bool:
     """Returns True if a book was restored, False otherwise."""
-    # One-shot per session
-    if st.session_state.get("_auto_resumed"):
+    # One-shot per session (unless explicitly forced from the resume banner)
+    if not force and st.session_state.get("_auto_resumed"):
         return False
     # Don't override if a book is already live in session
-    if st.session_state.get("generated_story"):
+    if not force and st.session_state.get("generated_story"):
         st.session_state["_auto_resumed"] = True
         return False
     # Need an authenticated user
@@ -3091,8 +3171,8 @@ def main():
     _has_payment_return = bool(
         st.query_params.get("cf_order_id") or st.query_params.get("cf_link_id")
     )
-    _max_cookie_retries = 4 if _has_payment_return else 3
-    if not is_authenticated() and not _cookie_token:
+    _max_cookie_retries = 5 if _has_payment_return else 4
+    if not is_authenticated() and not _cookie_token and not st.session_state.get("_wants_auth"):
         _tries = int(st.session_state.get("_cookie_retry_count", 0) or 0)
         if _tries < _max_cookie_retries:
             st.session_state._cookie_retry_count = _tries + 1
@@ -3170,20 +3250,42 @@ def main():
     # has an unfinished book in MongoDB, restore it. Single-shot per
     # session. Skips when a Cashfree return is in the URL (the cf handler
     # below handles that path via the wizard snapshot).
+    # Detect (but do NOT auto-open) an in-progress book, so the homepage can
+    # offer a "Continue your book" banner instead of dropping the user in.
     if (
         is_authenticated()
-        and not st.session_state.get("_auto_resumed")
+        and not st.session_state.get("_resume_checked")
         and not st.query_params.get("cf_order_id")
         and not st.query_params.get("cf_link_id")
-        and not st.session_state.get("show_history")
-        and not st.session_state.get("show_community")
     ):
-        _auto_resume_in_progress_book()
+        st.session_state["_resume_checked"] = True
+        try:
+            st.session_state["_resumable_book_id"] = _detect_in_progress_book_id()
+        except Exception:
+            st.session_state["_resumable_book_id"] = None
 
-    # Auth gate
+    # ── Public homepage ────────────────────────────────────────────────
+    # Anyone can browse the storefront. Actions (personalize / custom story /
+    # My Books) require sign-in: they set _wants_auth, which brings up the
+    # sign-in page; after login we resume the intended action.
     if not is_authenticated():
-        render_auth_page()
+        if st.session_state.get("_wants_auth"):
+            render_auth_page()
+            return
+        _public_nav()
+        render_landing()
         return
+
+    # Authenticated from here on.
+    st.session_state.pop("_wants_auth", None)
+    if st.session_state.get("_pending_start"):
+        _ps_mode, _ps_tid, _ps_tname = st.session_state.pop("_pending_start")
+        st.session_state.book_mode = _ps_mode
+        if _ps_mode == "template":
+            st.session_state.selected_template_id = _ps_tid
+            st.session_state.selected_template_name = _ps_tname
+        elif _ps_mode == "custom":
+            st.session_state.wizard_step = 1
 
     # After OTP: prompt to set a password (optional, user can skip)
     if st.session_state.get("auth_stage") == "set_password":
@@ -4390,6 +4492,8 @@ def main():
                 custom_story_regular_price_inr as _cs_reg_fn,
                 custom_story_promo_off_pct as _cs_off_fn,
                 custom_download_price_inr as _cd_price_fn,
+                print_normal_price_inr as _pn_fn,
+                print_glossy_price_inr as _pg_fn,
                 create_cashfree_order as _choice_create_order,
                 verify_cashfree_order as _choice_verify_order,
                 confirm_payment_and_credit as _choice_cpc,
@@ -4399,7 +4503,9 @@ def main():
             _dl_price = _cs_price_fn()        # promo digital-download price
             _dl_reg_price = _cs_reg_fn()      # regular (strike-through) price
             _dl_promo_off = _cs_off_fn()      # launch discount %
-            _pd_price = _cd_price_fn()        # print + deliver
+            _pd_price = _cd_price_fn()        # legacy print price
+            _pd_normal = _pn_fn()             # everyday matte
+            _pd_glossy = _pg_fn()             # glossy keepsake
             _choice_uid = get_current_user_id()
             _choice_child = st.session_state.get("current_child_name") or st.session_state.get("wiz_child_name", "")
             _choice_n_pages = len(st.session_state.generated_story.get("pages", []))
@@ -4414,17 +4520,27 @@ def main():
             if _is_admin_choice:
                 # Admin skips payment — just picks delivery option
                 st.info("🔑 Admin mode: select delivery method (no payment required)")
-                acol1, acol2 = st.columns(2)
+                acol1, acol2, acol3 = st.columns(3)
                 with acol1:
-                    if st.button(f"📥 Digital Download (₹{_dl_price})", type="primary",
+                    if st.button("📖 Print Your Own", type="primary",
                                  use_container_width=True, key="admin_choice_dl"):
                         st.session_state.book_delivery_option = "download"
                         st.session_state.current_book_payment_status = "story_paid"
                         st.rerun()
                 with acol2:
-                    if st.button(f"📬 Print & Deliver (₹{_pd_price})", use_container_width=True,
-                                 key="admin_choice_pd"):
+                    if st.button(f"📬 Everyday (₹{_pd_normal})", use_container_width=True,
+                                 key="admin_choice_normal"):
                         st.session_state.book_delivery_option = "print_deliver"
+                        st.session_state.print_paper_type = "normal"
+                        st.session_state.print_paid_amount = _pd_normal
+                        st.session_state.current_book_payment_status = "print_paid"
+                        st.rerun()
+                with acol3:
+                    if st.button(f"📬 Keepsake (₹{_pd_glossy})", use_container_width=True,
+                                 key="admin_choice_glossy"):
+                        st.session_state.book_delivery_option = "print_deliver"
+                        st.session_state.print_paper_type = "glossy"
+                        st.session_state.print_paid_amount = _pd_glossy
                         st.session_state.current_book_payment_status = "print_paid"
                         st.rerun()
                 return
@@ -4457,8 +4573,8 @@ def main():
 
             if _pending_session_id and _pending_order_id:
                 # Cashfree checkout — payment auto-triggers inside the iframe
-                _opt_label = "📥 Download PDF" if _pending_gate == "download_choice" else "📬 Print & Deliver"
-                _opt_price = _dl_price if _pending_gate == "download_choice" else _pd_price
+                _opt_label = st.session_state.get("cf_pending_label", "Your book")
+                _opt_price = st.session_state.get("cf_pending_amount", _dl_price)
                 st.markdown(
                     f"""<div style='background:#f0fdf4;border:1px solid #86efac;border-radius:10px;
                     padding:14px 18px;margin-bottom:12px;'>
@@ -4484,30 +4600,33 @@ def main():
                     st.session_state.cf_show_verify_button = False
                     st.rerun()
 
-                # Fallback verify button — only visible after 60 s timeout from JS
+                # Always offer a manual confirm so a paid user is never stranded
+                # if the in-iframe auto-detect misses the success callback.
                 if st.session_state.get("cf_show_verify_button"):
                     st.warning("⏱ Payment is taking longer than expected. If you've completed "
                                "the payment, click below to confirm.")
-                    if st.button("✅ I've paid — confirm my payment", type="primary",
-                                 use_container_width=True, key="choice_verify"):
-                        _v = _choice_verify_order(_pending_order_id)
-                        if _v == "PAID":
-                            _choice_cpc(_pending_order_id, _choice_uid)
-                            if _pending_gate == "download_choice":
-                                st.session_state.current_book_payment_status = "story_paid"
-                                st.session_state.book_delivery_option = "download"
-                            else:
-                                st.session_state.current_book_payment_status = "print_paid"
-                                st.session_state.book_delivery_option = "print_deliver"
-                            st.session_state.cf_pending_order_id = None
-                            st.session_state.cf_payment_session_id = None
-                            st.session_state.pending_payment_gate = None
-                            st.session_state.cf_show_verify_button = False
-                            st.success("✅ Confirmed! Generating your images now…")
-                            st.rerun()
+                else:
+                    st.caption("Finished paying in the window above? Click to continue.")
+                if st.button("✅ I've paid — continue", type="primary",
+                             use_container_width=True, key="choice_verify"):
+                    _v = _choice_verify_order(_pending_order_id)
+                    if _v == "PAID":
+                        _choice_cpc(_pending_order_id, _choice_uid)
+                        if _pending_gate == "download_choice":
+                            st.session_state.current_book_payment_status = "story_paid"
+                            st.session_state.book_delivery_option = "download"
                         else:
-                            st.error(f"Payment not yet received (status: {_v}). "
-                                     "Please complete the payment in the window above.")
+                            st.session_state.current_book_payment_status = "print_paid"
+                            st.session_state.book_delivery_option = "print_deliver"
+                        st.session_state.cf_pending_order_id = None
+                        st.session_state.cf_payment_session_id = None
+                        st.session_state.pending_payment_gate = None
+                        st.session_state.cf_show_verify_button = False
+                        st.success("✅ Confirmed! Generating your images now…")
+                        st.rerun()
+                    else:
+                        st.error(f"Payment not yet received (status: {_v}). "
+                                 "Please complete the payment in the window above.")
                 return
 
             if not _choice_cf_ok():
@@ -4530,107 +4649,100 @@ def main():
                 key="choice_phone", label_visibility="collapsed",
             )
 
-            col_dl, col_pd = st.columns(2)
-            with col_dl:
-                _strike_block = (
-                    f"<span style='font-size:16px;color:#9ca3af;"
-                    f"text-decoration:line-through;margin-right:8px;'>"
-                    f"₹{_dl_reg_price}</span>"
-                ) if _dl_reg_price and _dl_reg_price > _dl_price else ""
-                _badge_block = (
-                    f"<span style='display:inline-block;background:#fef3c7;"
-                    f"color:#92400e;font-size:12px;font-weight:700;padding:3px 8px;"
-                    f"border-radius:999px;margin-left:6px;vertical-align:middle;'>"
-                    f"{_dl_promo_off}% off</span>"
-                ) if _dl_promo_off > 0 else ""
-                st.markdown(
-                    f"""<div style='background:#f0f7ff;border:2px solid #2563eb;border-radius:12px;
-                    padding:20px;text-align:center;margin-bottom:12px;'>
-                    <div style='font-size:36px;'>📥</div>
-                    <h3 style='color:#1e40af;margin:8px 0;'>Download PDF</h3>
-                    <p style='color:#374151;font-size:14px;'>Get a digital copy instantly after images are
-                    generated. Read on any device or print at home.</p>
-                    <div style='margin-top:8px;'>
-                      {_strike_block}
-                      <span style='font-size:28px;font-weight:700;color:#1e40af;'>₹{_dl_price}</span>
-                      {_badge_block}
-                    </div>
-                    </div>""",
-                    unsafe_allow_html=True,
-                )
-                if st.button(f"📥 Pay ₹{_dl_price} & Download (₹{_dl_reg_price - _dl_price} off)", type="primary",
-                             use_container_width=True, key="choice_pay_dl"):
-                    if not _choice_vph(_choice_phone):
-                        st.error("Please enter a valid 10-digit mobile number.")
-                        st.stop()
-                    with st.spinner("Opening payment…"):
-                        _res_dl = _choice_create_order(
-                            _choice_uid, _choice_email, _dl_price,
-                            f"Storybook digital download for {_choice_child}",
-                            customer_phone=_choice_phone,
-                            metadata={"book_kind": "custom", "product": "pdf_download",
-                                      "gate": "download_choice", "child_name": _choice_child,
-                                      "book_history_id": st.session_state.get("current_book_history_id") or ""},
-                        )
-                    if _res_dl and _res_dl.get("payment_session_id"):
-                        _ord_id_dl = _res_dl["order_id"]
-                        st.session_state.cf_pending_order_id = _ord_id_dl
-                        st.session_state.cf_payment_session_id = _res_dl["payment_session_id"]
-                        st.session_state.cf_order_created_at = time.time()
-                        st.session_state.pending_payment_gate = "download_choice"
-                        st.session_state.current_book_payment_status = "pending"
-                        # Snapshot the wizard so we can rehydrate after the
-                        # Cashfree redirect (see cf_status=SUCCESS handler).
-                        try:
-                            from payments import save_book_snapshot as _save_snap_dl
-                            _save_snap_dl(_ord_id_dl, _choice_uid, _build_wizard_snapshot())
-                        except Exception as _sse_dl:
-                            logger.warning(f"snapshot save (download) failed: {_sse_dl}")
-                        st.rerun()
-                    else:
-                        st.error((_res_dl or {}).get("error", "Could not initiate payment. Please try again."))
+            def _start_payment(_amt, _gate, _paper, _desc):
+                if not _choice_vph(_choice_phone):
+                    st.error("Please enter a valid 10-digit mobile number.")
+                    st.stop()
+                with st.spinner("Opening payment…"):
+                    _res = _choice_create_order(
+                        _choice_uid, _choice_email, _amt,
+                        f"{_desc} for {_choice_child}",
+                        customer_phone=_choice_phone,
+                        metadata={"book_kind": "custom", "product": _gate, "gate": _gate,
+                                  "paper": _paper or "", "child_name": _choice_child,
+                                  "book_history_id": st.session_state.get("current_book_history_id") or ""},
+                    )
+                if _res and _res.get("payment_session_id"):
+                    st.session_state.cf_pending_order_id = _res["order_id"]
+                    st.session_state.cf_payment_session_id = _res["payment_session_id"]
+                    st.session_state.cf_order_created_at = time.time()
+                    st.session_state.pending_payment_gate = _gate
+                    st.session_state.current_book_payment_status = "pending"
+                    st.session_state.cf_pending_amount = _amt
+                    st.session_state.cf_pending_label = _desc
+                    st.session_state.print_paper_type = _paper
+                    st.session_state.print_paid_amount = _amt
+                    try:
+                        from payments import save_book_snapshot as _snap
+                        _snap(_res["order_id"], _choice_uid, _build_wizard_snapshot())
+                    except Exception as _sse:
+                        logger.warning(f"snapshot save failed: {_sse}")
+                    st.rerun()
+                else:
+                    st.error((_res or {}).get("error", "Could not initiate payment. Please try again."))
 
-            with col_pd:
+            _strike = (
+                f"<span style='font-size:15px;color:#9ca3af;text-decoration:line-through;"
+                f"margin-right:6px;'>₹{_dl_reg_price}</span>"
+            ) if _dl_reg_price and _dl_reg_price > _dl_price else ""
+            _offtag = (
+                f"<span style='background:#fef3c7;color:#92400e;font-size:11px;font-weight:700;"
+                f"padding:2px 7px;border-radius:999px;margin-left:6px;'>{_dl_promo_off}% off</span>"
+            ) if _dl_promo_off > 0 else ""
+
+            st.markdown("<div style='height:6px;'></div>", unsafe_allow_html=True)
+            cc1, cc2, cc3 = st.columns(3)
+            with cc1:
                 st.markdown(
-                    f"""<div style='background:#fff7ed;border:2px solid #ea580c;border-radius:12px;
-                    padding:20px;text-align:center;margin-bottom:12px;'>
-                    <div style='font-size:36px;'>📬</div>
-                    <h3 style='color:#c2410c;margin:8px 0;'>Print & Deliver</h3>
-                    <p style='color:#374151;font-size:14px;'>We print your book professionally and deliver
-                    it to your door. Includes the digital copy too!</p>
-                    <div style='font-size:28px;font-weight:700;color:#c2410c;margin-top:8px;'>₹{_pd_price}</div>
+                    f"""<div style='background:var(--card);border:2px solid var(--terra);
+                    border-radius:16px;padding:18px;min-height:236px;'>
+                    <span class='ss-pill clay'>INSTANT</span>
+                    <h3 style='margin:10px 0 4px;font-size:20px;'>Print Your Own Book</h3>
+                    <p style='color:var(--muted);font-size:13px;margin:0 0 10px;line-height:1.45;'>
+                    Your story as a print-ready PDF — print it at home or any shop,
+                    as many times as you like.</p>
+                    <div>{_strike}<span style='font-size:25px;font-weight:800;color:var(--terra);'>₹{_dl_price}</span>{_offtag}</div>
                     </div>""",
                     unsafe_allow_html=True,
                 )
-                if st.button(f"📬 Pay ₹{_pd_price} & Get Printed", use_container_width=True,
-                             key="choice_pay_pd"):
-                    if not _choice_vph(_choice_phone):
-                        st.error("Please enter a valid 10-digit mobile number.")
-                        st.stop()
-                    with st.spinner("Opening payment…"):
-                        _res_pd = _choice_create_order(
-                            _choice_uid, _choice_email, _pd_price,
-                            f"Printed storybook for {_choice_child}",
-                            customer_phone=_choice_phone,
-                            metadata={"book_kind": "custom", "product": "print_deliver",
-                                      "gate": "print_deliver_choice", "child_name": _choice_child,
-                                      "book_history_id": st.session_state.get("current_book_history_id") or ""},
-                        )
-                    if _res_pd and _res_pd.get("payment_session_id"):
-                        _ord_id_pd = _res_pd["order_id"]
-                        st.session_state.cf_pending_order_id = _ord_id_pd
-                        st.session_state.cf_payment_session_id = _res_pd["payment_session_id"]
-                        st.session_state.cf_order_created_at = time.time()
-                        st.session_state.pending_payment_gate = "print_deliver_choice"
-                        st.session_state.current_book_payment_status = "pending"
-                        try:
-                            from payments import save_book_snapshot as _save_snap_pd
-                            _save_snap_pd(_ord_id_pd, _choice_uid, _build_wizard_snapshot())
-                        except Exception as _sse_pd:
-                            logger.warning(f"snapshot save (print+deliver) failed: {_sse_pd}")
-                        st.rerun()
-                    else:
-                        st.error((_res_pd or {}).get("error", "Could not initiate payment. Please try again."))
+                if st.button(f"Get my PDF — ₹{_dl_price}", type="primary",
+                             use_container_width=True, key="choice_pay_dl"):
+                    _start_payment(_dl_price, "download_choice", None,
+                                   "Print-your-own (digital) storybook")
+            with cc2:
+                st.markdown(
+                    f"""<div style='background:var(--card);border:1.5px solid var(--border);
+                    border-radius:16px;padding:18px;min-height:236px;'>
+                    <span class='ss-pill teal'>EVERYDAY</span>
+                    <h3 style='margin:10px 0 4px;font-size:20px;'>Everyday Edition</h3>
+                    <p style='color:var(--muted);font-size:13px;margin:0 0 10px;line-height:1.45;'>
+                    Lovingly printed on quality matte paper and delivered to your
+                    door — all the magic, easy on the pocket.</p>
+                    <div style='font-size:25px;font-weight:800;color:var(--teal);'>₹{_pd_normal}</div>
+                    </div>""",
+                    unsafe_allow_html=True,
+                )
+                if st.button(f"Order matte — ₹{_pd_normal}", use_container_width=True,
+                             key="choice_pay_normal"):
+                    _start_payment(_pd_normal, "print_deliver_choice", "normal",
+                                   "Printed storybook (everyday matte)")
+            with cc3:
+                st.markdown(
+                    f"""<div style='background:var(--ink);border:1.5px solid var(--ink);
+                    border-radius:16px;padding:18px;min-height:236px;color:#FBF7F0;'>
+                    <span class='ss-pill' style='background:rgba(226,162,74,.18);color:var(--gold);'>★ KEEPSAKE</span>
+                    <h3 style='margin:10px 0 4px;font-size:20px;color:#FBF7F0;'>Keepsake Edition</h3>
+                    <p style='color:#CDC3B5;font-size:13px;margin:0 0 10px;line-height:1.45;'>
+                    Premium glossy pages that stay bright for years — the keepsake
+                    they'll grow up with and pass down.</p>
+                    <div style='font-size:25px;font-weight:800;color:var(--gold);'>₹{_pd_glossy}</div>
+                    </div>""",
+                    unsafe_allow_html=True,
+                )
+                if st.button(f"Order glossy — ₹{_pd_glossy}", use_container_width=True,
+                             key="choice_pay_glossy"):
+                    _start_payment(_pd_glossy, "print_deliver_choice", "glossy",
+                                   "Printed storybook (glossy keepsake)")
             return  # don't proceed to Step 2 until gate is passed
 
     # Step 2: Image Generation with Review
@@ -5164,7 +5276,7 @@ def main():
             if st.session_state.pdf_path and os.path.exists(st.session_state.pdf_path):
                 with open(st.session_state.pdf_path, "rb") as _pdf:
                     if st.download_button(
-                        label="📥 Download PDF",
+                        label="📖 Download your printable book (PDF)",
                         data=_pdf.read(),
                         file_name=f"{child_name}_Storybook.pdf",
                         mime="application/pdf",
@@ -5181,14 +5293,18 @@ def main():
                                 )
                         except Exception:
                             pass
-                st.info("💡 Print on 8.5×8.5 inch paper for best results!")
+                st.info("💡 Tip: print it at home or at any local shop — 8.5×8.5 inch paper looks best.")
             else:
                 st.warning("PDF not yet generated — please wait a moment and refresh.")
 
         if _step3_delivery == "print_deliver":
             # Collect delivery details and place order
             st.subheader("📬 Delivery Details")
-            st.markdown("Please provide your contact and delivery information so we can ship your book:")
+            _paper_lbl = "Keepsake Edition (glossy)" if st.session_state.get("print_paper_type") == "glossy" else "Everyday Edition (matte)"
+            st.markdown(
+                f"**{_paper_lbl}** · ₹{int(st.session_state.get('print_paid_amount', 699))} — "
+                "enter your contact and delivery details so we can ship your book:"
+            )
             _p_name = st.text_input("Full name", key="delivery_name", placeholder="Your full name")
             _p_phone = st.text_input("Mobile number", max_chars=12, key="delivery_phone", placeholder="10-digit mobile")
             _p_address = st.text_area(
@@ -5215,7 +5331,8 @@ def main():
                             "customer_name": _p_name.strip(),
                             "phone": _nph3(_p_phone),
                             "address": _p_address.strip(),
-                            "amount_paid_inr": 650,
+                            "amount_paid_inr": int(st.session_state.get("print_paid_amount", 699)),
+                            "paper_type": st.session_state.get("print_paper_type", "glossy"),
                             "ordered_at": datetime.utcnow(),
                             "status": "pending",
                             "notified": False,

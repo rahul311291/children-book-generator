@@ -108,6 +108,7 @@ def notify_print_request(order):
     address = order.get("address", "")
     email   = order.get("user_email", "")
     amount  = order.get("amount_paid_inr", "")
+    paper   = order.get("paper_type", "")
     subject = f"New print request - {child or cust or email}"
     html = f"""
     <div style="font-family:Arial,sans-serif;max-width:560px;">
@@ -118,6 +119,7 @@ def notify_print_request(order):
         <tr><td><b>Customer</b></td><td>{cust}</td></tr>
         <tr><td><b>Phone</b></td><td>{phone}</td></tr>
         <tr><td><b>Email</b></td><td>{email}</td></tr>
+        <tr><td><b>Edition</b></td><td>{paper or "—"}</td></tr>
         <tr><td><b>Amount</b></td><td>Rs.{amount}</td></tr>
         <tr><td valign="top"><b>Address</b></td><td>{address}</td></tr>
       </table>
