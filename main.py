@@ -2226,6 +2226,41 @@ def _render_whatsapp_help():
     )
 
 
+def _public_nav():
+    """Minimal top bar for logged-out visitors browsing the public homepage."""
+    n1, _n2, n3 = st.columns([3, 3, 1.4])
+    with n1:
+        st.markdown(
+            '<div style="display:flex;align-items:center;gap:10px;padding-top:4px;">'
+            '<div style="width:34px;height:34px;border-radius:10px;background:var(--terra);'
+            'color:#FBF7F0;font-family:Spectral;font-weight:700;display:flex;align-items:center;'
+            'justify-content:center;">S</div>'
+            '<b style="font-family:Spectral;font-size:18px;">Storytime Studio</b></div>',
+            unsafe_allow_html=True,
+        )
+    with n3:
+        if st.button("Sign in", key="public_signin", type="primary", use_container_width=True):
+            st.session_state["_wants_auth"] = True
+            st.rerun()
+    st.divider()
+
+
+def _start_or_login(mode, template_id="", template_name=""):
+    """Start a book flow if signed in; otherwise route to sign-in and resume
+    the intended action after the visitor logs in."""
+    if is_authenticated():
+        st.session_state.book_mode = mode
+        if mode == "template":
+            st.session_state.selected_template_id = template_id
+            st.session_state.selected_template_name = template_name
+        elif mode == "custom":
+            st.session_state.wizard_step = 1
+    else:
+        st.session_state["_pending_start"] = (mode, template_id, template_name)
+        st.session_state["_wants_auth"] = True
+    st.rerun()
+
+
 def render_landing():
     """Storytime Studio storefront — Path B redesign (Lord Design handoff)."""
     import os
@@ -2260,6 +2295,22 @@ def render_landing():
         return ""
 
     # ── HERO ───────────────────────────────────────────────────────
+    # Continue an in-progress book (homepage-first; never auto-opened).
+    if st.session_state.get("_resumable_book_id") and not st.session_state.get("generated_story"):
+        _rb1, _rb2 = st.columns([3, 1])
+        with _rb1:
+            st.markdown(
+                '''<div class="ss-card" style="border-color:var(--clay-t);padding:15px 20px;margin-bottom:8px;">
+                <b style="font-family:Spectral;font-size:17px;">You have a book in progress</b>
+                <div style="color:var(--muted);font-size:13.5px;">Pick up right where you left off.</div></div>''',
+                unsafe_allow_html=True,
+            )
+        with _rb2:
+            st.markdown("<div style='height:18px;'></div>", unsafe_allow_html=True)
+            if st.button("Continue your book →", key="resume_in_progress", use_container_width=True):
+                if _auto_resume_in_progress_book(force=True):
+                    st.rerun()
+
     st.markdown(f'''<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:36px;align-items:center;padding:14px 0 6px;">
       <div>
         <span class="ss-pill clay">A keepsake they'll treasure for years</span>
@@ -2281,7 +2332,7 @@ def render_landing():
     hb1, hb2, _hbx = st.columns([1.3, 1.3, 2])
     with hb1:
         if st.button("Create a custom story →", type="primary", use_container_width=True, key="hero_custom"):
-            st.session_state.book_mode = "custom"; st.session_state.wizard_step = 1; st.rerun()
+            _start_or_login("custom")
     with hb2:
         st.markdown('<a href="#featured-books" style="display:block;text-align:center;padding:.62rem 1rem;border:1.5px solid var(--borderin);border-radius:999px;font-weight:700;color:var(--ink);text-decoration:none;">Browse the Story Library</a>', unsafe_allow_html=True)
 
@@ -2310,7 +2361,7 @@ def render_landing():
     with cpb:
         st.markdown('''<div class="ss-card" style="background:var(--ink);border-color:var(--ink);min-height:200px;"><span class="ss-pill" style="background:rgba(226,162,74,.18);color:var(--gold);">Custom Story</span><h3 style="margin:12px 0 8px;font-size:24px;color:#FBF7F0;">A one-of-a-kind adventure</h3><p style="color:#CDC3B5;font-size:14.5px;">You pick the world and the lesson — we write and illustrate a book that exists nowhere else.</p></div>''', unsafe_allow_html=True)
         if st.button("Start a custom story →", type="primary", use_container_width=True, key="twopath_custom"):
-            st.session_state.book_mode = "custom"; st.session_state.wizard_step = 1; st.rerun()
+            _start_or_login("custom")
 
     # ── FEATURED BOOKS ─────────────────────────────────────────────
     st.markdown('<div id="featured-books"></div>', unsafe_allow_html=True)
@@ -2333,10 +2384,7 @@ def render_landing():
                         st.markdown(typo_cover_html(name, cat, gi), unsafe_allow_html=True)
                     st.markdown(f'<div style="margin:10px 0 2px;font-family:Spectral;font-weight:700;font-size:16px;line-height:1.15;">{name}</div><div style="font-size:12.5px;color:var(--muted2);margin-bottom:8px;">Ages {age} · from &#8377;{promo}</div>', unsafe_allow_html=True)
                     if st.button("Personalize", key=f"feat_{tmpl.get('id', gi)}", use_container_width=True):
-                        st.session_state.book_mode = "template"
-                        st.session_state.selected_template_id = tmpl.get("id", "")
-                        st.session_state.selected_template_name = tmpl.get("name", "")
-                        st.rerun()
+                        _start_or_login("template", tmpl.get("id", ""), tmpl.get("name", ""))
     else:
         st.info("Story library is loading…")
 
@@ -2349,7 +2397,7 @@ def render_landing():
     fb1, fb2, _fbx = st.columns([1.3, 1.3, 2])
     with fb1:
         if st.button("Create a custom story →", type="primary", use_container_width=True, key="final_custom"):
-            st.session_state.book_mode = "custom"; st.session_state.wizard_step = 1; st.rerun()
+            _start_or_login("custom")
     with fb2:
         st.markdown('<a href="#featured-books" style="display:block;text-align:center;padding:.62rem 1rem;border:1.5px solid var(--borderin);border-radius:999px;font-weight:700;color:var(--ink);text-decoration:none;">Browse books</a>', unsafe_allow_html=True)
 
@@ -2700,13 +2748,37 @@ def render_custom_wizard():
 # The user can still click 'Home' or 'My Books' to leave; we don't lock
 # them in. We just default to where they last were.
 
-def _auto_resume_in_progress_book() -> bool:
+def _detect_in_progress_book_id():
+    """Return the _id of the user's most recent in-progress book, or None.
+    Lightweight: fetches no images and mutates no session state."""
+    uid = get_current_user_id()
+    if not uid:
+        return None
+    try:
+        from mongo_client import book_history_col
+        rows = list(book_history_col().find(
+            {"user_id": uid},
+            {"_id": 1, "story_data.pages": 1, "metadata.journey_state": 1},
+        ).sort("metadata.timestamp", -1).limit(5))
+    except Exception:
+        return None
+    for row in rows:
+        js = (row.get("metadata") or {}).get("journey_state", {}) or {}
+        if js.get("current_step") == "step3" and js.get("all_images_approved"):
+            continue
+        if not (row.get("story_data") or {}).get("pages"):
+            continue
+        return row.get("_id")
+    return None
+
+
+def _auto_resume_in_progress_book(force: bool = False) -> bool:
     """Returns True if a book was restored, False otherwise."""
-    # One-shot per session
-    if st.session_state.get("_auto_resumed"):
+    # One-shot per session (unless explicitly forced from the resume banner)
+    if not force and st.session_state.get("_auto_resumed"):
         return False
     # Don't override if a book is already live in session
-    if st.session_state.get("generated_story"):
+    if not force and st.session_state.get("generated_story"):
         st.session_state["_auto_resumed"] = True
         return False
     # Need an authenticated user
@@ -3091,8 +3163,8 @@ def main():
     _has_payment_return = bool(
         st.query_params.get("cf_order_id") or st.query_params.get("cf_link_id")
     )
-    _max_cookie_retries = 4 if _has_payment_return else 3
-    if not is_authenticated() and not _cookie_token:
+    _max_cookie_retries = 5 if _has_payment_return else 4
+    if not is_authenticated() and not _cookie_token and not st.session_state.get("_wants_auth"):
         _tries = int(st.session_state.get("_cookie_retry_count", 0) or 0)
         if _tries < _max_cookie_retries:
             st.session_state._cookie_retry_count = _tries + 1
@@ -3170,20 +3242,42 @@ def main():
     # has an unfinished book in MongoDB, restore it. Single-shot per
     # session. Skips when a Cashfree return is in the URL (the cf handler
     # below handles that path via the wizard snapshot).
+    # Detect (but do NOT auto-open) an in-progress book, so the homepage can
+    # offer a "Continue your book" banner instead of dropping the user in.
     if (
         is_authenticated()
-        and not st.session_state.get("_auto_resumed")
+        and not st.session_state.get("_resume_checked")
         and not st.query_params.get("cf_order_id")
         and not st.query_params.get("cf_link_id")
-        and not st.session_state.get("show_history")
-        and not st.session_state.get("show_community")
     ):
-        _auto_resume_in_progress_book()
+        st.session_state["_resume_checked"] = True
+        try:
+            st.session_state["_resumable_book_id"] = _detect_in_progress_book_id()
+        except Exception:
+            st.session_state["_resumable_book_id"] = None
 
-    # Auth gate
+    # ── Public homepage ────────────────────────────────────────────────
+    # Anyone can browse the storefront. Actions (personalize / custom story /
+    # My Books) require sign-in: they set _wants_auth, which brings up the
+    # sign-in page; after login we resume the intended action.
     if not is_authenticated():
-        render_auth_page()
+        if st.session_state.get("_wants_auth"):
+            render_auth_page()
+            return
+        _public_nav()
+        render_landing()
         return
+
+    # Authenticated from here on.
+    st.session_state.pop("_wants_auth", None)
+    if st.session_state.get("_pending_start"):
+        _ps_mode, _ps_tid, _ps_tname = st.session_state.pop("_pending_start")
+        st.session_state.book_mode = _ps_mode
+        if _ps_mode == "template":
+            st.session_state.selected_template_id = _ps_tid
+            st.session_state.selected_template_name = _ps_tname
+        elif _ps_mode == "custom":
+            st.session_state.wizard_step = 1
 
     # After OTP: prompt to set a password (optional, user can skip)
     if st.session_state.get("auth_stage") == "set_password":
