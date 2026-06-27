@@ -101,21 +101,21 @@ inject_theme()
 
 # Custom CSS for mobile-friendly design
 st.markdown("""
-    <style>
-        .main > div {
-            padding-top: 2rem;
-        }
-        .stButton > button {
-            width: 100%;
-            font-size: 1.2rem;
-            padding: 0.5rem;
-        }
-        @media (max-width: 768px) {
-            .stSidebar {
-                width: 100% !important;
-            }
-        }
-    </style>
+<style>
+.main > div {
+padding-top: 2rem;
+}
+.stButton > button {
+width: 100%;
+font-size: 1.2rem;
+padding: 0.5rem;
+}
+@media (max-width: 768px) {
+.stSidebar {
+width: 100% !important;
+}
+}
+</style>
 """, unsafe_allow_html=True)
 
 # Initialize auth state
