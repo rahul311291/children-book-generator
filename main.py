@@ -1,4 +1,8 @@
 import streamlit as st
+try:
+    import analytics  # funnel logging + admin alerts (best-effort)
+except Exception:
+    analytics = None
 import streamlit.components.v1 as components
 import json
 import os
@@ -2186,6 +2190,31 @@ def render_gallery():
                 st.rerun()
 
 
+def _render_whatsapp_help():
+    """A small 'we can make it for you' strip with a WhatsApp link, shown on
+    the landing page and inside the creation wizard so anyone who gets stuck
+    can reach us and we'll generate the book for them."""
+    _wa = os.getenv("WHATSAPP_LINK", "https://wa.link/1x52t3")
+    st.markdown(
+        f"""
+        <div style="display:flex;align-items:center;justify-content:center;gap:12px;
+             flex-wrap:wrap;background:linear-gradient(135deg,#dcfce7,#bbf7d0);
+             border:1px solid #86efac;border-radius:14px;padding:12px 18px;
+             margin:10px 0;">
+          <span style="font-size:14px;color:#14532d;font-weight:600;">
+            Stuck, or want us to make the book for you?
+          </span>
+          <a href="{_wa}" target="_blank" style="text-decoration:none;
+             background:#25D366;color:#fff;font-weight:700;font-size:14px;
+             padding:9px 18px;border-radius:999px;">
+            💬 Chat with us on WhatsApp
+          </a>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def render_landing():
     """Production launch home page.
 
@@ -2272,6 +2301,8 @@ def render_landing():
         )
 
     st.markdown("<br>", unsafe_allow_html=True)
+
+    _render_whatsapp_help()
 
     # ── FEATURED TEMPLATES ─────────────────────────────────────────
     if _templates:
@@ -2398,6 +2429,7 @@ def render_landing():
 def render_custom_wizard():
     """Multi-step wizard for custom story creation."""
     step = st.session_state.wizard_step
+    _render_whatsapp_help()
 
     # Safety: ensure step is within valid range
     if step < 1 or step > 4:
@@ -3383,6 +3415,24 @@ def main():
 
     # Templates are now seeded via SQL migration, no app-level seeding needed
 
+    # ── Funnel: record who started a story (once per distinct story) ────
+    try:
+        if analytics is not None and (st.session_state.get("auth_user") or {}).get("email"):
+            _bm = st.session_state.get("book_mode")
+            if _bm in ("custom", "template"):
+                _sk = f"{_bm}:{st.session_state.get('selected_template_id', '')}"
+                if st.session_state.get("_ev_started_key") != _sk:
+                    analytics.log_event(
+                        "story_started",
+                        email=st.session_state.auth_user.get("email", ""),
+                        user_id=(get_current_user_id() or ""),
+                        mode=_bm,
+                        template_id=st.session_state.get("selected_template_id", ""),
+                    )
+                    st.session_state["_ev_started_key"] = _sk
+    except Exception:
+        pass
+
     # Initialize show_history and show_community state
     if 'show_history' not in st.session_state:
         st.session_state.show_history = False
@@ -3398,6 +3448,13 @@ def main():
             st.rerun()
         st.divider()
         render_gallery()
+        return
+
+    # Admin reporting dashboard (admins only)
+    if st.session_state.get("show_admin_dashboard") and \
+       (st.session_state.get("auth_user") or {}).get("email", "") in ADMIN_EMAILS:
+        import admin_dashboard
+        admin_dashboard.render_admin_dashboard()
         return
 
     # Show history page if requested
@@ -3694,6 +3751,14 @@ def main():
                     st.session_state.show_history = False
                     st.session_state.show_community = False
                     st.rerun()
+
+            # Admin reporting dashboard
+            if st.button("📊 Dashboard", use_container_width=True, type="secondary"):
+                st.session_state.show_admin_dashboard = True
+                st.session_state.show_history = False
+                st.session_state.show_community = False
+                st.session_state.show_template_studio = False
+                st.rerun()
 
             # Payment gateway health
             with st.expander("💳 Payments health"):
@@ -5133,6 +5198,22 @@ def main():
                     )
                     st.session_state.pdf_path = pdf_path
                     st.session_state.pdf_generation_key = current_pdf_key
+                    # Funnel: a finished book now exists and is downloadable.
+                    try:
+                        if analytics is not None and \
+                           st.session_state.get("_ev_book_logged_key") != current_pdf_key:
+                            _gs = st.session_state.get("generated_story") or {}
+                            analytics.log_event(
+                                "book_generated",
+                                email=(st.session_state.get("user_email")
+                                       or (st.session_state.get("auth_user") or {}).get("email", "")),
+                                user_id=(get_current_user_id() or ""),
+                                child_name=child_name,
+                                title=_gs.get("title", ""),
+                            )
+                            st.session_state["_ev_book_logged_key"] = current_pdf_key
+                    except Exception:
+                        pass
         
         st.header("📚 Step 3: Download Your Storybook")
         story_title = st.session_state.generated_story.get("title", f"{child_name}'s Storybook")
@@ -5148,7 +5229,7 @@ def main():
             # Show PDF download button
             if st.session_state.pdf_path and os.path.exists(st.session_state.pdf_path):
                 with open(st.session_state.pdf_path, "rb") as _pdf:
-                    st.download_button(
+                    if st.download_button(
                         label="📥 Download PDF",
                         data=_pdf.read(),
                         file_name=f"{child_name}_Storybook.pdf",
@@ -5156,7 +5237,16 @@ def main():
                         type="primary",
                         use_container_width=True,
                         key="pdf_download_top",
-                    )
+                    ):
+                        try:
+                            if analytics is not None:
+                                analytics.log_event(
+                                    "download", email=_step3_email,
+                                    user_id=(get_current_user_id() or ""),
+                                    child_name=child_name,
+                                )
+                        except Exception:
+                            pass
                 st.info("💡 Print on 8.5×8.5 inch paper for best results!")
             else:
                 st.warning("PDF not yet generated — please wait a moment and refresh.")
@@ -5184,7 +5274,7 @@ def main():
                 else:
                     try:
                         from mongo_client import get_db as _get_db3
-                        _get_db3()["print_orders"].insert_one({
+                        _order_doc = {
                             "user_email": _step3_email,
                             "child_name": child_name,
                             "story_title": story_title,
@@ -5194,7 +5284,24 @@ def main():
                             "amount_paid_inr": 650,
                             "ordered_at": datetime.utcnow(),
                             "status": "pending",
-                        })
+                            "notified": False,
+                        }
+                        _ins = _get_db3()["print_orders"].insert_one(_order_doc)
+                        # Funnel + admin email notification (best-effort).
+                        try:
+                            if analytics is not None:
+                                analytics.log_event(
+                                    "print_requested", email=_step3_email,
+                                    user_id=(get_current_user_id() or ""),
+                                    child_name=child_name, title=story_title,
+                                )
+                                if analytics.notify_print_request(_order_doc):
+                                    _get_db3()["print_orders"].update_one(
+                                        {"_id": _ins.inserted_id},
+                                        {"$set": {"notified": True}},
+                                    )
+                        except Exception:
+                            pass
                         st.success("🎉 Order placed! We'll contact you within 24–48 hours to confirm delivery details.")
                         st.balloons()
                     except Exception as _oe:
@@ -5204,14 +5311,23 @@ def main():
             # Print users also get a digital copy
             if st.session_state.pdf_path and os.path.exists(st.session_state.pdf_path):
                 with open(st.session_state.pdf_path, "rb") as _pdf2:
-                    st.download_button(
+                    if st.download_button(
                         label="📥 Download Digital Copy",
                         data=_pdf2.read(),
                         file_name=f"{child_name}_Storybook.pdf",
                         mime="application/pdf",
                         use_container_width=True,
                         key="pdf_download_print_user",
-                    )
+                    ):
+                        try:
+                            if analytics is not None:
+                                analytics.log_event(
+                                    "download", email=_step3_email,
+                                    user_id=(get_current_user_id() or ""),
+                                    child_name=child_name, copy="digital_with_print",
+                                )
+                        except Exception:
+                            pass
                 st.caption("You also have a digital copy while you wait for your printed book!")
 
         st.divider()
