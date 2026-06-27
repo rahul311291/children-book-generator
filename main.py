@@ -4380,6 +4380,8 @@ def main():
         if not _gate_passed:
             from payments import (
                 custom_story_price_inr as _cs_price_fn,
+                custom_story_regular_price_inr as _cs_reg_fn,
+                custom_story_promo_off_pct as _cs_off_fn,
                 custom_download_price_inr as _cd_price_fn,
                 create_cashfree_order as _choice_create_order,
                 verify_cashfree_order as _choice_verify_order,
@@ -4387,8 +4389,10 @@ def main():
                 is_cashfree_configured as _choice_cf_ok,
                 is_valid_phone as _choice_vph,
             )
-            _dl_price = _cs_price_fn()   # ₹350 — digital download
-            _pd_price = _cd_price_fn()   # ₹650 — print + deliver
+            _dl_price = _cs_price_fn()        # promo digital-download price
+            _dl_reg_price = _cs_reg_fn()      # regular (strike-through) price
+            _dl_promo_off = _cs_off_fn()      # launch discount %
+            _pd_price = _cd_price_fn()        # print + deliver
             _choice_uid = get_current_user_id()
             _choice_child = st.session_state.get("current_child_name") or st.session_state.get("wiz_child_name", "")
             _choice_n_pages = len(st.session_state.generated_story.get("pages", []))
