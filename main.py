@@ -1,4 +1,9 @@
 import streamlit as st
+from ui_theme import inject_theme, typo_cover_html, image_cover_html, cover_data_uri
+try:
+    import analytics  # funnel logging + admin alerts (best-effort)
+except Exception:
+    analytics = None
 import streamlit.components.v1 as components
 import json
 import os
@@ -90,6 +95,9 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="auto"
 )
+
+# Storytime Studio design system (global theme + fonts) — restyles the whole app
+inject_theme()
 
 # Custom CSS for mobile-friendly design
 st.markdown("""
@@ -2166,9 +2174,9 @@ def render_gallery():
             date_str = created.strftime("%b %Y") if created else ""
             cover = book.get("cover_thumbnail", "")
             if cover and cover.startswith("data:image"):
-                cover_html = f'<img src="{cover}" style="width:100%;height:140px;object-fit:cover;border-radius:10px 10px 0 0;">'
+                cover_html = f'<img src="{cover}" style="width:100%;height:230px;object-fit:cover;border-radius:10px 10px 0 0;">'
             else:
-                cover_html = '<div style="width:100%;height:140px;background:linear-gradient(135deg,#e8f4fd,#f0e6ff);border-radius:10px 10px 0 0;display:flex;align-items:center;justify-content:center;font-size:40px;">📖</div>'
+                cover_html = '<div style="width:100%;height:230px;background:linear-gradient(135deg,#e8f4fd,#f0e6ff);border-radius:10px 10px 0 0;display:flex;align-items:center;justify-content:center;font-size:48px;">📖</div>'
             st.markdown(f"""
             <div style="background:#fff;border-radius:12px;margin-bottom:4px;
                  border:1px solid #e0e7ff;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.06);">
@@ -2186,16 +2194,34 @@ def render_gallery():
                 st.rerun()
 
 
-def render_landing():
-    """Production launch home page.
+def _render_whatsapp_help():
+    """A small 'we can make it for you' strip with a WhatsApp link, shown on
+    the landing page and inside the creation wizard so anyone who gets stuck
+    can reach us and we'll generate the book for them."""
+    _wa = os.getenv("WHATSAPP_LINK", "https://wa.link/1x52t3")
+    st.markdown(
+        f"""
+        <div style="display:flex;align-items:center;justify-content:center;gap:12px;
+             flex-wrap:wrap;background:linear-gradient(135deg,#dcfce7,#bbf7d0);
+             border:1px solid #86efac;border-radius:14px;padding:12px 18px;
+             margin:10px 0;">
+          <span style="font-size:14px;color:#14532d;font-weight:600;">
+            Stuck, or want us to make the book for you?
+          </span>
+          <a href="{_wa}" target="_blank" style="text-decoration:none;
+             background:#25D366;color:#fff;font-weight:700;font-size:14px;
+             padding:9px 18px;border-radius:999px;">
+            💬 Chat with us on WhatsApp
+          </a>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-    Layout:
-      1. Hero: bold headline + primary CTA + free-preview / promo discount strip.
-      2. Featured templates: 3-column grid with cover, tags, age, promo price.
-      3. 'Build your own custom story' secondary tile.
-      4. Community gallery (existing render_gallery).
-    """
-    # Templates (degrade gracefully if module missing)
+
+def render_landing():
+    """Storytime Studio storefront — Path B redesign (Lord Design handoff)."""
+    import os
     _templates = []
     if TEMPLATE_BOOKS_AVAILABLE or TEMPLATE_FLOW_AVAILABLE:
         try:
@@ -2203,201 +2229,130 @@ def render_landing():
             _templates = get_available_templates() or []
         except Exception:
             _templates = []
-
-    # Pricing for hero strip + cards
     try:
         from payments import (
-            custom_story_price_inr as _cs_price_fn,
-            custom_story_regular_price_inr as _cs_reg_fn,
-            custom_story_promo_off_pct as _cs_off_fn,
+            custom_story_price_inr as _csp,
+            custom_story_regular_price_inr as _csr,
         )
-        _promo_price   = _cs_price_fn()
-        _regular_price = _cs_reg_fn()
-        _promo_off_pct = _cs_off_fn()
+        promo = _csp(); regular = _csr()
     except Exception:
-        _promo_price, _regular_price, _promo_off_pct = 199, 350, 43
+        promo, regular = 199, 350
+
+    _ASSETS = os.path.join(os.path.dirname(__file__), "assets", "sample_covers")
+    _COVERS = ["01_when_i_grow_up.png", "02_snow_white.png", "03_cricket_champion.png",
+               "04_cinderella.png", "05_sports_day.png", "06_space_adventure.png",
+               "07_world_of_friends.png", "08_alphabet.png"]
+
+    def _cover_for(i):
+        try:
+            p = os.path.join(_ASSETS, _COVERS[i])
+            if os.path.exists(p):
+                return cover_data_uri(p)
+        except Exception:
+            pass
+        return ""
 
     # ── HERO ───────────────────────────────────────────────────────
-    hero_l, hero_r = st.columns([5, 4])
-    with hero_l:
-        st.markdown(
-            f"""
-            <div style="padding: 28px 0 0 0;">
-              <h1 style="font-size: 2.7rem; line-height: 1.1; font-weight: 900;
-                   color: #1a1a2e; letter-spacing: -1px; margin: 0 0 14px 0;">
-                Make your child the<br/>
-                <span style="background:linear-gradient(135deg,#667eea,#f093fb);
-                       -webkit-background-clip:text;-webkit-text-fill-color:transparent;
-                       background-clip:text;">hero of their story</span>
-              </h1>
-              <p style="font-size: 1.1rem; color: #4b5563; margin: 0 0 24px 0;
-                   line-height: 1.5;">
-                A personalized storybook your child stars in. Print-ready in
-                minutes — a keepsake they'll treasure.
-              </p>
-              <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px;
-                   font-size:13px;color:#6b7280;flex-wrap:wrap;">
-                <span>✓ Free preview</span>
-                <span>·</span>
-                <span>✓ ~5 minutes</span>
-                <span>·</span>
-                <span>✓ {_promo_off_pct}% launch discount —
-                  <strong style='color:#1f2937;'>₹{_promo_price}</strong>
-                  <s style='color:#9ca3af;'>₹{_regular_price}</s></span>
-              </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        if st.button("Personalize a book →", type="primary",
-                     use_container_width=True, key="hero_cta_primary"):
-            st.session_state.book_mode = "custom"
-            st.session_state.wizard_step = 1
-            st.rerun()
-    with hero_r:
-        st.markdown(
-            """
-            <div style="background:linear-gradient(135deg,#fef3c7 0%,#fde68a 100%);
-                 border-radius:24px;padding:40px 28px;text-align:center;
-                 min-height:240px;display:flex;flex-direction:column;
-                 justify-content:center;align-items:center;
-                 box-shadow:0 12px 32px rgba(252,211,77,0.30);">
-              <div style="font-size:72px;line-height:1;margin-bottom:8px;">📖✨</div>
-              <div style="font-size:14px;color:#92400e;font-weight:600;">
-                Your child &middot; their name &middot; their face &middot; their adventure
-              </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+    st.markdown(f'''<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:36px;align-items:center;padding:14px 0 6px;">
+      <div>
+        <span class="ss-pill clay">A keepsake they'll treasure for years</span>
+        <h1 style="font-size:clamp(38px,6vw,60px);line-height:1.04;margin:16px 0 14px;">Your child, the hero of their <span style="font-style:italic;color:var(--terra);">very own story</span></h1>
+        <p style="font-size:17px;color:var(--muted);max-width:36ch;margin:0 0 20px;">Personalized hardcover &amp; digital storybooks where your little one stars on every page — name, face and all. Printed and delivered across India.</p>
+        <div style="display:flex;gap:34px;flex-wrap:wrap;margin-top:6px;">
+          <div><div style="font-family:Spectral;font-weight:700;font-size:24px;">4.9<span style="color:var(--gold);">&#9733;</span></div><div style="font-size:12.5px;color:var(--muted2);">Loved by parents</div></div>
+          <div><div style="font-family:Spectral;font-weight:700;font-size:24px;">From &#8377;{promo}</div><div style="font-size:12.5px;color:var(--muted2);">Digital editions</div></div>
+          <div><div style="font-family:Spectral;font-weight:700;font-size:24px;">48 hrs</div><div style="font-size:12.5px;color:var(--muted2);">Ready to gift</div></div>
+        </div>
+      </div>
+      <div style="position:relative;min-height:330px;">
+        <div class="ss-floaty" style="--rot:rotate(-9deg);position:absolute;left:5%;top:3%;width:45%;">{typo_cover_html("The Mountain of Courage", "Adventure", 4)}</div>
+        <div class="ss-floaty" style="--rot:rotate(5deg);position:absolute;right:5%;top:15%;width:45%;animation-delay:1.2s;">{typo_cover_html("The Wobbly Fort", "Bedtime", 0)}</div>
+        <div style="position:absolute;left:28%;bottom:0;background:#fff;border:1px solid var(--border);border-radius:14px;padding:9px 14px;box-shadow:0 14px 30px rgba(42,36,32,.14);font-size:13px;font-weight:700;">Personalized <span style="color:var(--teal);">&#10003;</span></div>
+      </div>
+    </div>''', unsafe_allow_html=True)
 
-    st.markdown("<br>", unsafe_allow_html=True)
+    hb1, hb2, _hbx = st.columns([1.3, 1.3, 2])
+    with hb1:
+        if st.button("Create a custom story →", type="primary", use_container_width=True, key="hero_custom"):
+            st.session_state.book_mode = "custom"; st.session_state.wizard_step = 1; st.rerun()
+    with hb2:
+        st.markdown('<a href="#featured-books" style="display:block;text-align:center;padding:.62rem 1rem;border:1.5px solid var(--borderin);border-radius:999px;font-weight:700;color:var(--ink);text-decoration:none;">Browse the Story Library</a>', unsafe_allow_html=True)
 
-    # ── FEATURED TEMPLATES ─────────────────────────────────────────
+    # ── TRUST STRIP ────────────────────────────────────────────────
+    st.markdown('''<div class="ss-band" style="margin:26px 0;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:18px;text-align:center;">
+      <div><div style="font-size:22px;">&#128214;</div><div style="font-weight:700;font-size:14px;">Hardcover &amp; digital</div><div style="font-size:12.5px;color:var(--muted2);">Keep both forever</div></div>
+      <div><div style="font-size:22px;">&#128274;</div><div style="font-weight:700;font-size:14px;">Secure Cashfree checkout</div><div style="font-size:12.5px;color:var(--muted2);">UPI · cards · netbanking</div></div>
+      <div><div style="font-size:22px;">&#128666;</div><div style="font-weight:700;font-size:14px;">Shipped pan-India</div><div style="font-size:12.5px;color:var(--muted2);">Right to your door</div></div>
+      <div><div style="font-size:22px;">&#9851;</div><div style="font-weight:700;font-size:14px;">Free reprints</div><div style="font-size:12.5px;color:var(--muted2);">If anything's off</div></div>
+    </div>''', unsafe_allow_html=True)
+
+    # ── HOW IT WORKS ───────────────────────────────────────────────
+    st.markdown('<div class="ss-eyebrow" style="margin-top:14px;">How it works</div><h2 style="font-size:clamp(26px,4vw,40px);margin:6px 0 18px;">Their book, in three easy steps</h2>', unsafe_allow_html=True)
+    st.markdown('''<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:18px;">
+      <div class="ss-card"><div style="font-family:Spectral;font-size:30px;color:var(--terra);font-weight:700;">1</div><h3 style="margin:6px 0;">Pick or dream up a tale</h3><p style="color:var(--muted);font-size:14.5px;margin:0;">Choose a ready-made story or build a custom adventure from scratch.</p></div>
+      <div class="ss-card"><div style="font-family:Spectral;font-size:30px;color:var(--terra);font-weight:700;">2</div><h3 style="margin:6px 0;">Make it theirs</h3><p style="color:var(--muted);font-size:14.5px;margin:0;">Add your child's name, age and (optionally) a photo — they're drawn into every page.</p></div>
+      <div class="ss-card"><div style="font-family:Spectral;font-size:30px;color:var(--terra);font-weight:700;">3</div><h3 style="margin:6px 0;">Read it tonight</h3><p style="color:var(--muted);font-size:14.5px;margin:0;">Get an instant PDF, or have a hardcover printed and delivered.</p></div>
+    </div>''', unsafe_allow_html=True)
+
+    # ── TWO PATHS ──────────────────────────────────────────────────
+    st.markdown("<div style='height:28px;'></div>", unsafe_allow_html=True)
+    cpa, cpb = st.columns(2)
+    with cpa:
+        st.markdown(f'''<div class="ss-card" style="border-color:var(--teal-t);min-height:200px;"><span class="ss-pill teal">Story Library</span><h3 style="margin:12px 0 8px;font-size:24px;">Ready-made tales, made personal</h3><p style="color:var(--muted);font-size:14.5px;">Beloved classics and originals — personalized with your child's name and face.</p><div style="margin:8px 0;"><span class="ss-pill teal">Digital from &#8377;{promo}</span></div></div>''', unsafe_allow_html=True)
+        st.markdown('<a href="#featured-books" style="display:block;text-align:center;margin-top:10px;padding:.62rem;border-radius:999px;background:var(--teal);color:#fff;font-weight:700;text-decoration:none;">Browse the library →</a>', unsafe_allow_html=True)
+    with cpb:
+        st.markdown('''<div class="ss-card" style="background:var(--ink);border-color:var(--ink);min-height:200px;"><span class="ss-pill" style="background:rgba(226,162,74,.18);color:var(--gold);">Custom Story</span><h3 style="margin:12px 0 8px;font-size:24px;color:#FBF7F0;">A one-of-a-kind adventure</h3><p style="color:#CDC3B5;font-size:14.5px;">You pick the world and the lesson — we write and illustrate a book that exists nowhere else.</p></div>''', unsafe_allow_html=True)
+        if st.button("Start a custom story →", type="primary", use_container_width=True, key="twopath_custom"):
+            st.session_state.book_mode = "custom"; st.session_state.wizard_step = 1; st.rerun()
+
+    # ── FEATURED BOOKS ─────────────────────────────────────────────
+    st.markdown('<div id="featured-books"></div>', unsafe_allow_html=True)
+    st.markdown('<div class="ss-eyebrow" style="margin-top:36px;">Story Library</div><h2 style="font-size:clamp(26px,4vw,40px);margin:6px 0 4px;">Ready-made tales, made personal</h2><p style="color:var(--muted);margin:0 0 18px;">Drop in your child\'s name and (optionally) a photo — print-ready in minutes.</p>', unsafe_allow_html=True)
+
     if _templates:
-        st.markdown(
-            "<h2 style='font-size:1.5rem;font-weight:800;margin:24px 0 4px 0;'>"
-            "Pick a story to personalize</h2>"
-            "<p style='color:#6b7280;margin:0 0 16px 0;font-size:14px;'>"
-            "Ready-made bestsellers. Drop in your child's name and (optionally) "
-            "a photo — print-ready in minutes.</p>",
-            unsafe_allow_html=True,
-        )
-        for row_start in range(0, len(_templates), 3):
-            cols = st.columns(3)
-            for ci, tmpl in enumerate(_templates[row_start: row_start + 3]):
+        for row in range(0, min(len(_templates), 8), 4):
+            cols = st.columns(4)
+            for ci, tmpl in enumerate(_templates[row:row + 4]):
+                gi = row + ci
                 with cols[ci]:
-                    name      = tmpl.get("name", "Untitled")
-                    desc      = (tmpl.get("description", "") or "").replace("{name}", "your child")
-                    cover     = tmpl.get("cover_image", "")
-                    n_pages   = tmpl.get("total_pages", "")
-                    age_range = tmpl.get("age_range", "")
-                    tags      = tmpl.get("tags", []) or []
-                    pretty_name = name.replace("{name}", "your child")
-
-                    tag_pills = "".join(
-                        f"<span style='display:inline-block;background:#e0e7ff;"
-                        f"color:#3730a3;font-size:11px;font-weight:600;padding:2px 8px;"
-                        f"border-radius:999px;margin-right:4px;'>{t}</span>"
-                        for t in tags[:3]
-                    )
-                    if n_pages:
-                        tag_pills += (
-                            f"<span style='display:inline-block;background:#fee2e2;"
-                            f"color:#991b1b;font-size:11px;font-weight:600;padding:2px 8px;"
-                            f"border-radius:999px;margin-right:4px;'>{n_pages} pages</span>"
-                        )
-                    age_line = f"Ages {age_range}" if age_range else ""
-
-                    cover_html = (
-                        f"<div style='height:160px;background-image:url({cover});"
-                        f"background-size:cover;background-position:center;'></div>"
-                        if cover else
-                        f"<div style='height:160px;background:linear-gradient(135deg,"
-                        f"#e0e7ff,#fce7f3);display:flex;align-items:center;"
-                        f"justify-content:center;font-size:48px;'>📖</div>"
-                    )
-
-                    st.markdown(
-                        f"""
-                        <div style="background:#fff;border-radius:16px;overflow:hidden;
-                             border:1px solid #e5e7eb;box-shadow:0 4px 12px rgba(0,0,0,0.05);
-                             margin-bottom:8px;">
-                          {cover_html}
-                          <div style="padding:14px 16px 12px;">
-                            <div style="margin-bottom:6px;">{tag_pills}</div>
-                            <div style="color:#6b7280;font-size:12px;margin-bottom:4px;">{age_line}</div>
-                            <div style="font-weight:700;font-size:16px;color:#1a1a2e;
-                                 line-height:1.25;margin-bottom:4px;">{pretty_name}</div>
-                            <div style="color:#4b5563;font-size:13px;line-height:1.4;
-                                 height:54px;overflow:hidden;">{desc[:120]}{'…' if len(desc) > 120 else ''}</div>
-                            <div style="margin-top:12px;display:flex;align-items:baseline;gap:8px;">
-                              <span style='color:#9ca3af;text-decoration:line-through;
-                                    font-size:14px;'>₹{_regular_price}</span>
-                              <span style='font-size:22px;font-weight:800;color:#1f2937;'>₹{_promo_price}</span>
-                              <span style='background:#fef3c7;color:#92400e;font-size:11px;
-                                    font-weight:700;padding:2px 6px;border-radius:999px;'>
-                                {_promo_off_pct}% off
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
-                    )
-                    if st.button(
-                        "Personalize",
-                        key=f"home_tpl_pick_{tmpl.get('id', name)}",
-                        use_container_width=True,
-                        type="primary",
-                    ):
+                    name = (tmpl.get("name", "Untitled") or "").replace("{name}", "your child")
+                    tags = tmpl.get("tags", []) or []
+                    cat = tags[0] if tags else "Storybook"
+                    age = tmpl.get("age_range", "")
+                    src = _cover_for(gi)
+                    if src:
+                        st.markdown(image_cover_html(src), unsafe_allow_html=True)
+                    else:
+                        st.markdown(typo_cover_html(name, cat, gi), unsafe_allow_html=True)
+                    st.markdown(f'<div style="margin:10px 0 2px;font-family:Spectral;font-weight:700;font-size:16px;line-height:1.15;">{name}</div><div style="font-size:12.5px;color:var(--muted2);margin-bottom:8px;">Ages {age} · from &#8377;{promo}</div>', unsafe_allow_html=True)
+                    if st.button("Personalize", key=f"feat_{tmpl.get('id', gi)}", use_container_width=True):
                         st.session_state.book_mode = "template"
                         st.session_state.selected_template_id = tmpl.get("id", "")
-                        st.session_state.selected_template_name = name
+                        st.session_state.selected_template_name = tmpl.get("name", "")
                         st.rerun()
-        st.markdown("<br>", unsafe_allow_html=True)
+    else:
+        st.info("Story library is loading…")
 
-    # ── CUSTOM-STORY SECONDARY TILE ────────────────────────────────
-    st.markdown(
-        """
-        <div style="background:linear-gradient(135deg,#1e1b4b 0%,#312e81 100%);
-             border-radius:20px;padding:32px 28px;color:white;margin: 12px 0;
-             box-shadow:0 12px 32px rgba(49,46,129,0.30);">
-          <div style="font-size:13px;opacity:0.85;font-weight:600;letter-spacing:1px;
-               text-transform:uppercase;margin-bottom:6px;">Or build your own</div>
-          <h2 style="font-size:1.6rem;font-weight:800;margin:0 0 6px 0;">
-            ✨ A completely custom story
-          </h2>
-          <p style="opacity:0.85;font-size:14px;margin:0;line-height:1.5;">
-            Tell us the theme, the lesson, your child's looks &mdash; we'll write
-            and illustrate a one-of-a-kind book.
-          </p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    if st.button("Start a custom story", type="secondary",
-                 use_container_width=True, key="home_custom_cta"):
-        st.session_state.book_mode = "custom"
-        st.session_state.wizard_step = 1
-        st.rerun()
+    # ── HELP + FINAL CTA + COMMUNITY ───────────────────────────────
+    st.markdown("<div style='height:24px;'></div>", unsafe_allow_html=True)
+    _render_whatsapp_help()
+    st.markdown('''<div style="position:relative;background:var(--teal);border-radius:24px;padding:44px 30px;text-align:center;color:#EAF1EC;margin:18px 0;overflow:hidden;">
+      <h2 style="color:#FBF7F0;font-size:clamp(26px,4vw,40px);margin:0 0 8px;">Start their story tonight</h2>
+      <p style="color:#CFE0D7;margin:0 0 6px;">A keepsake they'll ask for again and again.</p></div>''', unsafe_allow_html=True)
+    fb1, fb2, _fbx = st.columns([1.3, 1.3, 2])
+    with fb1:
+        if st.button("Create a custom story →", type="primary", use_container_width=True, key="final_custom"):
+            st.session_state.book_mode = "custom"; st.session_state.wizard_step = 1; st.rerun()
+    with fb2:
+        st.markdown('<a href="#featured-books" style="display:block;text-align:center;padding:.62rem 1rem;border:1.5px solid var(--borderin);border-radius:999px;font-weight:700;color:var(--ink);text-decoration:none;">Browse books</a>', unsafe_allow_html=True)
 
-    # ── COMMUNITY GALLERY ──────────────────────────────────────────
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown("---")
-    st.markdown(
-        "<h3 style='font-size:1.2rem;font-weight:700;margin:16px 0 6px 0;'>"
-        "📚 Books made by other families</h3>"
-        "<p style='color:#6b7280;font-size:13px;margin:0 0 16px 0;'>"
-        "Every book made with this app — a growing library of personalized stories.</p>",
-        unsafe_allow_html=True,
-    )
+    st.markdown('<div class="ss-eyebrow teal" style="margin-top:22px;">From our community</div><h2 style="font-size:clamp(24px,4vw,34px);margin:4px 0 12px;">Books made by other families</h2>', unsafe_allow_html=True)
     render_gallery()
-
 
 def render_custom_wizard():
     """Multi-step wizard for custom story creation."""
     step = st.session_state.wizard_step
+    _render_whatsapp_help()
 
     # Safety: ensure step is within valid range
     if step < 1 or step > 4:
@@ -3383,6 +3338,24 @@ def main():
 
     # Templates are now seeded via SQL migration, no app-level seeding needed
 
+    # ── Funnel: record who started a story (once per distinct story) ────
+    try:
+        if analytics is not None and (st.session_state.get("auth_user") or {}).get("email"):
+            _bm = st.session_state.get("book_mode")
+            if _bm in ("custom", "template"):
+                _sk = f"{_bm}:{st.session_state.get('selected_template_id', '')}"
+                if st.session_state.get("_ev_started_key") != _sk:
+                    analytics.log_event(
+                        "story_started",
+                        email=st.session_state.auth_user.get("email", ""),
+                        user_id=(get_current_user_id() or ""),
+                        mode=_bm,
+                        template_id=st.session_state.get("selected_template_id", ""),
+                    )
+                    st.session_state["_ev_started_key"] = _sk
+    except Exception:
+        pass
+
     # Initialize show_history and show_community state
     if 'show_history' not in st.session_state:
         st.session_state.show_history = False
@@ -3398,6 +3371,13 @@ def main():
             st.rerun()
         st.divider()
         render_gallery()
+        return
+
+    # Admin reporting dashboard (admins only)
+    if st.session_state.get("show_admin_dashboard") and \
+       (st.session_state.get("auth_user") or {}).get("email", "") in ADMIN_EMAILS:
+        import admin_dashboard
+        admin_dashboard.render_admin_dashboard()
         return
 
     # Show history page if requested
@@ -3694,6 +3674,14 @@ def main():
                     st.session_state.show_history = False
                     st.session_state.show_community = False
                     st.rerun()
+
+            # Admin reporting dashboard
+            if st.button("📊 Dashboard", use_container_width=True, type="secondary"):
+                st.session_state.show_admin_dashboard = True
+                st.session_state.show_history = False
+                st.session_state.show_community = False
+                st.session_state.show_template_studio = False
+                st.rerun()
 
             # Payment gateway health
             with st.expander("💳 Payments health"):
@@ -5133,6 +5121,22 @@ def main():
                     )
                     st.session_state.pdf_path = pdf_path
                     st.session_state.pdf_generation_key = current_pdf_key
+                    # Funnel: a finished book now exists and is downloadable.
+                    try:
+                        if analytics is not None and \
+                           st.session_state.get("_ev_book_logged_key") != current_pdf_key:
+                            _gs = st.session_state.get("generated_story") or {}
+                            analytics.log_event(
+                                "book_generated",
+                                email=(st.session_state.get("user_email")
+                                       or (st.session_state.get("auth_user") or {}).get("email", "")),
+                                user_id=(get_current_user_id() or ""),
+                                child_name=child_name,
+                                title=_gs.get("title", ""),
+                            )
+                            st.session_state["_ev_book_logged_key"] = current_pdf_key
+                    except Exception:
+                        pass
         
         st.header("📚 Step 3: Download Your Storybook")
         story_title = st.session_state.generated_story.get("title", f"{child_name}'s Storybook")
@@ -5148,7 +5152,7 @@ def main():
             # Show PDF download button
             if st.session_state.pdf_path and os.path.exists(st.session_state.pdf_path):
                 with open(st.session_state.pdf_path, "rb") as _pdf:
-                    st.download_button(
+                    if st.download_button(
                         label="📥 Download PDF",
                         data=_pdf.read(),
                         file_name=f"{child_name}_Storybook.pdf",
@@ -5156,7 +5160,16 @@ def main():
                         type="primary",
                         use_container_width=True,
                         key="pdf_download_top",
-                    )
+                    ):
+                        try:
+                            if analytics is not None:
+                                analytics.log_event(
+                                    "download", email=_step3_email,
+                                    user_id=(get_current_user_id() or ""),
+                                    child_name=child_name,
+                                )
+                        except Exception:
+                            pass
                 st.info("💡 Print on 8.5×8.5 inch paper for best results!")
             else:
                 st.warning("PDF not yet generated — please wait a moment and refresh.")
@@ -5184,7 +5197,7 @@ def main():
                 else:
                     try:
                         from mongo_client import get_db as _get_db3
-                        _get_db3()["print_orders"].insert_one({
+                        _order_doc = {
                             "user_email": _step3_email,
                             "child_name": child_name,
                             "story_title": story_title,
@@ -5194,7 +5207,24 @@ def main():
                             "amount_paid_inr": 650,
                             "ordered_at": datetime.utcnow(),
                             "status": "pending",
-                        })
+                            "notified": False,
+                        }
+                        _ins = _get_db3()["print_orders"].insert_one(_order_doc)
+                        # Funnel + admin email notification (best-effort).
+                        try:
+                            if analytics is not None:
+                                analytics.log_event(
+                                    "print_requested", email=_step3_email,
+                                    user_id=(get_current_user_id() or ""),
+                                    child_name=child_name, title=story_title,
+                                )
+                                if analytics.notify_print_request(_order_doc):
+                                    _get_db3()["print_orders"].update_one(
+                                        {"_id": _ins.inserted_id},
+                                        {"$set": {"notified": True}},
+                                    )
+                        except Exception:
+                            pass
                         st.success("🎉 Order placed! We'll contact you within 24–48 hours to confirm delivery details.")
                         st.balloons()
                     except Exception as _oe:
@@ -5204,14 +5234,23 @@ def main():
             # Print users also get a digital copy
             if st.session_state.pdf_path and os.path.exists(st.session_state.pdf_path):
                 with open(st.session_state.pdf_path, "rb") as _pdf2:
-                    st.download_button(
+                    if st.download_button(
                         label="📥 Download Digital Copy",
                         data=_pdf2.read(),
                         file_name=f"{child_name}_Storybook.pdf",
                         mime="application/pdf",
                         use_container_width=True,
                         key="pdf_download_print_user",
-                    )
+                    ):
+                        try:
+                            if analytics is not None:
+                                analytics.log_event(
+                                    "download", email=_step3_email,
+                                    user_id=(get_current_user_id() or ""),
+                                    child_name=child_name, copy="digital_with_print",
+                                )
+                        except Exception:
+                            pass
                 st.caption("You also have a digital copy while you wait for your printed book!")
 
         st.divider()

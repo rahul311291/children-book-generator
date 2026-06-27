@@ -149,3 +149,43 @@ If you encounter issues:
 - **Supabase Free Tier**: Free for small projects, with usage limits
 
 Monitor your usage to avoid unexpected costs.
+
+---
+
+## Admin dashboard, email alerts & WhatsApp (added with the analytics update)
+
+The reporting dashboard, the print-request email alert, and the "Can we
+generate for you?" WhatsApp link are all driven by environment variables, so
+you configure them exactly like every other secret on Render — no code edits.
+
+### How to add a secret on Render
+
+1. Open your service in the [Render dashboard](https://dashboard.render.com/).
+2. Click the **Environment** tab in the left menu.
+3. Click **Add Environment Variable** and enter a **Key** and **Value** (one row per variable below).
+4. Click **Save Changes**. Render redeploys automatically with the new values.
+   (For multi-line values like the Vertex service-account JSON, use **Add Secret File** or paste the whole JSON as a single value.)
+
+Tip: you can also click **Add from .env** and paste several `KEY=value` lines at once.
+
+### Full environment-variable reference (current stack: MongoDB + Vertex AI)
+
+| Variable | Required? | What it does |
+|---|---|---|
+| `MONGODB_URI` | **Yes** | MongoDB Atlas connection string (stores users, books, **events**, print orders). |
+| `MONGODB_DB` | No | Database name (default `children_book_generator`). |
+| `CASHFREE_APP_ID` / `CASHFREE_SECRET_KEY` | **Yes (for payments)** | Cashfree credentials. |
+| `CASHFREE_ENV` | **Yes** | `production` or `sandbox` — must match the key type above. |
+| `APP_BASE_URL` | **Yes** | Public URL of your Render app, e.g. `https://yourapp.onrender.com` (payment return URL). |
+| `SMTP_HOST` / `SMTP_PORT` | **Yes (for email)** | e.g. `smtp.gmail.com` / `465` (SSL) or `587` (STARTTLS). |
+| `SMTP_USER` / `SMTP_PASSWORD` | **Yes (for email)** | Gmail address + [App Password](https://myaccount.google.com/apppasswords). (`GMAIL_USER` / `GMAIL_APP_PASSWORD` also work.) |
+| `SMTP_FROM` | No | Friendly From address. |
+| `NOTIFY_EMAIL` | No | Inbox that receives **print-request alerts**. Defaults to `rahul.31.shah@gmail.com`. |
+| `WHATSAPP_LINK` | No | The WhatsApp link for the "Can we generate for you?" strip. Defaults to `https://wa.link/1x52t3`. |
+| `VERTEX_PROJECT_ID` / `VERTEX_LOCATION` | **Yes (for generation)** | Vertex AI project + region. |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | **Yes (for generation)** | Full service-account JSON (use a Render **Secret File** or paste the whole JSON). |
+
+### Notes
+- **Print alerts**: when a customer places a print order, the app emails `NOTIFY_EMAIL`. This reuses your existing SMTP setup — if email already works for sign-in OTPs, alerts work with no extra config.
+- **Dashboard**: sign in with an admin email (`rahul.31.shah@gmail.com`) and open **📊 Dashboard** in the sidebar. The funnel and event log populate as real users move through the app.
+- **MongoDB indexes** for the new `events` collection are created automatically on startup — nothing to do.

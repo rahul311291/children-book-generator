@@ -359,7 +359,7 @@ def user_can_afford_book(user_id: str, page_count: int) -> bool:
 def record_purchase(user_id: str, link_id: str, amount_inr: int, metadata: dict) -> None:
     try:
         from mongo_client import purchases_col
-        purchases_col().update_one(
+        _res = purchases_col().update_one(
             {"link_id": link_id},
             {"$setOnInsert": {
                 "user_id": user_id,
@@ -379,6 +379,22 @@ def record_purchase(user_id: str, link_id: str, amount_inr: int, metadata: dict)
             }},
             upsert=True,
         )
+        # Log the payment to the funnel only on first insert (avoid double counts).
+        if getattr(_res, "upserted_id", None) is not None:
+            try:
+                import analytics
+                analytics.log_event(
+                    "payment_succeeded",
+                    email=(metadata or {}).get("email", ""),
+                    user_id=user_id,
+                    amount_inr=amount_inr,
+                    book_kind=(metadata or {}).get("book_kind", ""),
+                    gate=(metadata or {}).get("gate", ""),
+                    child_name=(metadata or {}).get("child_name", ""),
+                    link_id=link_id,
+                )
+            except Exception:
+                pass
     except Exception as e:
         logger.error(f"record_purchase: {e}")
 

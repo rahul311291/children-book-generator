@@ -75,6 +75,12 @@ def template_assets_col() -> Collection:
     return get_db()["template_assets"]
 
 
+def events_col() -> Collection:
+    """Funnel analytics events: story_started, payment_succeeded,
+    book_generated, book_failed, download, print_requested."""
+    return get_db()["events"]
+
+
 def ensure_indexes() -> None:
     """Create indexes on first startup (idempotent)."""
     try:
@@ -93,5 +99,8 @@ def ensure_indexes() -> None:
         template_assets_col().create_index(
             [("template_id", 1), ("page_number", 1)], unique=True
         )
+        events_col().create_index([("ts", DESCENDING)])
+        events_col().create_index("type")
+        events_col().create_index("email")
     except Exception:
         pass
