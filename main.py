@@ -2413,6 +2413,26 @@ def render_landing():
     else:
         st.info("Story library is loading…")
 
+    # ── TESTIMONIALS ───────────────────────────────────────────────
+    st.markdown('<div class="ss-eyebrow" style="margin-top:40px;">Loved by parents</div><h2 style="font-size:clamp(26px,4vw,40px);margin:6px 0 18px;">A keepsake families adore</h2>', unsafe_allow_html=True)
+    st.markdown(
+        '''<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px;">
+          <div class="ss-card"><div style="color:var(--gold);font-size:15px;letter-spacing:2px;">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
+            <p style="font-family:Spectral;font-size:16px;line-height:1.45;margin:8px 0 14px;">&ldquo;My daughter gasped when she saw herself as the hero. We read it every single night now.&rdquo;</p>
+            <div style="display:flex;align-items:center;gap:10px;"><span style="width:38px;height:38px;border-radius:50%;background:var(--terra);color:#fff;font-weight:700;display:flex;align-items:center;justify-content:center;">P</span><div><div style="font-weight:700;font-size:14px;">Priya S.</div><div style="font-size:12px;color:var(--muted2);">Mumbai &middot; Verified buyer</div></div></div>
+          </div>
+          <div class="ss-card"><div style="color:var(--gold);font-size:15px;letter-spacing:2px;">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
+            <p style="font-family:Spectral;font-size:16px;line-height:1.45;margin:8px 0 14px;">&ldquo;The print quality is gorgeous and it arrived in two days. Best birthday gift ever.&rdquo;</p>
+            <div style="display:flex;align-items:center;gap:10px;"><span style="width:38px;height:38px;border-radius:50%;background:var(--teal);color:#fff;font-weight:700;display:flex;align-items:center;justify-content:center;">R</span><div><div style="font-weight:700;font-size:14px;">Rahul M.</div><div style="font-size:12px;color:var(--muted2);">Pune &middot; Verified buyer</div></div></div>
+          </div>
+          <div class="ss-card"><div style="color:var(--gold);font-size:15px;letter-spacing:2px;">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
+            <p style="font-family:Spectral;font-size:16px;line-height:1.45;margin:8px 0 14px;">&ldquo;A custom story about my son and his dog &mdash; he thinks he&rsquo;s famous now. Worth every rupee.&rdquo;</p>
+            <div style="display:flex;align-items:center;gap:10px;"><span style="width:38px;height:38px;border-radius:50%;background:var(--gold);color:#3a2a06;font-weight:700;display:flex;align-items:center;justify-content:center;">A</span><div><div style="font-weight:700;font-size:14px;">Ananya K.</div><div style="font-size:12px;color:var(--muted2);">Bengaluru &middot; Verified buyer</div></div></div>
+          </div>
+        </div>''',
+        unsafe_allow_html=True,
+    )
+
     # ── HELP + FINAL CTA + COMMUNITY ───────────────────────────────
     st.markdown("<div style='height:24px;'></div>", unsafe_allow_html=True)
     _render_whatsapp_help()
@@ -2428,6 +2448,38 @@ def render_landing():
 
     st.markdown('<div class="ss-eyebrow teal" style="margin-top:22px;">From our community</div><h2 style="font-size:clamp(24px,4vw,34px);margin:4px 0 12px;">Books made by other families</h2>', unsafe_allow_html=True)
     render_gallery()
+
+    # ── FOOTER ─────────────────────────────────────────────────────
+    st.markdown(
+        '''<div style="background:var(--ink);border-radius:24px;padding:34px 30px;margin-top:34px;color:#CDC3B5;">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:22px;">
+            <div style="min-width:220px;">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+                <div style="width:34px;height:34px;border-radius:10px;background:var(--terra);color:#FBF7F0;font-family:Spectral;font-weight:700;display:flex;align-items:center;justify-content:center;">S</div>
+                <b style="font-family:Spectral;font-size:18px;color:#FBF7F0;">Storytime Studio</b>
+              </div>
+              <p style="font-size:13.5px;max-width:36ch;margin:0;">Personalized children&rsquo;s books, made with love and delivered across India.</p>
+            </div>
+            <div><div style="color:#FBF7F0;font-size:12px;letter-spacing:.12em;text-transform:uppercase;margin-bottom:8px;">Shop</div>
+              <a href="#featured-books" style="color:#CDC3B5;text-decoration:none;display:block;font-size:14px;margin:6px 0;">Story Library</a>
+              <a href="#featured-books" style="color:#CDC3B5;text-decoration:none;display:block;font-size:14px;margin:6px 0;">Custom Story</a>
+              <a href="#" style="color:#CDC3B5;text-decoration:none;display:block;font-size:14px;margin:6px 0;">Gift cards</a></div>
+            <div><div style="color:#FBF7F0;font-size:12px;letter-spacing:.12em;text-transform:uppercase;margin-bottom:8px;">Company</div>
+              <a href="#" style="color:#CDC3B5;text-decoration:none;display:block;font-size:14px;margin:6px 0;">About</a>
+              <a href="#" style="color:#CDC3B5;text-decoration:none;display:block;font-size:14px;margin:6px 0;">How it works</a>
+              <a href="#" style="color:#CDC3B5;text-decoration:none;display:block;font-size:14px;margin:6px 0;">Contact</a></div>
+            <div><div style="color:#FBF7F0;font-size:12px;letter-spacing:.12em;text-transform:uppercase;margin-bottom:8px;">Help</div>
+              <a href="#" style="color:#CDC3B5;text-decoration:none;display:block;font-size:14px;margin:6px 0;">FAQs</a>
+              <a href="#" style="color:#CDC3B5;text-decoration:none;display:block;font-size:14px;margin:6px 0;">Shipping &amp; returns</a>
+              <a href="https://wa.link/1x52t3" target="_blank" style="color:#CDC3B5;text-decoration:none;display:block;font-size:14px;margin:6px 0;">WhatsApp us</a></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;border-top:1px solid #3a332e;margin-top:24px;padding-top:16px;font-size:12.5px;">
+            <span>&copy; 2026 Storytime Studio</span>
+            <span>Secure payments by Cashfree &middot; UPI &middot; Cards &middot; Netbanking</span>
+          </div>
+        </div>''',
+        unsafe_allow_html=True,
+    )
 
 def render_custom_wizard():
     """Multi-step wizard for custom story creation."""
