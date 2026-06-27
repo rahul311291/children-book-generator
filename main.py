@@ -865,7 +865,8 @@ def get_story_history():
             rows = list(col.find(
                 {"user_id": user_id},
                 {"_id": 1, "child_name": 1, "title": 1, "book_type": 1,
-                 "template_id": 1, "template_name": 1, "created_at": 1, "metadata": 1, "cover_thumbnail": 1}
+                 "template_id": 1, "template_name": 1, "created_at": 1, "metadata": 1,
+                 "cover_thumbnail": 1, "images": {"$slice": 1}}
             ).sort("created_at", DESCENDING).limit(100))
             for row in rows:
                 created = row.get("created_at")
@@ -879,7 +880,9 @@ def get_story_history():
                     "book_type": row.get("book_type", "custom"),
                     "template_id": row.get("template_id"),
                     "template_name": row.get("template_name"),
-                    "cover_thumbnail": row.get("cover_thumbnail", ""),
+                    "cover_thumbnail": row.get("cover_thumbnail") or next(
+                        (im for im in (row.get("images") or [])
+                         if isinstance(im, str) and im.startswith("data:image")), ""),
                 })
             if stories:
                 logger.info(f"Loaded {len(stories)} stories from MongoDB")
@@ -2144,7 +2147,8 @@ def render_gallery():
                 "images": {"$elemMatch": {"$type": "string", "$regex": "^data:image"}},
                 "is_private": {"$ne": True},
             },
-            {"_id": 1, "child_name": 1, "story_data": 1, "metadata": 1, "created_at": 1, "cover_thumbnail": 1, "title": 1}
+            {"_id": 1, "child_name": 1, "story_data": 1, "metadata": 1, "created_at": 1,
+             "cover_thumbnail": 1, "title": 1, "images": {"$slice": 1}}
         ).sort("created_at", -1).limit(48))
     except Exception as _ge:
         import logging as _log
@@ -2173,6 +2177,9 @@ def render_gallery():
             created = book.get("created_at")
             date_str = created.strftime("%b %Y") if created else ""
             cover = book.get("cover_thumbnail", "")
+            if not (cover and cover.startswith("data:image")):
+                cover = next((im for im in (book.get("images") or [])
+                              if isinstance(im, str) and im.startswith("data:image")), "")
             if cover and cover.startswith("data:image"):
                 cover_html = f'<img src="{cover}" style="width:100%;height:230px;object-fit:cover;border-radius:10px 10px 0 0;">'
             else:
