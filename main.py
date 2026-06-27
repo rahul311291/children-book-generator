@@ -2354,12 +2354,29 @@ def render_landing():
 
     # ── TWO PATHS ──────────────────────────────────────────────────
     st.markdown("<div style='height:28px;'></div>", unsafe_allow_html=True)
+    _ui_dir = os.path.join(os.path.dirname(__file__), "assets", "ui")
+    _lib_banner = cover_data_uri(os.path.join(_ui_dir, "banner_library.png"))
+    _cus_banner = cover_data_uri(os.path.join(_ui_dir, "banner_custom.png"))
     cpa, cpb = st.columns(2)
     with cpa:
-        st.markdown(f'''<div class="ss-card" style="border-color:var(--teal-t);min-height:200px;"><span class="ss-pill teal">Story Library</span><h3 style="margin:12px 0 8px;font-size:24px;">Ready-made tales, made personal</h3><p style="color:var(--muted);font-size:14.5px;">Beloved classics and originals — personalized with your child's name and face.</p><div style="margin:8px 0;"><span class="ss-pill teal">Digital from &#8377;{promo}</span></div></div>''', unsafe_allow_html=True)
+        st.markdown(f'''<div class="ss-card" style="border-color:var(--teal-t);height:330px;padding:0;overflow:hidden;">
+          <div style="height:152px;background-image:url({_lib_banner});background-size:cover;background-position:center;background-color:var(--paper2);"></div>
+          <div style="padding:18px 22px;">
+            <span class="ss-pill teal">Story Library</span>
+            <h3 style="margin:10px 0 6px;font-size:22px;">Ready-made tales, made personal</h3>
+            <p style="color:var(--muted);font-size:14px;margin:0;">Beloved classics and originals — personalized with your child's name and face. <b>Digital from &#8377;{promo}</b>.</p>
+          </div>
+        </div>''', unsafe_allow_html=True)
         st.markdown('<a href="#featured-books" style="display:block;text-align:center;margin-top:10px;padding:.62rem;border-radius:999px;background:var(--teal);color:#fff;font-weight:700;text-decoration:none;">Browse the library →</a>', unsafe_allow_html=True)
     with cpb:
-        st.markdown('''<div class="ss-card" style="background:var(--ink);border-color:var(--ink);min-height:200px;"><span class="ss-pill" style="background:rgba(226,162,74,.18);color:var(--gold);">Custom Story</span><h3 style="margin:12px 0 8px;font-size:24px;color:#FBF7F0;">A one-of-a-kind adventure</h3><p style="color:#CDC3B5;font-size:14.5px;">You pick the world and the lesson — we write and illustrate a book that exists nowhere else.</p></div>''', unsafe_allow_html=True)
+        st.markdown(f'''<div class="ss-card" style="background:var(--ink);border-color:var(--ink);height:330px;padding:0;overflow:hidden;">
+          <div style="height:152px;background-image:url({_cus_banner});background-size:cover;background-position:center;background-color:#1e1b4b;"></div>
+          <div style="padding:18px 22px;">
+            <span class="ss-pill" style="background:rgba(226,162,74,.18);color:var(--gold);">Custom Story</span>
+            <h3 style="margin:10px 0 6px;font-size:22px;color:#FBF7F0;">A one-of-a-kind adventure</h3>
+            <p style="color:#CDC3B5;font-size:14px;margin:0;">You pick the world and the lesson — we write and illustrate a book that exists nowhere else.</p>
+          </div>
+        </div>''', unsafe_allow_html=True)
         if st.button("Start a custom story →", type="primary", use_container_width=True, key="twopath_custom"):
             _start_or_login("custom")
 
@@ -4705,7 +4722,7 @@ def main():
                     </div>""",
                     unsafe_allow_html=True,
                 )
-                if st.button(f"Get my PDF — ₹{_dl_price}", type="primary",
+                if st.button(f"Print at home — ₹{_dl_price}", type="primary",
                              use_container_width=True, key="choice_pay_dl"):
                     _start_payment(_dl_price, "download_choice", None,
                                    "Print-your-own (digital) storybook")
