@@ -36,7 +36,11 @@ PRICE_PER_PAGE_INR = 15  # kept for legacy per-page calc
 # Show both in the UI so the customer sees the saving.
 CUSTOM_STORY_PRICE_INR         = 199    # Promotional live price for digital download
 CUSTOM_STORY_REGULAR_PRICE_INR = 350    # Strikethrough / "original" price
-CUSTOM_DOWNLOAD_PRICE_INR      = 650    # Print & Deliver price (unchanged)
+CUSTOM_DOWNLOAD_PRICE_INR      = 650    # legacy Print & Deliver price
+
+# Printed & delivered — two paper tiers
+PRINT_NORMAL_PRICE_INR = 449    # everyday matte paper
+PRINT_GLOSSY_PRICE_INR = 699    # premium glossy keepsake
 
 # Legacy flat pricing (kept for any existing references)
 PDF_PRICE_INR = CUSTOM_DOWNLOAD_PRICE_INR
@@ -211,6 +215,22 @@ def custom_story_price_inr() -> int:
 def custom_download_price_inr() -> int:
     """Print & Deliver option — ₹650 printed book + digital."""
     return CUSTOM_DOWNLOAD_PRICE_INR
+
+
+def print_normal_price_inr() -> int:
+    """Printed & delivered on everyday matte paper."""
+    try:
+        return int(_conf("PRINT_NORMAL_PRICE_INR", str(PRINT_NORMAL_PRICE_INR)))
+    except Exception:
+        return PRINT_NORMAL_PRICE_INR
+
+
+def print_glossy_price_inr() -> int:
+    """Printed & delivered on premium glossy keepsake paper."""
+    try:
+        return int(_conf("PRINT_GLOSSY_PRICE_INR", str(PRINT_GLOSSY_PRICE_INR)))
+    except Exception:
+        return PRINT_GLOSSY_PRICE_INR
 
 
 def cashfree_env() -> str:
