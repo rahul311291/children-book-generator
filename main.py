@@ -3869,13 +3869,19 @@ def main():
         display_template_book_preview(st.session_state.template_generated_book, api_key=api_key)
         return
 
-    # Admin Template Studio (pre-render assets once)
+    # Admin Template Studio (pre-render assets once) — admin-only route.
+    # Coverage status icons (✅ / ⏳ / ❌) and the per-variant matrix must
+    # never leak onto a customer-facing page.
     if st.session_state.get("show_template_studio") and TEMPLATE_FLOW_AVAILABLE:
-        if st.button("← Back to Main", key="back_from_studio"):
+        _studio_email = (st.session_state.get("auth_user") or {}).get("email", "")
+        if _studio_email not in ADMIN_EMAILS:
             st.session_state.show_template_studio = False
-            st.rerun()
-        render_template_studio(api_key)
-        return
+        else:
+            if st.button("← Back to Main", key="back_from_studio"):
+                st.session_state.show_template_studio = False
+                st.rerun()
+            render_template_studio(api_key)
+            return
 
     # Template mode — asset-backed storefront flow
     if st.session_state.book_mode == "template" and TEMPLATE_FLOW_AVAILABLE:

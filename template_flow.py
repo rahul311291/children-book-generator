@@ -548,7 +548,23 @@ def _render_finished_book(api_key: str, save_history_cb: Optional[Callable]):
 # ---------------------------------------------------------------------------
 
 def render_template_studio(api_key: str):
-    """Admin tool: pre-render template assets once, monitor coverage."""
+    """Admin tool: pre-render template assets once, monitor coverage.
+
+    Admin-only. The coverage table and per-page status icons are not
+    something we ever want a paying customer to see.
+    """
+    # Defence in depth: even if someone flips show_template_studio in
+    # session_state, only an authenticated admin can render this page.
+    try:
+        from auth import ADMIN_EMAILS
+        _email = (st.session_state.get("auth_user") or {}).get("email", "") \
+                 or st.session_state.get("user_email", "")
+        if _email not in ADMIN_EMAILS:
+            st.error("This page is for admins only.")
+            return
+    except Exception:
+        st.error("This page is for admins only.")
+        return
     st.markdown("## 🎨 Template Studio")
     st.caption(
         "Pre-render every template page once per gender/age variant. "
