@@ -69,8 +69,13 @@ TIERS = {
 
 _GALLERY_CSS = """
 <style>
+.tpl-card-link { text-decoration: none !important; color: inherit !important;
+  display: block; cursor: pointer; }
+.tpl-card-link:hover .tpl-card { box-shadow: 0 8px 20px rgba(0,0,0,0.10);
+  transform: translateY(-2px); }
 .tpl-card { border: 1px solid #eee; border-radius: 16px; overflow: hidden;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.06); margin-bottom: 8px; background: #fff; }
+  box-shadow: 0 2px 10px rgba(0,0,0,0.06); margin-bottom: 8px; background: #fff;
+  transition: box-shadow .15s ease, transform .15s ease; }
 .tpl-card img { width: 100%; aspect-ratio: 3/4; object-fit: cover; display: block; }
 .tpl-card-body { padding: 12px 14px; }
 .tpl-card-body h4 { margin: 0 0 4px 0; font-size: 1.05rem; min-height: 2.5rem;
@@ -95,38 +100,55 @@ def _sample_page_image(template_id: str, page_number: int,
 
     1) Admin pre-rendered template asset (exact variant, then any variant).
     2) Any image previously generated for this template+page by real users
-       (shared image pool).
+       (shared image pool — any age/gender).
     3) Any image stored on a past book in book_history for this template+page.
-    Returns None if nothing is available — caller renders a placeholder.
+    4) Bundled local cover art for the template — guarantees something visual
+       even on templates that have never been generated yet.
+    Returns None only if literally nothing is available — caller renders a
+    placeholder in that case.
     """
+    # 1. Admin pre-rendered asset
     try:
         img = template_store.get_asset(template_id, page_number, gender, age)
         if img:
             return img
     except Exception:
         pass
+    # 2. Shared image pool (any age/gender)
     try:
         img = get_any_pool_image_for_page(template_id, page_number)
         if img:
             return img
     except Exception:
         pass
-    # Last fallback: scan book_history for any prior book of this template
-    # that has an image at the requested page index.
+    # 3. book_history: scan ANY prior book for this template that has images.
     try:
         from mongo_client import book_history_col
-        doc = book_history_col().find_one(
-            {"template_id": template_id, "images": {"$exists": True, "$ne": []}},
-            {"images": 1},
+        candidates = list(
+            book_history_col().find(
+                {"template_id": template_id,
+                 "images": {"$exists": True, "$ne": []}},
+                {"images": 1},
+            ).limit(5)
         )
-        if doc:
+        # Try to match exact page index first across candidates
+        idx = page_number - 1
+        for doc in candidates:
             imgs = doc.get("images") or []
-            idx = page_number - 1
             if 0 <= idx < len(imgs) and imgs[idx]:
                 return imgs[idx]
-            if imgs:
-                # fall back to first available image so something shows up
-                return next((i for i in imgs if i), None)
+        # Otherwise return any non-empty image from any candidate
+        for doc in candidates:
+            for img in (doc.get("images") or []):
+                if img:
+                    return img
+    except Exception:
+        pass
+    # 4. Bundled cover — every template ships one, so this almost always hits
+    try:
+        cover = _local_cover_uri(template_id)
+        if cover:
+            return cover
     except Exception:
         pass
     return None
@@ -180,6 +202,22 @@ def render_template_mode(api_key: str, save_history_cb: Optional[Callable] = Non
     """Entry point for the template experience (called from main.py)."""
     st.markdown(_GALLERY_CSS, unsafe_allow_html=True)
 
+    # Card-click navigation: any tile that links to ?tpl=<id> lands here.
+    # We move the value into session_state, clear the param, then rerun so
+    # downstream logic behaves identically to clicking the Preview button.
+    try:
+        qp_tpl = st.query_params.get("tpl")
+    except Exception:
+        qp_tpl = None
+    if qp_tpl and st.session_state.get("tpl_selected_id") != qp_tpl:
+        _reset_flow()
+        st.session_state.tpl_selected_id = qp_tpl
+        try:
+            del st.query_params["tpl"]
+        except Exception:
+            pass
+        st.rerun()
+
     # Finished book → preview screen
     if st.session_state.get("tpl_book_data"):
         _render_finished_book(api_key, save_history_cb)
@@ -209,17 +247,23 @@ def _render_gallery():
                 continue
             t = templates[idx]
             with col:
+                # Whole card is a link to ?tpl=<id>. Streamlit's iframe sandbox
+                # ignores anchor navigation, so the link also targets _top to
+                # rewrite the parent URL — render_template_mode then picks
+                # the id out of st.query_params on the next run.
                 st.markdown(
                     f"""
-                    <div class="tpl-card">
-                      <img src="{_local_cover_uri(t['id']) or t.get('cover_image','')}" alt="{t['name']}">
-                      <div class="tpl-card-body">
-                        <h4>{t['name']}</h4>
-                        <p>{t.get('description','').replace('{name}', 'your child')}</p>
-                        <span class="tpl-price">From ₹{TEMPLATE_BASIC_INR}</span>
-                        · {t.get('total_pages', '?')} pages
+                    <a class="tpl-card-link" href="?tpl={t['id']}" target="_top">
+                      <div class="tpl-card">
+                        <img src="{_local_cover_uri(t['id']) or t.get('cover_image','')}" alt="{t['name']}">
+                        <div class="tpl-card-body">
+                          <h4>{t['name']}</h4>
+                          <p>{t.get('description','').replace('{name}', 'your child')}</p>
+                          <span class="tpl-price">From ₹{TEMPLATE_BASIC_INR}</span>
+                          · {t.get('total_pages', '?')} pages
+                        </div>
                       </div>
-                    </div>
+                    </a>
                     """,
                     unsafe_allow_html=True,
                 )
