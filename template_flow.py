@@ -36,7 +36,6 @@ from template_book_generator import (
     get_template_pages,
     display_template_book_preview,
     convert_uploaded_file_to_base64,
-    get_any_pool_image_for_page,
 )
 from payments import (
     create_cashfree_order,
@@ -97,67 +96,26 @@ _GALLERY_CSS = """
 def _sample_page_image(template_id: str, page_number: int,
                        gender: str, age: int,
                        remote_cover: str = "") -> Optional[str]:
-    """Best-effort sample image for a sneak-peek page.
+    """Sample image for a sneak-peek page.
 
-    1) Admin pre-rendered template asset (exact variant, then any variant).
-    2) Any image previously generated for this template+page by real users
-       (shared image pool — any age/gender).
-    3) Any image stored on a past book in book_history for this template+page.
-    4) Bundled local cover art for the template — guarantees something visual
-       even on templates that have never been generated yet.
-    Returns None only if literally nothing is available — caller renders a
-    placeholder in that case.
+    Sneak peek samples come ONLY from admin pre-rendered template assets —
+    the ones generated in Template Studio. We deliberately do not fall
+    through to image_pool, book_history, or the bundled cover so that:
+      * Every visitor sees the same canonical samples regardless of who
+        is logged in or what they have generated themselves.
+      * The cover image is not repeated across all preview slots when
+        admin pre-rendering is incomplete for a page.
+    Returns None if admin has not pre-rendered that page — caller renders
+    a placeholder so the gap is visible (and Template Studio can fill it).
+
+    `remote_cover` is kept in the signature for backwards compatibility
+    with older call sites but is intentionally unused.
     """
-    # 1. Admin pre-rendered asset
+    del remote_cover  # unused — kept for signature stability
     try:
-        img = template_store.get_asset(template_id, page_number, gender, age)
-        if img:
-            return img
+        return template_store.get_asset(template_id, page_number, gender, age)
     except Exception:
-        pass
-    # 2. Shared image pool (any age/gender)
-    try:
-        img = get_any_pool_image_for_page(template_id, page_number)
-        if img:
-            return img
-    except Exception:
-        pass
-    # 3. book_history: scan ANY prior book for this template that has images.
-    try:
-        from mongo_client import book_history_col
-        candidates = list(
-            book_history_col().find(
-                {"template_id": template_id,
-                 "images": {"$exists": True, "$ne": []}},
-                {"images": 1},
-            ).limit(5)
-        )
-        # Try to match exact page index first across candidates
-        idx = page_number - 1
-        for doc in candidates:
-            imgs = doc.get("images") or []
-            if 0 <= idx < len(imgs) and imgs[idx]:
-                return imgs[idx]
-        # Otherwise return any non-empty image from any candidate
-        for doc in candidates:
-            for img in (doc.get("images") or []):
-                if img:
-                    return img
-    except Exception:
-        pass
-    # 4. Bundled cover — every template ships one, so this almost always hits
-    try:
-        cover = _local_cover_uri(template_id)
-        if cover:
-            return cover
-    except Exception:
-        pass
-    # 5. Remote cover URL from the template definition (Pexels). Only used if
-    #    nothing else worked — Streamlit cannot embed a data-URI from a remote
-    #    URL synchronously, so we just hand the URL straight to the <img>.
-    if remote_cover and isinstance(remote_cover, str) and remote_cover.startswith(("http://", "https://")):
-        return remote_cover
-    return None
+        return None
 
 
 def _reset_flow(keep_template: bool = False):
@@ -590,7 +548,23 @@ def _render_finished_book(api_key: str, save_history_cb: Optional[Callable]):
 # ---------------------------------------------------------------------------
 
 def render_template_studio(api_key: str):
-    """Admin tool: pre-render template assets once, monitor coverage."""
+    """Admin tool: pre-render template assets once, monitor coverage.
+
+    Admin-only. The coverage table and per-page status icons are not
+    something we ever want a paying customer to see.
+    """
+    # Defence in depth: even if someone flips show_template_studio in
+    # session_state, only an authenticated admin can render this page.
+    try:
+        from auth import ADMIN_EMAILS
+        _email = (st.session_state.get("auth_user") or {}).get("email", "") \
+                 or st.session_state.get("user_email", "")
+        if _email not in ADMIN_EMAILS:
+            st.error("This page is for admins only.")
+            return
+    except Exception:
+        st.error("This page is for admins only.")
+        return
     st.markdown("## 🎨 Template Studio")
     st.caption(
         "Pre-render every template page once per gender/age variant. "
@@ -603,6 +577,42 @@ def render_template_studio(api_key: str):
             st.write(f"**{k}:** {v}")
 
     templates = get_available_templates()
+
+    # ---- Global overview: which templates have ANY images rendered ----
+    st.markdown("#### All templates — pre-render status")
+    overview_rows = []
+    incomplete_ids = []
+    for t in templates:
+        t_id = t["id"]
+        t_pages = get_template_pages(t_id)
+        t_status = asset_status(t_id)
+        total_pages = len(t_pages)
+        pages_with_any = sum(1 for pg in t_pages if t_status.get(pg["page_number"]))
+        pct = int(round(100 * pages_with_any / total_pages)) if total_pages else 0
+        first_done = "✅" if t_pages and t_status.get(t_pages[0]["page_number"]) else "—"
+        if pages_with_any < total_pages:
+            incomplete_ids.append(t["name"])
+        overview_rows.append({
+            "Template": t["name"],
+            "Pages": total_pages,
+            "Pages w/ image": pages_with_any,
+            "% rendered": f"{pct}%",
+            "First page": first_done,
+            "Status": "✅ complete" if pages_with_any == total_pages and total_pages > 0
+                       else ("⏳ partial" if pages_with_any > 0 else "❌ none"),
+        })
+    st.dataframe(overview_rows, use_container_width=True, hide_index=True)
+    if incomplete_ids:
+        st.warning(
+            "Templates missing one or more images: "
+            + ", ".join(incomplete_ids)
+            + ". Pick one below and click Pre-render assets to fill it in."
+        )
+    else:
+        st.success("Every template has at least one rendered variant for every page.")
+
+    st.divider()
+
     template = st.selectbox(
         "Template", templates,
         format_func=lambda t: f"{t['name']} ({t.get('total_pages','?')} pages)",
