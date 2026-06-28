@@ -215,189 +215,8 @@ def _resolve_book_format() -> dict:
 
 
 def _cashfree_dropin_html(payment_session_id: str, order_id: str) -> str:
-    """
-    Cashfree JS SDK v3 modal checkout.
-    Renders a "Pay Now" button inside a components.html() iframe.
-    Clicking it opens Cashfree's secure payment modal over the page.
-    On success/failure the JS updates window.parent.location.search
-    so Streamlit picks up ?cf_order_id=...&cf_status=SUCCESS|FAILED.
-    """
-    from payments import cashfree_env
-    mode = "production" if cashfree_env() == "production" else "sandbox"
-    return f"""<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <script src="https://sdk.cashfree.com/js/v3/cashfree.js"></script>
-  <style>
-    * {{ box-sizing: border-box; margin: 0; padding: 0; }}
-    html, body {{
-      width: 100%; height: 100%;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: #f8fafc;
-    }}
-    #overlay {{
-      position: fixed; inset: 0;
-      display: flex; flex-direction: column;
-      align-items: center; justify-content: center;
-      gap: 14px; padding: 24px;
-    }}
-    #spinner {{
-      width: 40px; height: 40px;
-      border: 4px solid #e2e8f0;
-      border-top-color: #2563eb;
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-    }}
-    @keyframes spin {{ to {{ transform: rotate(360deg); }} }}
-    #msg {{ font-size: 15px; color: #374151; font-weight: 500; text-align: center; }}
-    #sub {{ font-size: 12px; color: #9ca3af; text-align: center; }}
-    #err {{
-      background: #fee2e2; color: #991b1b;
-      border-radius: 8px; padding: 12px 18px;
-      font-size: 13px; text-align: center;
-      display: none; max-width: 400px;
-    }}
-    #retry-btn {{
-      background: #2563eb; color: white;
-      border: none; border-radius: 8px;
-      padding: 10px 28px; font-size: 14px; font-weight: 600;
-      cursor: pointer; display: none;
-    }}
-  </style>
-</head>
-<body>
-  <div id="overlay">
-    <div id="spinner"></div>
-    <div id="msg">Opening Cashfree checkout…</div>
-    <div id="sub">Please wait while your secure payment window loads</div>
-    <div id="err"></div>
-    <button id="retry-btn" onclick="startPayment()">Try again</button>
-  </div>
-
-  <script>
-    var SESSION_ID = "{payment_session_id}";
-    var ORDER_ID   = "{order_id}";
-    var CF_MODE    = "{mode}";
-
-    function setMsg(msg, sub) {{
-      document.getElementById("msg").innerText = msg;
-      if (sub !== undefined) document.getElementById("sub").innerText = sub || "";
-    }}
-
-    function showErr(msg) {{
-      document.getElementById("spinner").style.display = "none";
-      document.getElementById("err").innerText = msg;
-      document.getElementById("err").style.display = "block";
-      document.getElementById("retry-btn").style.display = "inline-block";
-      setMsg("Payment could not be opened", "");
-    }}
-
-    var _done = false;
-    var _timeoutHandle = null;
-
-    // ── Mobile detection ────────────────────────────────────────────────────
-    // On mobile: use _self (top-level redirect, SAME tab) — UPI deep links fire
-    //   reliably from top-level navigation; user returns to the same tab from
-    //   their UPI app, Cashfree redirects back here, Streamlit reruns and
-    //   verifies the payment via query params. No tab juggling, no
-    //   cross-iframe BroadcastChannel handoff (which was silently failing
-    //   because Streamlit's components iframe sandbox blocks
-    //   window.parent.location writes from a different origin).
-    // On desktop: use _modal (overlay) — no popup blocker, stays in-page
-    var _isMobile = /iPhone|iPad|iPod|Android|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-    var _redirectTarget = _isMobile ? "_self" : "_modal";
-
-    // ── 60-second fallback: reveal the manual verify button ────────────────
-    function startFallbackTimer() {{
-      _timeoutHandle = setTimeout(function() {{
-        if (!_done) {{
-          window.parent.location.search =
-            "?cf_order_id=" + encodeURIComponent(ORDER_ID) + "&cf_show_verify=1";
-        }}
-      }}, 60000);
-    }}
-
-    function resetAndRetry() {{
-      // Session is stale/expired — tell parent to clear it so a fresh order is created
-      window.parent.location.search =
-        "?cf_order_id=" + encodeURIComponent(ORDER_ID) + "&cf_reset=1";
-    }}
-
-    function startPayment() {{
-      document.getElementById("err").style.display = "none";
-      document.getElementById("retry-btn").style.display = "none";
-      document.getElementById("spinner").style.display = "block";
-
-      if (_isMobile) {{
-        setMsg("Redirecting to secure checkout…",
-               "You'll be taken to Cashfree. GPay, PhonePe & all UPI apps work — you'll come back here automatically after paying.");
-      }} else {{
-        setMsg("Opening secure checkout…", "Complete your payment in the overlay.");
-      }}
-
-      try {{
-        var cashfree = Cashfree({{ mode: CF_MODE }});
-        cashfree.checkout({{
-          paymentSessionId: SESSION_ID,
-          redirectTarget: _redirectTarget
-        }}).then(function(result) {{
-          if (result && result.paymentDetails) {{
-            // Desktop _modal: promise resolves with paymentDetails on success
-            _done = true;
-            if (_timeoutHandle) clearTimeout(_timeoutHandle);
-            setMsg("✅ Payment successful! Confirming…", "");
-            window.parent.location.search =
-              "?cf_order_id=" + encodeURIComponent(ORDER_ID) + "&cf_status=SUCCESS";
-          }} else if (result && result.error) {{
-            // SDK returned an error object (stale session, invalid endpoint, etc.)
-            var code = (result.error.code || "");
-            if (code === "request_failed" || code === "api_connection_error") {{
-              // Payment session is expired/consumed — must create a new order
-              document.getElementById("spinner").style.display = "none";
-              setMsg("Session expired", "Your payment session timed out. Starting fresh…");
-              document.getElementById("retry-btn").style.display = "inline-block";
-              document.getElementById("retry-btn").innerText = "🔄 Start new payment";
-              document.getElementById("retry-btn").onclick = resetAndRetry;
-            }} else {{
-              showErr("Payment error: " + (result.error.message || code));
-            }}
-          }} else {{
-            // Defensive fallback: SDK returned without paymentDetails or
-            // error. With _self the page should already be navigating away.
-            document.getElementById("spinner").style.display = "block";
-            setMsg("Redirecting to payment…", "");
-          }}
-        }}).catch(function(e) {{
-          var msg = e.message || String(e);
-          // "endpoint or method is not valid" → stale session, must reset
-          if (msg.indexOf("endpoint") !== -1 || msg.indexOf("not valid") !== -1 ||
-              msg.indexOf("request_failed") !== -1) {{
-            document.getElementById("spinner").style.display = "none";
-            setMsg("Session expired", "Your payment session timed out. Starting fresh…");
-            document.getElementById("retry-btn").style.display = "inline-block";
-            document.getElementById("retry-btn").innerText = "🔄 Start new payment";
-            document.getElementById("retry-btn").onclick = resetAndRetry;
-          }} else {{
-            showErr("Could not open payment: " + msg);
-          }}
-        }});
-      }} catch(e) {{
-        showErr("Could not initialise payment: " + (e.message || String(e)));
-      }}
-    }}
-
-    // Auto-trigger on load + start 60-second fallback timer
-    window.addEventListener("load", function() {{
-      setTimeout(function() {{
-        startPayment();
-        startFallbackTimer();
-      }}, 400);
-    }});
-  </script>
-</body>
-</html>"""
+    from payments import cashfree_dropin_html
+    return cashfree_dropin_html(payment_session_id, order_id)
 
 
 def _assemble_image_prompt(page: dict, visual_anchor: str, book_format: dict = None, secondary_characters: list = None) -> str:
@@ -2369,7 +2188,6 @@ def render_landing():
             <p style="color:var(--muted);font-size:14px;margin:0;">Beloved classics and originals — personalized with your child's name and face. <b>Digital from &#8377;{promo}</b>.</p>
           </div>
         </div>''', unsafe_allow_html=True)
-        st.markdown('<a href="#featured-books" style="display:block;text-align:center;margin-top:10px;padding:.62rem;border-radius:999px;background:var(--terra);color:#FBF7F0;font-weight:700;text-decoration:none;box-shadow:0 10px 26px rgba(192,87,62,.30);">Browse the library →</a>', unsafe_allow_html=True)
     with cpb:
         st.markdown(f'''<div class="ss-card" style="background:var(--ink);border-color:var(--ink);height:330px;padding:0;overflow:hidden;">
           <div style="height:152px;background-image:url({_cus_banner});background-size:cover;background-position:center 24%;background-color:#1e1b4b;"></div>
@@ -2379,6 +2197,14 @@ def render_landing():
             <p style="color:#CDC3B5;font-size:14px;margin:0;">You pick the world and the lesson — we write and illustrate a book that exists nowhere else.</p>
           </div>
         </div>''', unsafe_allow_html=True)
+    _bcol1, _bcol2 = st.columns(2)
+    with _bcol1:
+        if st.button("Browse the library →", type="primary", use_container_width=True, key="twopath_browse"):
+            if is_authenticated():
+                st.session_state.book_mode = "template"
+                st.session_state.pop("tpl_selected_id", None)
+            st.rerun()
+    with _bcol2:
         if st.button("Start a custom story →", type="primary", use_container_width=True, key="twopath_custom"):
             _start_or_login("custom")
 
@@ -3467,6 +3293,29 @@ def main():
                 if _ord_status == "PAID":
                     # Also credit / record the purchase
                     _cpc_ord(_cf_order_qp, get_current_user_id())
+                    # Template orders: route to the template build and skip the
+                    # custom-story gate logic below.
+                    try:
+                        from payments import order_metadata as _ometa
+                        _tmeta = _ometa(_cf_order_qp)
+                    except Exception:
+                        _tmeta = {}
+                    if _tmeta.get("book_kind") == "template":
+                        st.session_state.book_mode = "template"
+                        st.session_state.tpl_selected_id = _tmeta.get("template_id", "")
+                        st.session_state.tpl_form = {
+                            "child_name": _tmeta.get("child_name", ""),
+                            "gender": _tmeta.get("gender", "boy"),
+                            "age": int(_tmeta.get("age", 5) or 5),
+                            "tier": _tmeta.get("tier", "basic"),
+                            "photo_b64": None,
+                        }
+                        st.session_state.tpl_payment_confirmed = _cf_order_qp
+                        st.session_state.pop("tpl_cf_order_id", None)
+                        st.session_state.pop("tpl_cf_session", None)
+                        st.session_state.cf_show_verify_button = False
+                        st.toast("✅ Payment confirmed — building your book!", icon="✅")
+                        st.rerun()
                     # Rehydrate wizard state if the round-trip lost the session
                     # (mobile redirect through Cashfree + UPI app can take long
                     # enough that Streamlit gives us a fresh session_state).

@@ -19,6 +19,7 @@ import base64
 from typing import Callable, Optional
 
 import streamlit as st
+import streamlit.components.v1 as components
 
 import template_store
 from template_store import (
@@ -37,9 +38,10 @@ from template_book_generator import (
     convert_uploaded_file_to_base64,
 )
 from payments import (
-    create_payment_link,
+    create_cashfree_order,
+    verify_cashfree_order,
+    cashfree_dropin_html,
     confirm_payment_and_credit,
-    check_payment_status,
     has_purchased_template,
     is_valid_phone,
     cashfree_diagnostics,
@@ -81,7 +83,7 @@ _GALLERY_CSS = """
 
 def _reset_flow(keep_template: bool = False):
     for k in [
-        "tpl_book_data", "tpl_payment_link_id", "tpl_payment_url",
+        "tpl_book_data", "tpl_cf_order_id", "tpl_cf_session",
         "tpl_tier", "tpl_form", "tpl_building",
     ]:
         st.session_state.pop(k, None)
@@ -278,7 +280,7 @@ def _render_template_detail(template_id: str, api_key: str,
         st.caption("Or order another copy for a different child below.")
 
     # ---- Pending payment? ----
-    if st.session_state.get("tpl_payment_link_id"):
+    if st.session_state.get("tpl_cf_order_id"):
         _render_payment_pending(template_id, api_key, save_history_cb)
         return
 
@@ -334,7 +336,7 @@ def _render_template_detail(template_id: str, api_key: str,
             "photo_b64": photo_b64,
             "tier": tier,
         }
-        result = create_payment_link(
+        result = create_cashfree_order(
             user_id=user_id,
             user_email=st.session_state.get("user_email", ""),
             amount_inr=TIERS[tier]["price"],
@@ -349,61 +351,69 @@ def _render_template_detail(template_id: str, api_key: str,
                 "age": int(age),
             },
         )
-        if result.get("error"):
-            st.error(result["error"])
+        if not result or result.get("error"):
+            st.error((result or {}).get("error", "Could not start payment. Please try again."))
             return
-        st.session_state.tpl_payment_link_id = result["link_id"]
-        st.session_state.tpl_payment_url = result["link_url"]
+        st.session_state.tpl_cf_order_id = result["order_id"]
+        st.session_state.tpl_cf_session = result["payment_session_id"]
         st.rerun()
 
 
 def _render_payment_pending(template_id: str, api_key: str,
                             save_history_cb: Optional[Callable]):
-    link_id = st.session_state.tpl_payment_link_id
-    url = st.session_state.get("tpl_payment_url", "")
+    """Cashfree Orders-API drop-in checkout (in-page iframe, no Links API)."""
+    order_id = st.session_state.get("tpl_cf_order_id")
+    session_id = st.session_state.get("tpl_cf_session")
     form = st.session_state.get("tpl_form", {})
     tier = form.get("tier", "basic")
+    if not (order_id and session_id):
+        _reset_flow(keep_template=True)
+        st.rerun()
+        return
 
-    st.info(
-        f"**Almost there!** Complete the ₹{TIERS[tier]['price']} payment for "
-        f"**{form.get('child_name','')}**'s book, then come back here."
+    st.markdown(
+        f"""<div style='background:#f0fdf4;border:1px solid #86efac;border-radius:10px;
+        padding:14px 18px;margin-bottom:12px;'>
+        <span style='font-size:20px;'>🔒</span>
+        <strong style='color:#166534;margin-left:8px;'>
+        Secure payment — {TIERS[tier]['label']} · ₹{TIERS[tier]['price']}</strong><br>
+        <span style='color:#4b5563;font-size:13px;margin-left:30px;'>
+        Complete your payment below. The page updates automatically once done.</span>
+        </div>""",
+        unsafe_allow_html=True,
     )
-    if url:
-        st.link_button("Pay securely with Cashfree →", url, type="primary",
-                       use_container_width=True)
-    c1, c2 = st.columns(2)
-    with c1:
-        if st.button("I've paid — unlock my book", use_container_width=True):
-            with st.spinner("Verifying payment…"):
-                paid = confirm_payment_and_credit(link_id, st.session_state.get("user_id"))
-            if paid:
-                st.session_state.pop("tpl_payment_link_id", None)
-                st.session_state.pop("tpl_payment_url", None)
-                _build_and_show(
-                    template_id,
-                    form.get("child_name", "Child"),
-                    form.get("gender", "boy"),
-                    int(form.get("age", 5)),
-                    tier=tier,
-                    api_key=api_key,
-                    photo_b64=form.get("photo_b64"),
-                    save_history_cb=save_history_cb,
-                )
-            else:
-                status = check_payment_status(link_id)
-                if status == "EXPIRED":
-                    st.error("That payment link expired. Please start again.")
-                    _reset_flow(keep_template=True)
-                else:
-                    st.warning(
-                        "We haven't received the payment yet. If you just paid, "
-                        "wait a few seconds and try again."
-                    )
-    with c2:
-        if st.button("Cancel", use_container_width=True):
-            _reset_flow(keep_template=True)
-            st.rerun()
+    components.html(cashfree_dropin_html(session_id, order_id), height=720, scrolling=False)
 
+    if st.button("✖ Cancel & choose again", key="tpl_pay_cancel"):
+        st.session_state.pop("tpl_cf_order_id", None)
+        st.session_state.pop("tpl_cf_session", None)
+        st.rerun()
+
+    # Always-available manual confirm so a paid user is never stranded.
+    st.caption("Finished paying in the window above? Click to continue.")
+    if st.button("✅ I've paid — continue", type="primary",
+                 use_container_width=True, key="tpl_pay_verify"):
+        with st.spinner("Verifying payment…"):
+            status = verify_cashfree_order(order_id)
+        if status == "PAID":
+            confirm_payment_and_credit(order_id, st.session_state.get("user_id"))
+            st.session_state.pop("tpl_cf_order_id", None)
+            st.session_state.pop("tpl_cf_session", None)
+            _build_and_show(
+                template_id,
+                form.get("child_name", "Child"),
+                form.get("gender", "boy"),
+                int(form.get("age", 5)),
+                tier=tier,
+                api_key=api_key,
+                photo_b64=form.get("photo_b64"),
+                save_history_cb=save_history_cb,
+            )
+        else:
+            st.warning(
+                f"Payment not received yet (status: {status}). "
+                "If you just paid, wait a few seconds and click again."
+            )
 
 def _build_and_show(template_id: str, child_name: str, gender: str, age: int,
                     tier: str, api_key: str, photo_b64: Optional[str],
