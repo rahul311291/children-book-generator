@@ -187,6 +187,15 @@ def render_template_mode(api_key: str, save_history_cb: Optional[Callable] = Non
         _render_finished_book(api_key, save_history_cb)
         return
 
+    # Build in progress → full-screen build experience (replaces the
+    # customize form). The form submit handler stages the parameters and
+    # reruns; this branch runs the actual generation so the cooking
+    # message owns the whole page instead of appearing below the form.
+    build_params = st.session_state.get("tpl_building")
+    if build_params:
+        _render_build_screen(build_params, api_key, save_history_cb)
+        return
+
     template_id = st.session_state.get("tpl_selected_id")
     if not template_id:
         _render_gallery()
@@ -247,18 +256,21 @@ def _render_template_detail(template_id: str, api_key: str,
         st.rerun()
         return
 
-    # Returned from Cashfree with a verified payment (set in main.py)
+    # Returned from Cashfree with a verified payment (set in main.py).
+    # Stage the build and rerun so the build screen owns the page.
     if st.session_state.get("tpl_payment_confirmed"):
         st.session_state.pop("tpl_payment_confirmed", None)
         form = st.session_state.get("tpl_form", {})
         if form.get("child_name"):
-            _build_and_show(
-                template_id,
-                form["child_name"], form.get("gender", "boy"),
-                int(form.get("age", 5)), tier=form.get("tier", "basic"),
-                api_key=api_key, photo_b64=form.get("photo_b64"),
-                save_history_cb=save_history_cb,
-            )
+            st.session_state.tpl_building = {
+                "template_id": template_id,
+                "child_name": form["child_name"],
+                "gender": form.get("gender", "boy"),
+                "age": int(form.get("age", 5)),
+                "tier": form.get("tier", "basic"),
+                "photo_b64": form.get("photo_b64"),
+            }
+            st.rerun()
             return
 
     if st.button("← All stories"):
@@ -328,16 +340,15 @@ def _render_template_detail(template_id: str, api_key: str,
         )
         if st.button("Open my book", type="primary"):
             meta = prior.get("metadata", {})
-            _build_and_show(
-                template_id,
-                meta.get("child_name", "Child"),
-                meta.get("gender", "boy"),
-                int(meta.get("age", 5)),
-                tier=meta.get("tier", "basic"),
-                api_key=api_key,
-                photo_b64=None,
-                save_history_cb=save_history_cb,
-            )
+            st.session_state.tpl_building = {
+                "template_id": template_id,
+                "child_name": meta.get("child_name", "Child"),
+                "gender": meta.get("gender", "boy"),
+                "age": int(meta.get("age", 5)),
+                "tier": meta.get("tier", "basic"),
+                "photo_b64": None,
+            }
+            st.rerun()
             return
         st.caption("Or order another copy for a different child below.")
 
@@ -417,14 +428,18 @@ def _render_template_detail(template_id: str, api_key: str,
             "photo_b64": photo_b64,
             "tier": tier,
         }
-        # Admin: skip Cashfree and build the book straight away.
+        # Admin: skip Cashfree. Stage the build and rerun so the build
+        # screen replaces the customize form instead of rendering below it.
         if _is_admin_tpl:
-            _build_and_show(
-                template_id,
-                child_name.strip(), gender, int(age),
-                tier=tier, api_key=api_key, photo_b64=photo_b64,
-                save_history_cb=save_history_cb,
-            )
+            st.session_state.tpl_building = {
+                "template_id": template_id,
+                "child_name": child_name.strip(),
+                "gender": gender,
+                "age": int(age),
+                "tier": tier,
+                "photo_b64": photo_b64,
+            }
+            st.rerun()
             return
         result = create_cashfree_order(
             user_id=user_id,
@@ -489,21 +504,44 @@ def _render_payment_pending(template_id: str, api_key: str,
             confirm_payment_and_credit(order_id, st.session_state.get("user_id"))
             st.session_state.pop("tpl_cf_order_id", None)
             st.session_state.pop("tpl_cf_session", None)
-            _build_and_show(
-                template_id,
-                form.get("child_name", "Child"),
-                form.get("gender", "boy"),
-                int(form.get("age", 5)),
-                tier=tier,
-                api_key=api_key,
-                photo_b64=form.get("photo_b64"),
-                save_history_cb=save_history_cb,
-            )
+            st.session_state.tpl_building = {
+                "template_id": template_id,
+                "child_name": form.get("child_name", "Child"),
+                "gender": form.get("gender", "boy"),
+                "age": int(form.get("age", 5)),
+                "tier": tier,
+                "photo_b64": form.get("photo_b64"),
+            }
+            st.rerun()
         else:
             st.warning(
                 f"Payment not received yet (status: {status}). "
                 "If you just paid, wait a few seconds and click again."
             )
+
+def _render_build_screen(build_params: dict, api_key: str,
+                         save_history_cb: Optional[Callable]):
+    """Dispatch a staged build. Owns the whole page until the build
+    completes; _build_and_show pops tpl_building and reruns into the
+    preview when done."""
+    template_id = build_params.get("template_id") or st.session_state.get(
+        "tpl_selected_id", ""
+    )
+    if not template_id:
+        st.session_state.pop("tpl_building", None)
+        st.rerun()
+        return
+    _build_and_show(
+        template_id=template_id,
+        child_name=build_params.get("child_name", "Child"),
+        gender=build_params.get("gender", "boy"),
+        age=int(build_params.get("age", 5)),
+        tier=build_params.get("tier", "basic"),
+        api_key=api_key,
+        photo_b64=build_params.get("photo_b64"),
+        save_history_cb=save_history_cb,
+    )
+
 
 def _build_and_show(template_id: str, child_name: str, gender: str, age: int,
                     tier: str, api_key: str, photo_b64: Optional[str],
@@ -623,6 +661,9 @@ def _build_and_show(template_id: str, child_name: str, gender: str, age: int,
 
     status_line.success("🎉 All done — opening your preview…")
 
+    # We owned the screen via tpl_building; release it now that the
+    # finished book is ready to display.
+    st.session_state.pop("tpl_building", None)
     st.session_state.tpl_book_data = book
     # Purchase verified — unlock the legacy preview's payment gate
     st.session_state.current_book_payment_status = "paid"
