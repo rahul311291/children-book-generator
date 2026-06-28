@@ -95,7 +95,8 @@ _GALLERY_CSS = """
 
 
 def _sample_page_image(template_id: str, page_number: int,
-                       gender: str, age: int) -> Optional[str]:
+                       gender: str, age: int,
+                       remote_cover: str = "") -> Optional[str]:
     """Best-effort sample image for a sneak-peek page.
 
     1) Admin pre-rendered template asset (exact variant, then any variant).
@@ -151,6 +152,11 @@ def _sample_page_image(template_id: str, page_number: int,
             return cover
     except Exception:
         pass
+    # 5. Remote cover URL from the template definition (Pexels). Only used if
+    #    nothing else worked — Streamlit cannot embed a data-URI from a remote
+    #    URL synchronously, so we just hand the URL straight to the <img>.
+    if remote_cover and isinstance(remote_cover, str) and remote_cover.startswith(("http://", "https://")):
+        return remote_cover
     return None
 
 
@@ -326,7 +332,8 @@ def _render_template_detail(template_id: str, api_key: str,
         shown = 0
         for page in pages[:FREE_PREVIEW_PAGES]:
             img = _sample_page_image(
-                template_id, page["page_number"], preview_gender, preview_age
+                template_id, page["page_number"], preview_gender, preview_age,
+                remote_cover=template.get("cover_image", ""),
             )
             with prev_cols[shown]:
                 if img:

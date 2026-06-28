@@ -2122,11 +2122,19 @@ def _start_or_login(mode, template_id="", template_name=""):
 
 
 def _go_browse_library():
-    """Open the full Story Library (template gallery) for signed-in users;
-    for visitors just refresh the storefront (the library grid is below)."""
+    """Open the full Story Library (template gallery).
+
+    Logged-in users land in template mode directly. Logged-out visitors get
+    routed to the sign-in page with a pending intent, so that after they
+    authenticate we drop them straight into the library instead of back on
+    the homepage.
+    """
     if is_authenticated():
         st.session_state.book_mode = "template"
         st.session_state.pop("tpl_selected_id", None)
+    else:
+        st.session_state["_pending_start"] = ("template", "", "")
+        st.session_state["_wants_auth"] = True
     st.rerun()
 
 
