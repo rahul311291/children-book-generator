@@ -211,309 +211,517 @@ DEFAULT_TEMPLATES: List[Dict] = [
         ],
     },
     {
-        "id": "a2222222-2222-2222-2222-222222222222",
-        "name": "Snow White and the Kind-Hearted Child",
-        "description": "A gentle Snow White retelling where {name} faces unkind sisters and a cruel stepmother, but finds courage, friends, and a kind prince.",
-        "cover_image": "https://images.pexels.com/photos/11890414/pexels-photo-11890414.jpeg?auto=compress&cs=tinysrgb&w=800",
-        "total_pages": 10,
+        "id": "b1111111-1111-1111-1111-111111111111",
+        "name": "Legends in the Making",
+        "description": (
+            "Fifteen real childhood stories of world champions in cricket, football, "
+            "tennis, F1, chess, athletics, swimming and basketball — gathered into a "
+            "personalised book that quietly asks {name}: which legend will *you* become?"
+        ),
+        "cover_image": "https://images.pexels.com/photos/863988/pexels-photo-863988.jpeg?auto=compress&cs=tinysrgb&w=800",
+        "total_pages": 17,
         "pages": [
             {
                 "page_number": 1,
-                "profession_title": "Once Upon a Time",
+                "profession_title": "A Book of Legends, for You",
                 "text_template": (
-                    "Long ago, in a peaceful kingdom surrounded by mountains and meadows, "
-                    "there lived a kind child named {name}. {He_She} had two jealous sisters and a cruel stepmother "
-                    "who made {him_her} do all the chores while they wore fine dresses and laughed."
+                    "Hello, {name}! Every legend you'll meet in this book started as a child just like you. They tripped, they fell, they doubted themselves — and kept going. Their stories are not just about winning; they are about the moments that made them keep showing up. As you read, ask yourself: which spark inside *me* could one day light up the world like theirs?"
                 ),
                 "image_prompt_template": (
-                    "Cartoon animated children's storybook illustration in vibrant cel-shaded style: a {age}-year-old {gender} child named {name} in simple "
-                    "patched clothes, carrying a heavy wicker basket through a grand stone castle kitchen. Two elaborately "
-                    "dressed sisters point and snicker while a stern stepmother watches from a throne-like chair. Warm "
-                    "candlelight, cobblestone floor, copper pots hanging on walls. Bold outlines, bright saturated colors, smooth shading, animated movie quality, no text."
+                    "Children's storybook illustration in vibrant cel-shaded style: a warm cozy bedroom with a child-aged dreamer looking out a window at a starry night sky. Soft glowing silhouettes of a tennis racket, a cricket bat, a football, a chess king, a javelin, a swim cap, a racing helmet and a basketball float gently like constellations among the stars. Warm bedside lamp glow, blanket on lap, soft pastel night palette. Bold outlines, bright saturated colors, animated movie quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
                 ),
             },
             {
                 "page_number": 2,
-                "profession_title": "A Heart of Kindness",
+                "profession_title": "The Boy from Mumbai Who Loved a Heavy Bat",
                 "text_template": (
-                    "Even though {name}'s sisters were unkind, {he_she} stayed gentle and brave. "
-                    "Whenever they snapped at {him_her}, {name} took a deep breath and remembered that kindness "
-                    "is a special kind of magic no one can take away."
+                    "In a small flat in Mumbai, a curly-haired boy named Sachin Tendulkar was so restless his older brother Ajit took him to coach Ramakant Achrekar. Sachin was eleven, his bat heavier than his arms could lift. Every morning before school, Achrekar made him bat for hours. The coach placed a one-rupee coin on the stumps — whoever got Sachin out kept it. Sachin still has those coins. He went on to bat for India at sixteen, score 100 international centuries, and make a billion people stand still each time he walked to the crease. {name}, the smallest daily habit is where greatness quietly hides."
                 ),
                 "image_prompt_template": (
-                    "Cartoon animated children's storybook illustration in vibrant cel-shaded style: a {age}-year-old {gender} child named {name} sitting "
-                    "on a stone castle windowsill, smiling softly while feeding colorful songbirds from {name}'s open palm. "
-                    "Morning sunlight streams through the arched window. Two sisters frown in the shadowy background. "
-                    "Bold outlines, bright saturated colors, smooth shading, animated movie quality, no text."
+                    "Children's storybook illustration in vibrant cel-shaded style: an 11-year-old curly-haired Indian boy in white cricket clothes standing in a sunlit Mumbai maidan, gripping a wooden cricket bat almost as tall as him. A wise older coach in a white cap watches from behind the stumps where a single one-rupee coin glints in the sun. Other young cricketers practice in the background. Warm golden morning light, bold outlines, bright saturated colors, animated movie quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
                 ),
             },
             {
                 "page_number": 3,
-                "profession_title": "Into the Forest",
+                "profession_title": "The Kid Who Came Back to Bat",
                 "text_template": (
-                    "One day, the stepmother grew so jealous of {name}'s goodness that she ordered {him_her} "
-                    "to leave the castle. With tears in {his_her} eyes but courage in {his_her} heart, "
-                    "{name} walked into the deep green forest, not knowing what would happen next."
+                    "Virat Kohli was a fierce 18-year-old playing for Delhi in a Ranji Trophy match when his father passed away in the middle of the night. The next morning, with red eyes and an aching heart, Virat asked his coach for one favour: please let him bat. He walked out, faced over a hundred balls, scored 90 runs, and only then went home for the funeral. {name}, that day Virat did not choose cricket over sadness — he chose discipline as a way to honour someone he loved. That same fire is why he later led India and broke records the world thought were untouchable."
                 ),
                 "image_prompt_template": (
-                    "Cartoon animated children's storybook illustration in vibrant cel-shaded style: a {age}-year-old {gender} child named {name} walking "
-                    "along a winding path into a tall, ancient forest. Golden rays of sunlight filter through the canopy. "
-                    "A rabbit peeks from behind ferns, a bluebird perches on a branch overhead. The mood shifts from "
-                    "sadness to quiet hope. Rich greens, dappled light, bold outlines, bright saturated colors, smooth shading, animated movie quality, no text."
+                    "Children's storybook illustration in vibrant cel-shaded style: a young 18-year-old Indian cricketer in white kit walking out of a stadium dressing room with quiet determination, bat tucked under his arm. Early morning light, a stadium half full, a teammate's reassuring hand on his shoulder. Subtle emotion, dignified mood, bold outlines, bright but slightly muted colors, animated movie quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
                 ),
             },
             {
                 "page_number": 4,
-                "profession_title": "The Little Cottage",
+                "profession_title": "The Boy Who Couldn't Stop Tinkering",
                 "text_template": (
-                    "After a long walk, {name} found a tiny, cozy cottage hidden among the trees. "
-                    "Inside, everything was messy and dusty. {He_She} decided to clean and tidy the little home, "
-                    "humming softly to feel less afraid."
+                    "In a backyard in Sydney, a thin Australian boy named Steve Smith would bowl leg-spin to his dad for hours, then bat against him, then write down everything in a notebook. He was told he batted weirdly — twitchy, fidgety, all the wrong angles. Selectors picked him as a spinner who could bat a little. But Steve studied his own technique like a scientist. He turned what coaches called 'wrong' into the most run-hungry batting style of his generation. {name}, sometimes your strangest habit is your secret weapon — do not iron it out, study it."
                 ),
                 "image_prompt_template": (
-                    "Cartoon animated children's storybook illustration in vibrant cel-shaded style: a charming thatched-roof cottage nestled among tall "
-                    "forest trees with a mushroom-lined path leading to the door. Inside, a {age}-year-old {gender} child "
-                    "named {name} sweeps the wooden floor while sunlight pours through small round windows. Seven tiny "
-                    "chairs, seven tiny beds, cozy hearth. Bold outlines, bright saturated colors, smooth shading, animated movie quality, no text."
+                    "Children's storybook illustration in vibrant cel-shaded style: a thin teenage Australian boy with sandy hair in his suburban Sydney backyard at dusk, batting against an invisible bowler with a famously twitchy stance. A weathered notebook open on the grass beside him. Warm porch light, scribbled chalk markings on a brick wall behind him for stumps. Bold outlines, bright saturated colors, animated movie quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
                 ),
             },
             {
                 "page_number": 5,
-                "profession_title": "New Friends",
+                "profession_title": "The Smallest Boy in Rosario",
                 "text_template": (
-                    "When the owners of the cottage came home -- seven kind dwarfs -- they were surprised to find their house "
-                    "sparkling clean. They listened to {name}'s story and promised, 'You can stay with us. "
-                    "We will be your family and keep you safe.'"
+                    "In the dusty streets of Rosario, Argentina, a tiny boy named Leo Messi played football with a worn rubber ball almost as big as his head. When he was eleven, doctors said his body was not growing and he needed daily hormone injections his family could not afford. A club in Spain, Barcelona, saw a video of him dribbling and offered to pay for the treatment if his family moved there. Every day for years, Leo gave himself those injections in his own leg before practice. {name}, the hardest things you do quietly are often what shape the brightest part of you."
                 ),
                 "image_prompt_template": (
-                    "Cartoon animated children's storybook illustration in vibrant cel-shaded style: a {age}-year-old {gender} child named {name} sitting at "
-                    "a small round wooden table surrounded by seven cheerful cartoon dwarfs of different heights and personalities, "
-                    "all sharing a warm meal. Cozy candlelight, wooden beams overhead, a crackling fireplace. Everyone smiles "
-                    "kindly at {name}. Bold outlines, bright saturated colors, smooth shading, animated movie quality, no text."
+                    "Children's storybook illustration in vibrant cel-shaded style: a small 10-year-old Argentine boy with brown hair dribbling a worn rubber football down a dusty Rosario street at sunset, head down, left foot glued to the ball. Older kids run after him but cannot catch him. Cobbled street, soft warm orange sky, distant houses. Bold outlines, bright saturated colors, animated movie quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
                 ),
             },
             {
                 "page_number": 6,
-                "profession_title": "The Poisoned Gift",
+                "profession_title": "The Boy from Madeira Who Never Sat Down",
                 "text_template": (
-                    "Far away, the stepmother learned that {name} was still alive and happy. Disguised as an old woman, "
-                    "she brought a beautiful red apple to the cottage. Trusting others, {name} took a bite -- and everything "
-                    "suddenly turned dark."
+                    "On the small Portuguese island of Madeira, a skinny boy named Cristiano Ronaldo would sneak out of his bedroom at night with a football, kicking it against walls until dawn. His family had very little money — four of them shared one room. At twelve he flew alone to Lisbon to join a football academy. He missed home so much he cried into his pillow every night. But every single morning, he was the first on the training pitch and the last to leave. {name}, talent is the spark, but showing up every single day is the fire."
                 ),
                 "image_prompt_template": (
-                    "Cartoon animated children's storybook illustration in vibrant cel-shaded style: a cloaked old woman with hidden eyes offers a single "
-                    "gleaming red apple to a {age}-year-old {gender} child named {name} at the cottage door. The apple "
-                    "glows ominously. Shadows creep at the edges while the cottage remains warm. Dramatic lighting, "
-                    "bold outlines, rich deep colors, smooth shading, animated movie quality, no text."
+                    "Children's storybook illustration in vibrant cel-shaded style: a thin 12-year-old Portuguese boy in old football boots kicking a ball against a stone wall under moonlight on a quiet Madeira street. Stars above, soft lamp glow, the boy's face fierce with focus, sweat on his brow. A small bedroom window open in the background. Bold outlines, bright saturated colors, animated movie quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
                 ),
             },
             {
                 "page_number": 7,
-                "profession_title": "Asleep in Glass",
+                "profession_title": "The Boy Who Smashed His Racket",
                 "text_template": (
-                    "The dwarfs were heartbroken. They gently laid {name} in a clear glass coffin on a soft hill, "
-                    "surrounded by flowers. Though {name} seemed asleep, {his_her} gentle face still looked full of "
-                    "hope and kindness."
+                    "As a young teenager in Switzerland, Roger Federer had a serious problem: he kept losing his temper. He would throw his racket, scream at himself, and storm off the court even after winning. His coaches almost gave up on him. One day, sitting alone after another tantrum, Roger decided he was tired of being his own enemy. He learned to breathe between points, to smile even when losing, to bow slightly to the crowd. {name}, the biggest opponent in any game is rarely the person on the other side of the net — it is usually yourself."
                 ),
                 "image_prompt_template": (
-                    "Cartoon animated children's storybook illustration in vibrant cel-shaded style: a crystal glass coffin resting on a flower-covered "
-                    "hilltop under a canopy of blossoming trees. A {age}-year-old {gender} child named {name} lies "
-                    "peacefully inside with folded hands. Seven cartoon dwarfs weep nearby while forest animals -- deer, rabbits, "
-                    "birds -- gather in a circle. Tender, bittersweet mood, bold outlines, bright colors, smooth shading, animated movie quality, no text."
+                    "Children's storybook illustration in vibrant cel-shaded style: a 12-year-old Swiss boy with curly brown hair sitting alone on a clay tennis court, a tennis racket on his lap, eyes closed in deep thought. Soft late afternoon light, empty stadium seats, a single yellow tennis ball at his feet. Calm and reflective mood. Bold outlines, bright soft colors, animated movie quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
                 ),
             },
             {
                 "page_number": 8,
-                "profession_title": "The Prince Arrives",
+                "profession_title": "The Sisters from Compton",
                 "text_template": (
-                    "One day, a kind prince passed through the forest and saw {name}. He listened to the dwarfs and felt "
-                    "deep respect for {name}'s brave heart. As the coffin was moved, the apple piece slipped from "
-                    "{name}'s throat, and {he_she} woke up with a gentle gasp."
+                    "In Compton, California, a father named Richard taught his two daughters — Venus and Serena — to play tennis on cracked public courts, sweeping broken glass off the lines before practice. They were the only Black children there, and people stared. Richard told them: 'You do not play tennis to belong — you play because you love it.' Serena trained six days a week from age four. She would grow up to win 23 Grand Slam titles, more than any other player in the open era. {name}, where you start does not decide where you finish."
                 ),
                 "image_prompt_template": (
-                    "Cartoon animated children's storybook illustration in vibrant cel-shaded style: a gentle young prince on a white horse arriving at the "
-                    "glass coffin on the hilltop. A {age}-year-old {gender} child named {name} begins to stir awake, "
-                    "eyes fluttering open. Cartoon dwarfs look up in astonished hope, golden sunlight breaking through clouds. "
-                    "Magical moment, bold outlines, bright hopeful colors, smooth shading, animated movie quality, no text."
+                    "Children's storybook illustration in vibrant cel-shaded style: two young African-American sisters around six and seven years old in matching white tennis outfits practicing on a cracked outdoor public court in Compton. A tall father in a tracksuit feeds them tennis balls from a basket. Chain-link fence, palm trees, warm late afternoon sun. Bold outlines, bright saturated colors, animated movie quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
                 ),
             },
             {
                 "page_number": 9,
-                "profession_title": "A New Beginning",
+                "profession_title": "The Karting Kid Who Wouldn't Take No",
                 "text_template": (
-                    "{name} thanked the dwarfs for their love and courage. The prince said, 'I admire your kindness and strength, "
-                    "{name}. Would you like to come to my castle, where people will treat you the way you deserve?'"
+                    "In Stevenage, England, an 8-year-old Lewis Hamilton was already winning go-kart championships. His dad worked four jobs at once to pay for the kart parts. At ten, Lewis walked up to McLaren's team boss at an awards ceremony and shook his hand: 'One day, sir, I want to race for you.' He was told to come back when he was older. Nine years later, he signed for McLaren. He became the first Black driver in Formula 1 and tied the record for most championships ever — seven. {name}, when you say what you want out loud to the right people, the world starts listening differently."
                 ),
                 "image_prompt_template": (
-                    "Cartoon animated children's storybook illustration in vibrant cel-shaded style: a {age}-year-old {gender} child named {name} standing "
-                    "between the kind prince and the seven cartoon dwarfs, holding a dwarf's hand in farewell. A winding forest "
-                    "path leads to a sunlit white castle on a distant hill. Bold outlines, bright saturated colors, warm golden hour lighting, "
-                    "smooth shading, animated movie quality, no text."
+                    "Children's storybook illustration in vibrant cel-shaded style: a 10-year-old Black British boy in a yellow racing suit holding a small trophy, shaking hands with a smiling team principal in a smart suit at an indoor karting awards event. Other kid racers and parents in the background applauding gently. Warm fluorescent lights, racing posters on the walls. Bold outlines, bright saturated colors, animated movie quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
                 ),
             },
             {
                 "page_number": 10,
-                "profession_title": "Happily Ever After",
+                "profession_title": "The Boy with a Famous Surname",
                 "text_template": (
-                    "{name} went to the prince's castle, where {he_she} was finally treated with love and respect. "
-                    "{His_Her} unkind stepmother and sisters had to live with their choices, while {name}'s kindness shone "
-                    "brighter than ever. From that day on, {name} knew that being gentle and brave could change {his_her} story."
+                    "Carlos Sainz Jr.'s father was already a two-time World Rally Champion — one of the most famous racers Spain had ever produced. Imagine starting a sport where everyone whispers, 'Yes, but his dad…' Carlos refused to coast on the surname. He moved to Italy alone at sixteen to race karts, lived in a small apartment, learned three languages, and beat drivers who had been racing on faster karts than him for years. He fought his way into Formula 1 on his own terms. {name}, no shadow is so big that you cannot grow taller than it — but you have to be willing to grow."
                 ),
                 "image_prompt_template": (
-                    "Cartoon animated children's storybook illustration in vibrant cel-shaded style: a grand castle courtyard celebration with banners and "
-                    "flowers. A {age}-year-old {gender} child named {name} in beautiful royal clothes stands at the center, "
-                    "surrounded by the prince, the seven cartoon dwarfs visiting, and new friends all smiling. Bright golden "
-                    "sunlight, joyful atmosphere, bold outlines, bright saturated colors, smooth shading, animated movie quality happily-ever-after ending, no text."
+                    "Children's storybook illustration in vibrant cel-shaded style: a 16-year-old Spanish boy in a karting suit standing alone next to his go-kart in a small Italian paddock at sunrise. Light fog, scattered toolboxes, a determined look on his face. A photograph of his famous rally-champion father pinned to the toolbox. Bold outlines, bright saturated colors, animated movie quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
+                ),
+            },
+            {
+                "page_number": 11,
+                "profession_title": "The Boy Who Drew at the Grandmaster",
+                "text_template": (
+                    "In Norway, a five-year-old boy named Magnus Carlsen could already solve jigsaw puzzles with five hundred pieces. By eight he started chess. By thirteen he was a Grandmaster — the third youngest in history. At a tournament in Iceland, 13-year-old Magnus drew against the legendary Garry Kasparov, the world's greatest player. People say Kasparov could not believe what he was seeing. Magnus would go on to become World Champion five times. {name}, your brain is a muscle. Most of being a genius is just being deeply curious for longer than anyone else thought to be."
+                ),
+                "image_prompt_template": (
+                    "Children's storybook illustration in vibrant cel-shaded style: a focused 13-year-old Norwegian boy with messy blond hair sitting across a chess board from a much older, world-famous chess champion. A large chess clock between them, tournament hall in soft focus behind. The boy's hand hovers thoughtfully over a knight. Bold outlines, bright but soft colors, animated movie quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
+                ),
+            },
+            {
+                "page_number": 12,
+                "profession_title": "The Chennai Boy Who Played the Best",
+                "text_template": (
+                    "In Chennai, India, a small boy named Praggnanandhaa learned chess at age three from his older sister Vaishali, who had taken up the game because their parents wanted to limit her TV time. At ten he became the youngest International Master in history. At twelve, the youngest Grandmaster ever. At eighteen he beat Magnus Carlsen — the World Champion — three times in the same year. His mother Nagalakshmi travelled with him to every tournament, cooking his food and packing his clothes. {name}, behind every champion you'll meet, there is someone quietly making the small things possible."
+                ),
+                "image_prompt_template": (
+                    "Children's storybook illustration in vibrant cel-shaded style: a small 10-year-old Indian boy in a tournament shirt staring intently at a chessboard. His mother sits a few rows back in the audience in a sari, smiling proudly. Other Grandmasters at adjacent boards. Soft hall lighting, warm Chennai afternoon glow through tall windows. Bold outlines, bright saturated colors, animated movie quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
+                ),
+            },
+            {
+                "page_number": 13,
+                "profession_title": "The Jamaican Boy Who Ran Everywhere",
+                "text_template": (
+                    "In a tiny town in Jamaica called Sherwood Content, a tall, lanky boy named Usain Bolt was always running — to the shop for his mother, between cricket wickets in the schoolyard, anywhere his long legs could carry him. His childhood dream was actually cricket, but a coach noticed him sprinting and said, 'Boy, you are not a cricketer, you are a sprinter.' At fifteen, Bolt won his first World Junior Gold. He would later run 100 metres in 9.58 seconds — the fastest human ever timed. {name}, sometimes the thing you do without thinking is the very thing the world needs to see."
+                ),
+                "image_prompt_template": (
+                    "Children's storybook illustration in vibrant cel-shaded style: a tall, lanky 12-year-old Jamaican boy sprinting barefoot through a sun-drenched grassy field toward a small village shop, laughing freely. A few other village kids run far behind, cannot keep up. Bright blue sky, palm trees, vibrant Caribbean colors. Bold outlines, bright saturated colors, animated movie quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
+                ),
+            },
+            {
+                "page_number": 14,
+                "profession_title": "The Boy from Khandra Who Threw His Heart",
+                "text_template": (
+                    "In a small village called Khandra in Haryana, India, a slightly overweight 11-year-old boy named Neeraj Chopra was sent by his family to a local stadium to lose weight by jogging. While there, he saw older boys throwing a javelin. He picked one up. It felt right. He had no proper shoes, no proper coach, no proper grounds — just a long stick and a stubborn dream. Years later, at the Tokyo Olympics, Neeraj threw a javelin 87.58 metres and won India its first ever Olympic Athletics gold. {name}, the path nobody else is walking is often the one waiting for you."
+                ),
+                "image_prompt_template": (
+                    "Children's storybook illustration in vibrant cel-shaded style: an 11-year-old Indian boy in a t-shirt and shorts at a dusty village stadium in Haryana, picking up a long javelin for the first time. Older athletes practice in the background. Late afternoon sun, golden dust haze, a small audience of curious children watching. Bold outlines, bright saturated colors, animated movie quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
+                ),
+            },
+            {
+                "page_number": 15,
+                "profession_title": "The Boy They Said Couldn't Sit Still",
+                "text_template": (
+                    "In Baltimore, USA, a hyperactive boy named Michael Phelps was so restless in class his teacher told his mother, 'Your son will never be able to focus on anything.' His mother put him in swimming. At first he was scared to put his face under water. So a coach taught him to float on his back. By fifteen, Michael was at the Olympics. By twenty-seven, he had won 23 Olympic gold medals — more than any human in history. {name}, what looks like a weakness in one room is often a superpower in another. You just have to find the right pool."
+                ),
+                "image_prompt_template": (
+                    "Children's storybook illustration in vibrant cel-shaded style: a 10-year-old American boy floating on his back in a swimming pool, arms outstretched, eyes wide with wonder at the ceiling. A patient coach stands at the pool's edge, smiling. Soft turquoise water, gentle ceiling lights reflecting on the surface. Bold outlines, bright saturated colors, animated movie quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
+                ),
+            },
+            {
+                "page_number": 16,
+                "profession_title": "The Boy Who Got Cut From the Team",
+                "text_template": (
+                    "As a 15-year-old in North Carolina, USA, Michael Jordan tried out for his high school's varsity basketball team — and was cut. His name was not on the list. He went home, locked himself in his room, and cried. Then he decided to use the pain. He practised harder than anyone, sometimes alone in the dark in the school gym. The next year, he made the team. He would later become the player most people on Earth still call the greatest basketball player of all time. {name}, the day someone tells you no can become the day you start saying yes — to yourself."
+                ),
+                "image_prompt_template": (
+                    "Children's storybook illustration in vibrant cel-shaded style: a 15-year-old African-American boy in a school gym, alone, practising a layup as the sun sets through high windows. Empty bleachers, a single basketball hoop, a clipboard with a team list on the floor without his name on it. Bold outlines, bright but moody colors, animated movie quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
+                ),
+            },
+            {
+                "page_number": 17,
+                "profession_title": "And Now… It's Your Turn, {name}",
+                "text_template": (
+                    "Did you notice something, {name}? Every legend in this book started as a child. Tiny. Doubted. Sometimes ignored. None of them knew yet that they would change the world. They just kept showing up, kept practising, kept caring — even on the days nobody was watching. Somewhere right now, a future legend is reading these very words. Maybe that legend is you. {name}, the world is waiting for the story only you can write. Start today."
+                ),
+                "image_prompt_template": (
+                    "Children's storybook illustration in vibrant cel-shaded style: a young child silhouetted at sunrise on a hill, arms wide open, looking toward a horizon filled with soft glowing silhouettes — a tennis racket, a cricket bat, a football, a chess king, a javelin, a swim cap, a basketball, a racing helmet — all rising in a warm halo of light. Hopeful, dreamy, cinematic mood. Bold outlines, bright saturated colors, golden hour palette, animated movie quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
                 ),
             },
         ],
     },
     {
-        "id": "a3333333-3333-3333-3333-333333333333",
-        "name": "Cricket Champion - Mastering Every Shot",
-        "description": "A coaching-style book where {name} learns 10 classic cricket shots with clear posture and body-position tips.",
-        "cover_image": "https://images.pexels.com/photos/3718433/pexels-photo-3718433.jpeg?auto=compress&cs=tinysrgb&w=800",
+        "id": "b2222222-2222-2222-2222-222222222222",
+        "name": "Peppa Says Goodbye to Suzy",
+        "description": (
+            "Peppa's best friend Suzy is moving far away. With help from {name}, Peppa learns that saying goodbye doesn't have to mean the end of a friendship."
+        ),
+        "cover_image": "https://images.pexels.com/photos/1648387/pexels-photo-1648387.jpeg?auto=compress&cs=tinysrgb&w=800",
         "total_pages": 10,
         "pages": [
             {
                 "page_number": 1,
-                "profession_title": "Forward Defensive",
+                "profession_title": "A Surprise at Playgroup",
                 "text_template": (
-                    "Today, {name} is learning the forward defensive shot. {He_She} stands with feet shoulder-width apart, "
-                    "eyes locked on the ball, front foot stepping forward. The bat comes down straight, close to the pad, "
-                    "blocking the ball safely under {his_her} steady gaze."
+                    "It was a sunny morning at Peppa's playgroup. Peppa and her best friend Suzy Sheep were giggling on the swings when Suzy suddenly went quiet. 'Peppa,' she said, 'Mummy got a new job. We are moving to another country next week.' Peppa stopped swinging. {name}, Peppa's new friend, gave her a worried look."
                 ),
                 "image_prompt_template": (
-                    "Detailed children's book illustration: a {age}-year-old {gender} child named {name} in crisp white "
-                    "cricket gear and blue helmet, executing a textbook forward defensive shot on a sunlit cricket ground. "
-                    "Front foot planted forward, bat perfectly straight next to the front pad, head still and eyes watching "
-                    "the ball. Green pitch, white crease lines, clear blue sky. Clean coaching-diagram style, no text."
+                    "Flat 2D cartoon storybook illustration in the soft pastel Peppa Pig style: thick white outlines, simple geometric shapes, gentle pastel palette, playful expressions, child-friendly composition, no text, no logos. Peppa Pig and Suzy Sheep sitting side by side on a wooden playgroup swing under a big oak tree, Suzy looking serious, Peppa looking shocked. Sunny morning, pastel blue sky. If a child reference photo is provided, also draw a friendly child character matching the reference face (skin tone, hair, facial features stylised into the same flat cartoon palette) standing alongside the main scene, doing what the others are doing in the same pose, expression joyful. If no reference photo is provided, draw the scene without that extra child."
                 ),
             },
             {
                 "page_number": 2,
-                "profession_title": "Straight Drive",
+                "profession_title": "Peppa is Very Sad",
                 "text_template": (
-                    "Next, {name} practices the straight drive. {He_She} steps forward with the front foot, keeps {his_her} head still, "
-                    "and swings the bat straight down the line of the ball, sending it smoothly back past the bowler."
+                    "At home, Peppa flopped onto the sofa. 'Mummy, Suzy is going away forever!' Mummy Pig hugged her gently. 'Not forever, Peppa. Far away places are not as far as they feel.' But Peppa still had a tiny tear rolling down her snout."
                 ),
                 "image_prompt_template": (
-                    "Detailed children's book illustration: a {age}-year-old {gender} child named {name} in cricket whites "
-                    "and helmet, executing a beautiful straight drive. Front knee bent, bat following through in a full arc "
-                    "toward the sightscreen, head perfectly over the ball. The ball races along the green pitch toward the "
-                    "boundary. Sunny cricket ground, clear coaching illustration, no text."
+                    "Flat 2D cartoon storybook illustration in the soft pastel Peppa Pig style: thick white outlines, simple geometric shapes, gentle pastel palette, playful expressions, child-friendly composition, no text, no logos. Mummy Pig sitting on a pink sofa hugging a tearful Peppa Pig in a cosy living room. Daddy Pig peeks in from the kitchen with a sympathetic smile. Warm afternoon light through the window. If a child reference photo is provided, also draw a friendly child character matching the reference face (skin tone, hair, facial features stylised into the same flat cartoon palette) standing alongside the main scene, doing what the others are doing in the same pose, expression joyful. If no reference photo is provided, draw the scene without that extra child."
                 ),
             },
             {
                 "page_number": 3,
-                "profession_title": "Cover Drive",
+                "profession_title": "{name} Has An Idea",
                 "text_template": (
-                    "For the cover drive, {name} leans into the shot. {He_She} steps toward the off side with a bent front knee "
-                    "and drives the ball through the covers with a smooth arc, elbows high and head close to the line of the ball."
+                    "The next day at playgroup, {name} tapped Peppa on the shoulder. 'Peppa, why don't we throw Suzy a HUGE goodbye party? With cake! And presents! And jumping in muddy puddles!' Peppa's eyes lit up. 'That is the best idea ever, {name}!'"
                 ),
                 "image_prompt_template": (
-                    "Detailed children's book illustration: a {age}-year-old {gender} child named {name} playing an elegant "
-                    "cover drive, front foot reaching toward off side, bat sweeping through in a graceful high arc. The ball "
-                    "flies through the cover region between fielders. Beautiful side-on stance, arms extended. Lush green "
-                    "cricket field, classic coaching pose, no text."
+                    "Flat 2D cartoon storybook illustration in the soft pastel Peppa Pig style: thick white outlines, simple geometric shapes, gentle pastel palette, playful expressions, child-friendly composition, no text, no logos. A bright playgroup classroom with Peppa Pig hugging her excited friend with both arms, both characters bouncing happily. Drawings of balloons and cake taped to the wall behind them. Madame Gazelle smiles from the side. If a child reference photo is provided, also draw a friendly child character matching the reference face (skin tone, hair, facial features stylised into the same flat cartoon palette) standing alongside the main scene, doing what the others are doing in the same pose, expression joyful. If no reference photo is provided, draw the scene without that extra child."
                 ),
             },
             {
                 "page_number": 4,
-                "profession_title": "On Drive",
+                "profession_title": "Planning Together",
                 "text_template": (
-                    "The on drive helps {name} play toward the leg side. {He_She} steps slightly toward mid-on, keeps the bat close "
-                    "to the pad, and swings through the line of the ball with a straight face, guiding it past the bowler."
+                    "Peppa, {name}, and Mummy Pig sat at the kitchen table making a list. Cake — tick. Balloons — tick. Music — tick. Muddy puddles — TICK! 'We will give Suzy the biggest goodbye in the whole world,' said Peppa proudly."
                 ),
                 "image_prompt_template": (
-                    "Detailed children's book illustration: a {age}-year-old {gender} child named {name} in cricket gear "
-                    "playing a controlled on drive. Front foot angled toward mid-on, bat face straight, wrists firm. Ball "
-                    "glides past the bowler on the leg side. Balanced stance with weight transferred forward. Clean green "
-                    "pitch, coaching-style illustration, no text."
+                    "Flat 2D cartoon storybook illustration in the soft pastel Peppa Pig style: thick white outlines, simple geometric shapes, gentle pastel palette, playful expressions, child-friendly composition, no text, no logos. A cheerful kitchen scene with Peppa Pig and her child friend at a round wooden table covered in coloured pens, a long paper checklist, and a half-eaten biscuit. Mummy Pig pours juice in the background. If a child reference photo is provided, also draw a friendly child character matching the reference face (skin tone, hair, facial features stylised into the same flat cartoon palette) standing alongside the main scene, doing what the others are doing in the same pose, expression joyful. If no reference photo is provided, draw the scene without that extra child."
                 ),
             },
             {
                 "page_number": 5,
-                "profession_title": "Pull Shot",
+                "profession_title": "Friends Arrive",
                 "text_template": (
-                    "For the pull shot, {name} waits for a short ball. {He_She} swivels on the back foot, keeps eyes level, "
-                    "and swings the bat horizontally. The front shoulder turns and {name} rolls {his_her} wrists to keep the ball down."
+                    "On Saturday everyone came: Rebecca Rabbit, Danny Dog, Emily Elephant, Zoe Zebra, and little George Pig too. 'Surprise, Suzy!' they all shouted. Suzy gasped, then laughed, then nearly cried — all at the same time."
                 ),
                 "image_prompt_template": (
-                    "Detailed children's book illustration: a {age}-year-old {gender} child named {name} in cricket whites "
-                    "and helmet, executing a powerful pull shot. Body rotating on the back foot, bat swinging horizontally, "
-                    "front leg lifting slightly. The ball rockets toward mid-wicket. Dynamic action pose with motion energy. "
-                    "Sunny cricket ground, coaching-style illustration, no text."
+                    "Flat 2D cartoon storybook illustration in the soft pastel Peppa Pig style: thick white outlines, simple geometric shapes, gentle pastel palette, playful expressions, child-friendly composition, no text, no logos. A garden party full of Peppa Pig friends — Rebecca Rabbit, Danny Dog, Emily Elephant, Zoe Zebra, George Pig, Peppa Pig and Suzy Sheep — under colourful bunting and balloons. Sunny afternoon, pastel pink-and-blue sky. If a child reference photo is provided, also draw a friendly child character matching the reference face (skin tone, hair, facial features stylised into the same flat cartoon palette) standing alongside the main scene, doing what the others are doing in the same pose, expression joyful. If no reference photo is provided, draw the scene without that extra child."
                 ),
             },
             {
                 "page_number": 6,
-                "profession_title": "Cut Shot",
+                "profession_title": "Cake and Muddy Puddles",
                 "text_template": (
-                    "With the cut shot, {name} attacks a wide, short ball. {He_She} steps back and across, lets the ball come close, "
-                    "then slices it square through the off side with a firm, controlled bat, keeping {his_her} head still."
+                    "They ate cake. They sang loud, silly songs. And of course, every single piggy and friend jumped in the biggest muddy puddle of the year! 'SPLASH!' giggled Suzy. 'I will miss this so much.'"
                 ),
                 "image_prompt_template": (
-                    "Detailed children's book illustration: a {age}-year-old {gender} child named {name} executing a crisp "
-                    "square cut shot. Back foot planted across toward off stump, body opening slightly, bat slicing "
-                    "horizontally through the ball toward the point boundary. Head perfectly still. Cricket field with "
-                    "fielders in background, coaching-style illustration, no text."
+                    "Flat 2D cartoon storybook illustration in the soft pastel Peppa Pig style: thick white outlines, simple geometric shapes, gentle pastel palette, playful expressions, child-friendly composition, no text, no logos. All the Peppa Pig friends and a child friend mid-jump in a giant muddy puddle in the garden, mud splashing in every direction, all laughing wildly. Tiered birthday cake on a nearby table. If a child reference photo is provided, also draw a friendly child character matching the reference face (skin tone, hair, facial features stylised into the same flat cartoon palette) standing alongside the main scene, doing what the others are doing in the same pose, expression joyful. If no reference photo is provided, draw the scene without that extra child."
                 ),
             },
             {
                 "page_number": 7,
-                "profession_title": "Sweep Shot",
+                "profession_title": "A Special Gift",
                 "text_template": (
-                    "Against spin, {name} kneels for the sweep shot. {He_She} gets low on one knee, stretches the front leg toward "
-                    "the pitch of the ball, and sweeps the bat in a smooth arc, keeping {his_her} head over the ball."
+                    "Peppa pulled out a small box. Inside was a friendship bracelet with two halves — one for Suzy, one for Peppa. 'When you wear it, you'll know I'm thinking of you,' she said. Suzy hugged her so tightly Peppa squeaked."
                 ),
                 "image_prompt_template": (
-                    "Detailed children's book illustration: a {age}-year-old {gender} child named {name} in cricket whites "
-                    "playing a classic sweep shot against a spin bowler. Front knee down on the pitch, back leg folded, "
-                    "bat sweeping in a low arc in front of the body. Head leaning forward over the ball. Spinner visible "
-                    "in the background. Clean coaching-style illustration, no text."
+                    "Flat 2D cartoon storybook illustration in the soft pastel Peppa Pig style: thick white outlines, simple geometric shapes, gentle pastel palette, playful expressions, child-friendly composition, no text, no logos. Close-up of Peppa Pig giving Suzy Sheep a small wrapped gift with a yellow ribbon, both characters tearfully smiling. Soft warm sunset light in the garden behind them. If a child reference photo is provided, also draw a friendly child character matching the reference face (skin tone, hair, facial features stylised into the same flat cartoon palette) standing alongside the main scene, doing what the others are doing in the same pose, expression joyful. If no reference photo is provided, draw the scene without that extra child."
                 ),
             },
             {
                 "page_number": 8,
-                "profession_title": "Lofted Drive",
+                "profession_title": "Goodbye at the Airport",
                 "text_template": (
-                    "When it is safe to hit in the air, {name} uses the lofted drive. {He_She} steps forward with a strong base "
-                    "and swings the bat upward through the line, lifting the ball over the infield while still watching carefully."
+                    "On the day Suzy left, everyone went to the airport. Peppa, {name}, George and Mummy Pig waved until their arms ached. 'Goodbye, Suzy! Goodbye!' Suzy waved back through the big glass window until she was just a tiny dot."
                 ),
                 "image_prompt_template": (
-                    "Detailed children's book illustration: a {age}-year-old {gender} child named {name} playing a confident "
-                    "lofted drive. Front foot firmly planted, bat following through high above the shoulder, ball soaring "
-                    "over the infield toward the boundary. Stable lower body, eyes following the ball. Blue sky, green "
-                    "outfield, coaching-style illustration, no text."
+                    "Flat 2D cartoon storybook illustration in the soft pastel Peppa Pig style: thick white outlines, simple geometric shapes, gentle pastel palette, playful expressions, child-friendly composition, no text, no logos. A bright cartoon airport terminal with a huge window. Peppa Pig and a child friend wave goodbye as Suzy Sheep walks toward an airplane, looking back with a tiny smile. Other passengers in the background. If a child reference photo is provided, also draw a friendly child character matching the reference face (skin tone, hair, facial features stylised into the same flat cartoon palette) standing alongside the main scene, doing what the others are doing in the same pose, expression joyful. If no reference photo is provided, draw the scene without that extra child."
                 ),
             },
             {
                 "page_number": 9,
-                "profession_title": "Back-Foot Defence",
+                "profession_title": "A Video Call",
                 "text_template": (
-                    "For the back-foot defence, {name} moves back and across toward off stump. {He_She} lets the ball bounce, "
-                    "then meets it with a straight bat close to the body, using soft hands to drop the ball near {his_her} feet."
+                    "A week later, the family computer rang DING-DING-DING. It was Suzy! 'Peppa! {name}! Look at my new bedroom!' She gave them a video tour. 'I miss you too, Suzy,' said Peppa. 'But I can SEE you. That helps a lot.'"
                 ),
                 "image_prompt_template": (
-                    "Detailed children's book illustration: a {age}-year-old {gender} child named {name} in cricket gear "
-                    "playing a solid back-foot defensive shot. Back foot planted on the crease line, bat straight and close "
-                    "to the pads, ball dropping gently near the feet. Composed posture, soft hands. Cricket pitch with "
-                    "stumps visible, coaching-style illustration, no text."
+                    "Flat 2D cartoon storybook illustration in the soft pastel Peppa Pig style: thick white outlines, simple geometric shapes, gentle pastel palette, playful expressions, child-friendly composition, no text, no logos. Peppa Pig and her child friend leaning close to a laptop screen on a wooden desk. On the screen, Suzy Sheep waves happily from a new bedroom. Cosy lamp light, evening scene. If a child reference photo is provided, also draw a friendly child character matching the reference face (skin tone, hair, facial features stylised into the same flat cartoon palette) standing alongside the main scene, doing what the others are doing in the same pose, expression joyful. If no reference photo is provided, draw the scene without that extra child."
                 ),
             },
             {
                 "page_number": 10,
-                "profession_title": "Late Cut",
+                "profession_title": "Best Friends, Always",
                 "text_template": (
-                    "Finally, {name} learns the late cut. {He_She} waits for the ball to arrive, then opens the bat face at the "
-                    "last moment, guiding it softly past the slips toward third man with gentle hands and precise timing."
+                    "Peppa snuggled into bed that night, her half of the bracelet around her wrist. {name} said, 'See, Peppa? Suzy didn't go away from your heart, just from your street.' Peppa smiled the biggest smile. 'Best friends forever — even across the world.'"
                 ),
                 "image_prompt_template": (
-                    "Detailed children's book illustration: a {age}-year-old {gender} child named {name} executing a delicate "
-                    "late cut shot. Bat angled with soft wrists, body slightly open, ball guided past the slip fielders "
-                    "toward third man. Wicket-keeper reaching behind, slips watching. Precise timing captured in a still "
-                    "moment. Cricket ground setting, coaching-style illustration, no text."
+                    "Flat 2D cartoon storybook illustration in the soft pastel Peppa Pig style: thick white outlines, simple geometric shapes, gentle pastel palette, playful expressions, child-friendly composition, no text, no logos. Peppa Pig in pyjamas tucked into a pink bed, her friendship bracelet on her wrist, looking out a window at a starry sky. A small framed photo of Suzy Sheep on the bedside table. Warm bedroom night light. If a child reference photo is provided, also draw a friendly child character matching the reference face (skin tone, hair, facial features stylised into the same flat cartoon palette) standing alongside the main scene, doing what the others are doing in the same pose, expression joyful. If no reference photo is provided, draw the scene without that extra child."
+                ),
+            },
+        ],
+    },
+    {
+        "id": "b3333333-3333-3333-3333-333333333333",
+        "name": "Peppa's Cousins Come to Visit",
+        "description": (
+            "Cousin Chloe and baby Alexander come over for a weekend full of games, spaghetti chaos and one very sleepy lullaby. {name} is right in the middle of all the fun."
+        ),
+        "cover_image": "https://images.pexels.com/photos/1620760/pexels-photo-1620760.jpeg?auto=compress&cs=tinysrgb&w=800",
+        "total_pages": 10,
+        "pages": [
+            {
+                "page_number": 1,
+                "profession_title": "Cousins are Coming!",
+                "text_template": (
+                    "'Peppa! George! Cousin Chloe and baby Alexander are coming today!' Mummy Pig called from the hall. Peppa squealed and ran in circles. {name}, who was already playing in the garden, came running too. 'Yay! Cousins!'"
+                ),
+                "image_prompt_template": (
+                    "Flat 2D cartoon storybook illustration in the soft pastel Peppa Pig style: thick white outlines, simple geometric shapes, gentle pastel palette, playful expressions, child-friendly composition, no text, no logos. Peppa Pig and George Pig hopping excitedly in the living room while a child friend runs in from the garden, all wearing big smiles. Mummy Pig stands by the front door. If a child reference photo is provided, also draw a friendly child character matching the reference face (skin tone, hair, facial features stylised into the same flat cartoon palette) standing alongside the main scene, doing what the others are doing in the same pose, expression joyful. If no reference photo is provided, draw the scene without that extra child."
+                ),
+            },
+            {
+                "page_number": 2,
+                "profession_title": "Knock, Knock!",
+                "text_template": (
+                    "DING DONG! At the door stood Uncle Pig, Aunt Pig, big Cousin Chloe and tiny baby Alexander in a little blue carrier. 'Hello, hello, hello!' shouted everyone at once. Daddy Pig laughed his Daddy-Pig laugh. 'Welcome, family!'"
+                ),
+                "image_prompt_template": (
+                    "Flat 2D cartoon storybook illustration in the soft pastel Peppa Pig style: thick white outlines, simple geometric shapes, gentle pastel palette, playful expressions, child-friendly composition, no text, no logos. Front door scene with Uncle Pig, Aunt Pig, Cousin Chloe Pig and baby Alexander Pig arriving with suitcases. Daddy Pig opening the door wide, Mummy Pig and Peppa behind him waving. Bright afternoon. If a child reference photo is provided, also draw a friendly child character matching the reference face (skin tone, hair, facial features stylised into the same flat cartoon palette) standing alongside the main scene, doing what the others are doing in the same pose, expression joyful. If no reference photo is provided, draw the scene without that extra child."
+                ),
+            },
+            {
+                "page_number": 3,
+                "profession_title": "Meet {name}",
+                "text_template": (
+                    "'Chloe, Alexander, meet my friend {name}!' said Peppa proudly. Chloe smiled and fist-bumped {name}. Baby Alexander stared, then said, 'Goo goo gaa gaa.' Everyone laughed. Peppa whispered, 'I think that means hello.'"
+                ),
+                "image_prompt_template": (
+                    "Flat 2D cartoon storybook illustration in the soft pastel Peppa Pig style: thick white outlines, simple geometric shapes, gentle pastel palette, playful expressions, child-friendly composition, no text, no logos. Inside the Pig living room: Cousin Chloe Pig fist-bumping a happy child friend, baby Alexander Pig in a high chair pointing curiously. Peppa Pig grins between them. Cosy sofa and family photos on the wall. If a child reference photo is provided, also draw a friendly child character matching the reference face (skin tone, hair, facial features stylised into the same flat cartoon palette) standing alongside the main scene, doing what the others are doing in the same pose, expression joyful. If no reference photo is provided, draw the scene without that extra child."
+                ),
+            },
+            {
+                "page_number": 4,
+                "profession_title": "Chloe's Cool Tablet",
+                "text_template": (
+                    "Chloe pulled out a sparkly tablet. 'Want to see my new puzzle game?' Peppa, {name} and George crowded round. 'Wow!' said George (which was his big word today). They took turns solving each level."
+                ),
+                "image_prompt_template": (
+                    "Flat 2D cartoon storybook illustration in the soft pastel Peppa Pig style: thick white outlines, simple geometric shapes, gentle pastel palette, playful expressions, child-friendly composition, no text, no logos. Four characters — Peppa Pig, George Pig, Cousin Chloe Pig and a child friend — sitting cross-legged on a rug, all leaning over a glowing tablet held by Chloe. Soft afternoon light. If a child reference photo is provided, also draw a friendly child character matching the reference face (skin tone, hair, facial features stylised into the same flat cartoon palette) standing alongside the main scene, doing what the others are doing in the same pose, expression joyful. If no reference photo is provided, draw the scene without that extra child."
+                ),
+            },
+            {
+                "page_number": 5,
+                "profession_title": "Spaghetti Disaster",
+                "text_template": (
+                    "At lunch, Mummy Pig made spaghetti. Baby Alexander gripped a fistful and went SPLAT! Sauce on the table, sauce on the wall, sauce on Daddy Pig's glasses. Everyone burst out laughing — even Alexander."
+                ),
+                "image_prompt_template": (
+                    "Flat 2D cartoon storybook illustration in the soft pastel Peppa Pig style: thick white outlines, simple geometric shapes, gentle pastel palette, playful expressions, child-friendly composition, no text, no logos. Chaotic but cheerful family lunch scene: baby Alexander Pig flinging spaghetti, sauce splatters on the wall and on Daddy Pig's glasses. Peppa, George, Chloe and a child friend all laughing around the dinner table. If a child reference photo is provided, also draw a friendly child character matching the reference face (skin tone, hair, facial features stylised into the same flat cartoon palette) standing alongside the main scene, doing what the others are doing in the same pose, expression joyful. If no reference photo is provided, draw the scene without that extra child."
+                ),
+            },
+            {
+                "page_number": 6,
+                "profession_title": "Hide and Seek",
+                "text_template": (
+                    "'Let's play hide and seek!' said Chloe. Peppa hid behind the curtains. {name} ducked under a pillow fort. George squeezed inside the toy box. Baby Alexander wobbled around with his hands over his eyes, giggling."
+                ),
+                "image_prompt_template": (
+                    "Flat 2D cartoon storybook illustration in the soft pastel Peppa Pig style: thick white outlines, simple geometric shapes, gentle pastel palette, playful expressions, child-friendly composition, no text, no logos. Pig family house mid hide-and-seek: Peppa Pig peeking from behind curtains, George Pig hiding in a toy chest, a child friend under a pillow fort, baby Alexander Pig in the middle of the room laughing. Mummy Pig watching from the kitchen. If a child reference photo is provided, also draw a friendly child character matching the reference face (skin tone, hair, facial features stylised into the same flat cartoon palette) standing alongside the main scene, doing what the others are doing in the same pose, expression joyful. If no reference photo is provided, draw the scene without that extra child."
+                ),
+            },
+            {
+                "page_number": 7,
+                "profession_title": "Uh Oh, Alexander Cries",
+                "text_template": (
+                    "Suddenly baby Alexander started to cry. 'Waaaaa!' Aunt Pig came running. 'He's just tired and missing his cot.' Peppa whispered to {name}, 'How do we help?' {name} said, 'Maybe a cuddle?'"
+                ),
+                "image_prompt_template": (
+                    "Flat 2D cartoon storybook illustration in the soft pastel Peppa Pig style: thick white outlines, simple geometric shapes, gentle pastel palette, playful expressions, child-friendly composition, no text, no logos. Aunt Pig holding baby Alexander Pig, who has tears on his cheeks. Peppa Pig and a child friend stand close by looking concerned and sympathetic. Soft lamp-lit evening living room. If a child reference photo is provided, also draw a friendly child character matching the reference face (skin tone, hair, facial features stylised into the same flat cartoon palette) standing alongside the main scene, doing what the others are doing in the same pose, expression joyful. If no reference photo is provided, draw the scene without that extra child."
+                ),
+            },
+            {
+                "page_number": 8,
+                "profession_title": "The Lullaby",
+                "text_template": (
+                    "Aunt Pig began to hum a slow, gentle song. Mummy Pig joined in. Then Peppa, then {name}, then even George (mostly humming). Alexander's eyes grew sleepy. Soon he was snoring tiny snores. Everyone smiled very, very quietly."
+                ),
+                "image_prompt_template": (
+                    "Flat 2D cartoon storybook illustration in the soft pastel Peppa Pig style: thick white outlines, simple geometric shapes, gentle pastel palette, playful expressions, child-friendly composition, no text, no logos. Peaceful family scene with Aunt Pig rocking baby Alexander Pig to sleep on the sofa. Mummy Pig, Peppa Pig, George Pig and a child friend stand around humming softly. Soft yellow lamp glow, dim cosy room. If a child reference photo is provided, also draw a friendly child character matching the reference face (skin tone, hair, facial features stylised into the same flat cartoon palette) standing alongside the main scene, doing what the others are doing in the same pose, expression joyful. If no reference photo is provided, draw the scene without that extra child."
+                ),
+            },
+            {
+                "page_number": 9,
+                "profession_title": "Bedtime Stories",
+                "text_template": (
+                    "Chloe stayed up with Peppa and {name}. Daddy Pig read them a story about a brave little pig who went on a big adventure. By the end, all three were yawning at the same time. 'Goodnight, cousins,' whispered Peppa."
+                ),
+                "image_prompt_template": (
+                    "Flat 2D cartoon storybook illustration in the soft pastel Peppa Pig style: thick white outlines, simple geometric shapes, gentle pastel palette, playful expressions, child-friendly composition, no text, no logos. Daddy Pig sitting on a bed in pyjamas reading a story book. Peppa Pig, Cousin Chloe Pig and a child friend cuddled up in pillows around him, all yawning. Night stars visible through the bedroom window. If a child reference photo is provided, also draw a friendly child character matching the reference face (skin tone, hair, facial features stylised into the same flat cartoon palette) standing alongside the main scene, doing what the others are doing in the same pose, expression joyful. If no reference photo is provided, draw the scene without that extra child."
+                ),
+            },
+            {
+                "page_number": 10,
+                "profession_title": "See You Soon!",
+                "text_template": (
+                    "The next morning the cousins packed up. 'Promise you'll come visit US next time?' said Chloe. Peppa and {name} nodded together. Baby Alexander waved a chubby hand. 'Goo goo gaa gaa,' he said again. Peppa smiled. 'I love that means goodbye.'"
+                ),
+                "image_prompt_template": (
+                    "Flat 2D cartoon storybook illustration in the soft pastel Peppa Pig style: thick white outlines, simple geometric shapes, gentle pastel palette, playful expressions, child-friendly composition, no text, no logos. Front garden of the Pig house in morning sun: Uncle Pig and Aunt Pig loading the car, Cousin Chloe Pig waving, baby Alexander Pig in his carrier blowing a kiss, Peppa Pig and a child friend waving from the doorstep. If a child reference photo is provided, also draw a friendly child character matching the reference face (skin tone, hair, facial features stylised into the same flat cartoon palette) standing alongside the main scene, doing what the others are doing in the same pose, expression joyful. If no reference photo is provided, draw the scene without that extra child."
+                ),
+            },
+        ],
+    },
+    {
+        "id": "b4444444-4444-4444-4444-444444444444",
+        "name": "Police Officers Visit Peppa's Playgroup",
+        "description": (
+            "Two friendly police officers visit playgroup and explain how they help people. {name} asks the bravest question of the day — and gets a paper police hat to take home."
+        ),
+        "cover_image": "https://images.pexels.com/photos/532001/pexels-photo-532001.jpeg?auto=compress&cs=tinysrgb&w=800",
+        "total_pages": 10,
+        "pages": [
+            {
+                "page_number": 1,
+                "profession_title": "A Special Visitor Today",
+                "text_template": (
+                    "It was Tuesday morning at playgroup. Madame Gazelle clapped her hooves. 'Children! Today we have very special guests visiting. Can you guess who?' Peppa, {name}, Rebecca Rabbit and the others looked at each other excitedly."
+                ),
+                "image_prompt_template": (
+                    "Flat 2D cartoon storybook illustration in the soft pastel Peppa Pig style: thick white outlines, simple geometric shapes, gentle pastel palette, playful expressions, child-friendly composition, no text, no logos. Bright playgroup classroom with Madame Gazelle the teacher (tall gazelle) at the front, hooves clapped. Children — Peppa Pig, Rebecca Rabbit, Danny Dog, Emily Elephant, Zoe Zebra and a child friend — sitting cross-legged on a rug looking intrigued. Colourful posters on the wall. If a child reference photo is provided, also draw a friendly child character matching the reference face (skin tone, hair, facial features stylised into the same flat cartoon palette) standing alongside the main scene, doing what the others are doing in the same pose, expression joyful. If no reference photo is provided, draw the scene without that extra child."
+                ),
+            },
+            {
+                "page_number": 2,
+                "profession_title": "Hello, Officers!",
+                "text_template": (
+                    "The door opened, and in walked Police Officer Squirrel and Police Officer Panda, smart in their uniforms. 'Hello, children!' they said with kind smiles. The classroom said back, in one big voice, 'HELLO, OFFICERS!'"
+                ),
+                "image_prompt_template": (
+                    "Flat 2D cartoon storybook illustration in the soft pastel Peppa Pig style: thick white outlines, simple geometric shapes, gentle pastel palette, playful expressions, child-friendly composition, no text, no logos. Police Officer Squirrel (a squirrel in a blue police uniform with badge) and Police Officer Panda (a panda in matching uniform) entering a playgroup classroom, both smiling. Children sitting on a rug waving back warmly. If a child reference photo is provided, also draw a friendly child character matching the reference face (skin tone, hair, facial features stylised into the same flat cartoon palette) standing alongside the main scene, doing what the others are doing in the same pose, expression joyful. If no reference photo is provided, draw the scene without that extra child."
+                ),
+            },
+            {
+                "page_number": 3,
+                "profession_title": "Look at the Uniform!",
+                "text_template": (
+                    "Officer Squirrel pointed to her badge. 'This shiny silver badge means we are trained to help people.' Officer Panda showed his radio: 'This lets us talk to other officers far away.' Everyone said, 'Wow!'"
+                ),
+                "image_prompt_template": (
+                    "Flat 2D cartoon storybook illustration in the soft pastel Peppa Pig style: thick white outlines, simple geometric shapes, gentle pastel palette, playful expressions, child-friendly composition, no text, no logos. Close-up of Police Officer Squirrel holding up her silver badge and Police Officer Panda holding up a black handheld radio. Children sitting in a half circle peering up in wonder. Bright classroom. If a child reference photo is provided, also draw a friendly child character matching the reference face (skin tone, hair, facial features stylised into the same flat cartoon palette) standing alongside the main scene, doing what the others are doing in the same pose, expression joyful. If no reference photo is provided, draw the scene without that extra child."
+                ),
+            },
+            {
+                "page_number": 4,
+                "profession_title": "{name}'s Brave Question",
+                "text_template": (
+                    "{name} raised a hand high. 'What does a police officer DO?' The officers smiled. Madame Gazelle smiled. Peppa beamed at {name} for being so brave. 'That,' said Officer Panda, 'is the best question of the day.'"
+                ),
+                "image_prompt_template": (
+                    "Flat 2D cartoon storybook illustration in the soft pastel Peppa Pig style: thick white outlines, simple geometric shapes, gentle pastel palette, playful expressions, child-friendly composition, no text, no logos. A child friend sitting on the playgroup rug with one hand raised confidently. Police Officer Panda and Police Officer Squirrel turn warmly toward the child. Peppa Pig nearby, eyes wide with pride. If a child reference photo is provided, also draw a friendly child character matching the reference face (skin tone, hair, facial features stylised into the same flat cartoon palette) standing alongside the main scene, doing what the others are doing in the same pose, expression joyful. If no reference photo is provided, draw the scene without that extra child."
+                ),
+            },
+            {
+                "page_number": 5,
+                "profession_title": "We Help People",
+                "text_template": (
+                    "'We help anyone who needs us,' said Officer Squirrel. 'If you ever feel lost, scared, or you've lost your mummy or daddy, you can ALWAYS find a police officer and we will help you get safe.' Peppa nodded very seriously."
+                ),
+                "image_prompt_template": (
+                    "Flat 2D cartoon storybook illustration in the soft pastel Peppa Pig style: thick white outlines, simple geometric shapes, gentle pastel palette, playful expressions, child-friendly composition, no text, no logos. Police Officer Squirrel gently kneeling to speak with the children at eye level, holding up two paws in a calming gesture. The children — Peppa Pig, a child friend, Rebecca Rabbit and others — look attentive and reassured. If a child reference photo is provided, also draw a friendly child character matching the reference face (skin tone, hair, facial features stylised into the same flat cartoon palette) standing alongside the main scene, doing what the others are doing in the same pose, expression joyful. If no reference photo is provided, draw the scene without that extra child."
+                ),
+            },
+            {
+                "page_number": 6,
+                "profession_title": "Outside to the Police Car",
+                "text_template": (
+                    "'Everyone follow us!' said Officer Panda. The class lined up in pairs and walked out to the playground. Parked there was a real police car, shiny and white, with blue lights on top. Everyone gasped, 'OOOOH!'"
+                ),
+                "image_prompt_template": (
+                    "Flat 2D cartoon storybook illustration in the soft pastel Peppa Pig style: thick white outlines, simple geometric shapes, gentle pastel palette, playful expressions, child-friendly composition, no text, no logos. A bright white police car with blue light bar parked on a playgroup driveway. A line of cartoon children — Peppa Pig, a child friend, Rebecca Rabbit, Danny Dog, Emily Elephant — walking out hand-in-hand with Madame Gazelle and the two officers, eyes wide with excitement. If a child reference photo is provided, also draw a friendly child character matching the reference face (skin tone, hair, facial features stylised into the same flat cartoon palette) standing alongside the main scene, doing what the others are doing in the same pose, expression joyful. If no reference photo is provided, draw the scene without that extra child."
+                ),
+            },
+            {
+                "page_number": 7,
+                "profession_title": "WHOOP WHOOP!",
+                "text_template": (
+                    "Officer Squirrel turned the siren on for just one second. WHOOP-WHOOP! Everyone covered their ears and burst out laughing. Peppa squealed, '{name}, that was the loudest thing I have ever heard!'"
+                ),
+                "image_prompt_template": (
+                    "Flat 2D cartoon storybook illustration in the soft pastel Peppa Pig style: thick white outlines, simple geometric shapes, gentle pastel palette, playful expressions, child-friendly composition, no text, no logos. Police car with the blue lights flashing and motion lines suggesting a quick siren burst. The children — Peppa Pig, a child friend, Rebecca Rabbit, Danny Dog, Emily Elephant, Zoe Zebra — covering their ears and giggling. Sunny day. If a child reference photo is provided, also draw a friendly child character matching the reference face (skin tone, hair, facial features stylised into the same flat cartoon palette) standing alongside the main scene, doing what the others are doing in the same pose, expression joyful. If no reference photo is provided, draw the scene without that extra child."
+                ),
+            },
+            {
+                "page_number": 8,
+                "profession_title": "Hats For Everyone",
+                "text_template": (
+                    "Back inside, the officers handed each child a paper police hat with a shiny badge sticker. Peppa wore hers proudly. {name} saluted. George stood very, very still and serious. Madame Gazelle laughed. 'You all look very official!'"
+                ),
+                "image_prompt_template": (
+                    "Flat 2D cartoon storybook illustration in the soft pastel Peppa Pig style: thick white outlines, simple geometric shapes, gentle pastel palette, playful expressions, child-friendly composition, no text, no logos. Playgroup classroom: each child wearing a paper police hat with sticker badge. Peppa Pig grinning, a child friend saluting, George Pig standing extra straight, Rebecca Rabbit, Danny Dog and Emily Elephant smiling. The two officers in the background looking pleased. If a child reference photo is provided, also draw a friendly child character matching the reference face (skin tone, hair, facial features stylised into the same flat cartoon palette) standing alongside the main scene, doing what the others are doing in the same pose, expression joyful. If no reference photo is provided, draw the scene without that extra child."
+                ),
+            },
+            {
+                "page_number": 9,
+                "profession_title": "Can I Be One Too?",
+                "text_template": (
+                    "Peppa raised her hoof. 'When I grow up, can I be a police officer?' Officer Squirrel smiled. 'If you are kind, honest, brave and never stop learning — absolutely yes.' Peppa looked at {name}. 'Then I will. And {name} too!'"
+                ),
+                "image_prompt_template": (
+                    "Flat 2D cartoon storybook illustration in the soft pastel Peppa Pig style: thick white outlines, simple geometric shapes, gentle pastel palette, playful expressions, child-friendly composition, no text, no logos. Peppa Pig standing confidently in her paper hat. Police Officer Squirrel kneels and gives her a warm nod. A child friend stands beside Peppa, looking inspired. Other children watch from the rug. If a child reference photo is provided, also draw a friendly child character matching the reference face (skin tone, hair, facial features stylised into the same flat cartoon palette) standing alongside the main scene, doing what the others are doing in the same pose, expression joyful. If no reference photo is provided, draw the scene without that extra child."
+                ),
+            },
+            {
+                "page_number": 10,
+                "profession_title": "Thank You, Officers!",
+                "text_template": (
+                    "When it was time to leave, the whole class shouted together, 'THANK YOU, OFFICERS!' The officers waved from their police car and drove away. Peppa whispered to {name}, 'Today was the best playgroup day in the whole world.'"
+                ),
+                "image_prompt_template": (
+                    "Flat 2D cartoon storybook illustration in the soft pastel Peppa Pig style: thick white outlines, simple geometric shapes, gentle pastel palette, playful expressions, child-friendly composition, no text, no logos. Police Officer Squirrel and Police Officer Panda waving from inside the police car as it drives down a sunny street. The class — Peppa Pig, a child friend, Rebecca Rabbit, Danny Dog, Emily Elephant, Zoe Zebra, George Pig and Madame Gazelle — waving from the playgroup gate, all wearing paper police hats. If a child reference photo is provided, also draw a friendly child character matching the reference face (skin tone, hair, facial features stylised into the same flat cartoon palette) standing alongside the main scene, doing what the others are doing in the same pose, expression joyful. If no reference photo is provided, draw the scene without that extra child."
                 ),
             },
         ],
@@ -2453,9 +2661,6 @@ def create_template_pdf(book_data: Dict, output_path_or_buffer):
     pages = book_data.get("pages", [])
     template_id = book_data.get("template_id", "")
 
-    # Check if this is the Cricket template
-    is_cricket_template = template_id == "a3333333-3333-3333-3333-333333333333"
-
     # Dedication page
     c.setFont("Helvetica-Bold", 28)
     c.drawCentredString(page_width / 2, page_height / 2 + 50, "This book belongs to")
@@ -2468,132 +2673,52 @@ def create_template_pdf(book_data: Dict, output_path_or_buffer):
         if img_pil is None:
             img_pil = Image.new("RGB", (512, 512), color=(220, 220, 220))
 
-        if is_cricket_template:
-            # Cricket template: separate pages for image and text
-
-            # PAGE 1: Full-page image
-            content_width = page_width * 0.95
-            content_height = page_height * 0.95
-            margin = page_width * 0.025
-
-            img_width, img_height = img_pil.size
-            aspect_ratio = img_width / img_height
-
-            if aspect_ratio > 1:
-                display_width = content_width
-                display_height = display_width / aspect_ratio
-                if display_height > content_height:
-                    display_height = content_height
-                    display_width = display_height * aspect_ratio
-            else:
-                display_height = content_height
-                display_width = display_height * aspect_ratio
-                if display_width > content_width:
-                    display_width = content_width
-                    display_height = display_width / aspect_ratio
-
-            image_x_offset = (page_width - display_width) / 2
-            image_y_offset = (page_height - display_height) / 2
-
-            img_io = io.BytesIO()
-            img_pil.save(img_io, format="PNG")
-            img_io.seek(0)
-            c.drawImage(ImageReader(img_io), image_x_offset, image_y_offset, width=display_width, height=display_height, preserveAspectRatio=True)
-            c.showPage()
-
-            # PAGE 2: Text with cricket-themed background
-            from reportlab.lib.colors import HexColor
-            bg_color = HexColor("#E8F5E9")
-            c.setFillColor(bg_color)
-            c.rect(0, 0, page_width, page_height, fill=True, stroke=False)
-
-            text = page.get("text", "")
-            text_width = page_width * 0.85
-            text_x_offset = (page_width - text_width) / 2
-
-            base_font_size = 22
-            min_font_size = 16
-            leading_multiplier = 1.5
-
-            text_style_cricket = ParagraphStyle(
-                "CricketText",
-                parent=styles["BodyText"],
-                fontSize=base_font_size,
-                textColor="black",
-                alignment=TA_CENTER,
-                leading=base_font_size * leading_multiplier,
-                spaceAfter=20,
-                spaceBefore=20,
-            )
-
-            para = Paragraph(text, text_style_cricket)
-            available_height = page_height * 0.8
-            para_width, para_height = para.wrap(text_width, available_height)
-
-            if para_height > available_height:
-                base_font_size = max(min_font_size, base_font_size * 0.85)
-                text_style_cricket = ParagraphStyle(
-                    "CricketText",
-                    parent=styles["BodyText"],
-                    fontSize=base_font_size,
-                    textColor="black",
-                    alignment=TA_CENTER,
-                    leading=base_font_size * leading_multiplier,
-                )
-                para = Paragraph(text, text_style_cricket)
-                para_width, para_height = para.wrap(text_width, available_height)
-
-            text_y = (page_height - para_height) / 2
-            para.drawOn(c, text_x_offset, text_y)
-            c.showPage()
-
-        else:
-            # Standard layout: image + text on same page
-            top_margin = page_height * 0.05
-            image_area_height = page_height * 0.85
-            text_area_height = page_height * 0.10
-            content_width = page_width - 40
-            image_y_start = page_height - top_margin - image_area_height
-            image_available_height = image_area_height
-            img_width, img_height = img_pil.size
-            aspect_ratio = img_width / img_height
-            if aspect_ratio > 1:
-                display_width = content_width
-                display_height = display_width / aspect_ratio
-                if display_height > image_available_height:
-                    display_height = image_available_height
-                    display_width = display_height * aspect_ratio
-            else:
+        # Standard layout: image + text on same page
+        top_margin = page_height * 0.05
+        image_area_height = page_height * 0.85
+        text_area_height = page_height * 0.10
+        content_width = page_width - 40
+        image_y_start = page_height - top_margin - image_area_height
+        image_available_height = image_area_height
+        img_width, img_height = img_pil.size
+        aspect_ratio = img_width / img_height
+        if aspect_ratio > 1:
+            display_width = content_width
+            display_height = display_width / aspect_ratio
+            if display_height > image_available_height:
                 display_height = image_available_height
                 display_width = display_height * aspect_ratio
-                if display_width > content_width:
-                    display_width = content_width
-                    display_height = display_width / aspect_ratio
-            image_x_offset = (page_width - display_width) / 2
-            image_y_offset = image_y_start + (image_available_height - display_height) / 2
-            img_io = io.BytesIO()
-            img_pil.save(img_io, format="PNG")
-            img_io.seek(0)
-            c.drawImage(ImageReader(img_io), image_x_offset, image_y_offset, width=display_width, height=display_height, preserveAspectRatio=True)
-            text = page.get("text", "")
-            text_width = display_width * 0.95
-            text_x_offset = image_x_offset + (display_width - text_width) / 2
-            base_font_size = 18
-            min_font_size = 12
-            char_per_line_estimate = max(1, int(text_width / (base_font_size * 0.6)))
-            estimated_lines = max(1, len(text) / char_per_line_estimate)
-            font_size = max(min_font_size, base_font_size - (estimated_lines - 3) * 1.5) if estimated_lines > 3 else base_font_size
+        else:
+            display_height = image_available_height
+            display_width = display_height * aspect_ratio
+            if display_width > content_width:
+                display_width = content_width
+                display_height = display_width / aspect_ratio
+        image_x_offset = (page_width - display_width) / 2
+        image_y_offset = image_y_start + (image_available_height - display_height) / 2
+        img_io = io.BytesIO()
+        img_pil.save(img_io, format="PNG")
+        img_io.seek(0)
+        c.drawImage(ImageReader(img_io), image_x_offset, image_y_offset, width=display_width, height=display_height, preserveAspectRatio=True)
+        text = page.get("text", "")
+        text_width = display_width * 0.95
+        text_x_offset = image_x_offset + (display_width - text_width) / 2
+        base_font_size = 18
+        min_font_size = 12
+        char_per_line_estimate = max(1, int(text_width / (base_font_size * 0.6)))
+        estimated_lines = max(1, len(text) / char_per_line_estimate)
+        font_size = max(min_font_size, base_font_size - (estimated_lines - 3) * 1.5) if estimated_lines > 3 else base_font_size
+        dynamic_style = ParagraphStyle("DynamicText", parent=text_style, fontSize=font_size, textColor="black", alignment=TA_CENTER, leading=font_size * 1.3)
+        para = Paragraph(text, dynamic_style)
+        para_height = para.wrap(text_width, text_area_height)[1]
+        if para_height > text_area_height * 0.95:
+            font_size = max(min_font_size, font_size * 0.85)
             dynamic_style = ParagraphStyle("DynamicText", parent=text_style, fontSize=font_size, textColor="black", alignment=TA_CENTER, leading=font_size * 1.3)
             para = Paragraph(text, dynamic_style)
             para_height = para.wrap(text_width, text_area_height)[1]
-            if para_height > text_area_height * 0.95:
-                font_size = max(min_font_size, font_size * 0.85)
-                dynamic_style = ParagraphStyle("DynamicText", parent=text_style, fontSize=font_size, textColor="black", alignment=TA_CENTER, leading=font_size * 1.3)
-                para = Paragraph(text, dynamic_style)
-                para_height = para.wrap(text_width, text_area_height)[1]
-            text_y = (text_area_height - para_height) / 2
-            para.drawOn(c, text_x_offset, text_y)
-            c.showPage()
+        text_y = (text_area_height - para_height) / 2
+        para.drawOn(c, text_x_offset, text_y)
+        c.showPage()
     c.save()
 
 

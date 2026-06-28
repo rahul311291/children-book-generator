@@ -2158,7 +2158,8 @@ def render_landing():
         promo, regular = 199, 350
 
     _ASSETS = os.path.join(os.path.dirname(__file__), "assets", "sample_covers")
-    _COVERS = ["01_when_i_grow_up.png", "02_snow_white.png", "03_cricket_champion.png",
+    _COVERS = ["01_when_i_grow_up.png", "02_legends.png",
+               "09_peppa_suzy.png", "10_peppa_cousins.png", "11_peppa_police.png",
                "04_cinderella.png", "05_sports_day.png", "06_space_adventure.png",
                "07_world_of_friends.png", "08_alphabet.png"]
 
@@ -2288,7 +2289,7 @@ def render_landing():
                     age = tmpl.get("age_range", "")
                     src = _cover_for(gi)
                     _cover_markup = image_cover_html(src) if src else typo_cover_html(name, cat, gi)
-                    _is_best = any(_k in raw_name for _k in ("When I Grow Up", "Snow White", "Space Adventure"))
+                    _is_best = any(_k in raw_name for _k in ("When I Grow Up", "Legends in the Making", "Space Adventure"))
                     if _is_best:
                         _cover_markup = (
                             "<div style='position:relative;'>" + _cover_markup +
@@ -3122,6 +3123,36 @@ def main():
     init_auth_state()
     _hydrate_api_keys_from_env_or_secrets()
 
+    # ── Card-click landing (?tpl=<id>) ─────────────────────────────
+    # Gallery cards in the template flow are <a href="?tpl=<id>"> links.
+    # On a fresh page load that URL wipes session_state, so the
+    # query_param handler that lives inside render_template_mode would
+    # never fire (book_mode is reset to None and we never reach that
+    # branch). Handle it here at the top of main() instead: set
+    # book_mode=template and stash the chosen id so the rest of the
+    # routing lands the user in _render_template_detail. Then clear the
+    # param so it doesn't re-trigger on subsequent reruns.
+    try:
+        _qp_tpl = st.query_params.get("tpl")
+    except Exception:
+        _qp_tpl = None
+    if _qp_tpl:
+        st.session_state.book_mode = "template"
+        st.session_state.selected_template_id = _qp_tpl
+        st.session_state.tpl_selected_id = _qp_tpl
+        # Drop any half-built state from a previous template detail visit
+        for _k in ("tpl_book_data", "tpl_cf_order_id", "tpl_cf_session",
+                   "tpl_tier", "tpl_form", "tpl_building"):
+            st.session_state.pop(_k, None)
+        try:
+            del st.query_params["tpl"]
+        except Exception:
+            try:
+                st.query_params.clear()
+            except Exception:
+                pass
+        st.rerun()
+
     # ── Cookie hydration ───────────────────────────────────────────
     # CookieManager.get() returns '' on the FIRST render because the JS
     # component hasn't responded yet. We retry up to 3 times with brief
@@ -3873,15 +3904,35 @@ def main():
     # Coverage status icons (✅ / ⏳ / ❌) and the per-variant matrix must
     # never leak onto a customer-facing page.
     if st.session_state.get("show_template_studio") and TEMPLATE_FLOW_AVAILABLE:
-        _studio_email = (st.session_state.get("auth_user") or {}).get("email", "")
-        if _studio_email not in ADMIN_EMAILS:
-            st.session_state.show_template_studio = False
-        else:
-            if st.button("← Back to Main", key="back_from_studio"):
+        # Look through every place the session keeps the signed-in email so
+        # a Google OIDC session, a legacy auth_user dict, or the newer
+        # user_email all resolve to admin correctly.
+        _studio_email = (
+            (st.session_state.get("auth_user") or {}).get("email", "")
+            or st.session_state.get("user_email", "")
+            or ""
+        ).strip().lower()
+        _studio_is_admin = (
+            bool(st.session_state.get("is_admin"))
+            or (_studio_email and _studio_email in ADMIN_EMAILS)
+        )
+        if not _studio_is_admin:
+            # Surface the failure instead of silently swallowing the click —
+            # otherwise an admin clicking the button just lands back on the
+            # storefront with no explanation.
+            st.error(
+                "Template Studio is admin-only. Signed-in email "
+                f"`{_studio_email or '(none)'}` is not in the admin list."
+            )
+            if st.button("← Back to Main", key="back_from_studio_denied"):
                 st.session_state.show_template_studio = False
                 st.rerun()
-            render_template_studio(api_key)
             return
+        if st.button("← Back to Main", key="back_from_studio"):
+            st.session_state.show_template_studio = False
+            st.rerun()
+        render_template_studio(api_key)
+        return
 
     # Template mode — asset-backed storefront flow
     if st.session_state.book_mode == "template" and TEMPLATE_FLOW_AVAILABLE:

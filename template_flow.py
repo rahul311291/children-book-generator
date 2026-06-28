@@ -134,8 +134,10 @@ def _reset_flow(keep_template: bool = False):
 
 _COVER_BY_ID = {
     "a1111111-1111-1111-1111-111111111111": "01_when_i_grow_up.png",
-    "a2222222-2222-2222-2222-222222222222": "02_snow_white.png",
-    "a3333333-3333-3333-3333-333333333333": "03_cricket_champion.png",
+    "b1111111-1111-1111-1111-111111111111": "02_legends.png",
+    "b2222222-2222-2222-2222-222222222222": "09_peppa_suzy.png",
+    "b3333333-3333-3333-3333-333333333333": "10_peppa_cousins.png",
+    "b4444444-4444-4444-4444-444444444444": "11_peppa_police.png",
     "a4444444-4444-4444-4444-444444444444": "04_cinderella.png",
     "a5555555-5555-5555-5555-555555555555": "05_sports_day.png",
     "a6666666-6666-6666-6666-666666666666": "06_space_adventure.png",
@@ -220,13 +222,14 @@ def _render_gallery():
                 continue
             t = templates[idx]
             with col:
-                # Whole card is a link to ?tpl=<id>. Streamlit's iframe sandbox
-                # ignores anchor navigation, so the link also targets _top to
-                # rewrite the parent URL — render_template_mode then picks
-                # the id out of st.query_params on the next run.
+                # Whole card is a link to ?tpl=<id>. The top-of-main() handler
+                # in main.py reads the param on the next render and routes the
+                # user to this template's detail page — works even on a hard
+                # reload that wipes session_state. We deliberately do NOT use
+                # target="_top" because Streamlit's HTML sanitiser strips it.
                 st.markdown(
                     f"""
-                    <a class="tpl-card-link" href="?tpl={t['id']}" target="_top">
+                    <a class="tpl-card-link" href="?tpl={t['id']}">
                       <div class="tpl-card">
                         <img src="{_local_cover_uri(t['id']) or t.get('cover_image','')}" alt="{t['name']}">
                         <div class="tpl-card-body">
@@ -701,13 +704,23 @@ def render_template_studio(api_key: str):
     # session_state, only an authenticated admin can render this page.
     try:
         from auth import ADMIN_EMAILS
-        _email = (st.session_state.get("auth_user") or {}).get("email", "") \
-                 or st.session_state.get("user_email", "")
-        if _email not in ADMIN_EMAILS:
-            st.error("This page is for admins only.")
+        _email = (
+            (st.session_state.get("auth_user") or {}).get("email", "")
+            or st.session_state.get("user_email", "")
+            or ""
+        ).strip().lower()
+        _is_admin = (
+            bool(st.session_state.get("is_admin"))
+            or (_email and _email in ADMIN_EMAILS)
+        )
+        if not _is_admin:
+            st.error(
+                "Template Studio is admin-only. Signed-in email "
+                f"`{_email or '(none)'}` is not in the admin list."
+            )
             return
-    except Exception:
-        st.error("This page is for admins only.")
+    except Exception as _e:
+        st.error(f"Template Studio is admin-only. Auth lookup failed: {_e}")
         return
     st.markdown("## 🎨 Template Studio")
     st.caption(
