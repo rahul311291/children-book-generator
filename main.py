@@ -2356,23 +2356,23 @@ def render_landing():
 
     # ── TWO PATHS ──────────────────────────────────────────────────
     st.markdown("<div style='height:28px;'></div>", unsafe_allow_html=True)
-    _ui_dir = os.path.join(os.path.dirname(__file__), "assets", "ui")
-    _lib_banner = cover_data_uri(os.path.join(_ui_dir, "banner_library.png"))
-    _cus_banner = cover_data_uri(os.path.join(_ui_dir, "banner_custom.png"))
+    _cov_dir = os.path.join(os.path.dirname(__file__), "assets", "sample_covers")
+    _lib_banner = cover_data_uri(os.path.join(_cov_dir, "07_world_of_friends.png"))
+    _cus_banner = cover_data_uri(os.path.join(_cov_dir, "06_space_adventure.png"))
     cpa, cpb = st.columns(2)
     with cpa:
         st.markdown(f'''<div class="ss-card" style="border-color:var(--teal-t);height:330px;padding:0;overflow:hidden;">
-          <div style="height:152px;background-image:url({_lib_banner});background-size:cover;background-position:center;background-color:var(--paper2);"></div>
+          <div style="height:152px;background-image:url({_lib_banner});background-size:cover;background-position:center 26%;background-color:var(--paper2);"></div>
           <div style="padding:18px 22px;">
             <span class="ss-pill teal">Story Library</span>
             <h3 style="margin:10px 0 6px;font-size:22px;">Ready-made tales, made personal</h3>
             <p style="color:var(--muted);font-size:14px;margin:0;">Beloved classics and originals — personalized with your child's name and face. <b>Digital from &#8377;{promo}</b>.</p>
           </div>
         </div>''', unsafe_allow_html=True)
-        st.markdown('<a href="#featured-books" style="display:block;text-align:center;margin-top:10px;padding:.62rem;border-radius:999px;background:var(--teal);color:#fff;font-weight:700;text-decoration:none;">Browse the library →</a>', unsafe_allow_html=True)
+        st.markdown('<a href="#featured-books" style="display:block;text-align:center;margin-top:10px;padding:.62rem;border-radius:999px;background:var(--terra);color:#FBF7F0;font-weight:700;text-decoration:none;box-shadow:0 10px 26px rgba(192,87,62,.30);">Browse the library →</a>', unsafe_allow_html=True)
     with cpb:
         st.markdown(f'''<div class="ss-card" style="background:var(--ink);border-color:var(--ink);height:330px;padding:0;overflow:hidden;">
-          <div style="height:152px;background-image:url({_cus_banner});background-size:cover;background-position:center;background-color:#1e1b4b;"></div>
+          <div style="height:152px;background-image:url({_cus_banner});background-size:cover;background-position:center 24%;background-color:#1e1b4b;"></div>
           <div style="padding:18px 22px;">
             <span class="ss-pill" style="background:rgba(226,162,74,.18);color:var(--gold);">Custom Story</span>
             <h3 style="margin:10px 0 6px;font-size:22px;color:#FBF7F0;">A one-of-a-kind adventure</h3>

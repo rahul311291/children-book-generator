@@ -236,9 +236,10 @@ def _render_template_detail(template_id: str, api_key: str,
                     st.image(img, use_container_width=True)
                 else:
                     st.markdown(
-                        f"<div style='height:140px;border-radius:12px;background:#FFF4F4;"
-                        f"display:flex;align-items:center;justify-content:center;"
-                        f"font-size:2rem;'>📄</div>",
+                        "<div style='height:140px;border-radius:12px;"
+                        "background:linear-gradient(135deg,#F4E7DC,#E7EFE9);"
+                        "display:flex;align-items:center;justify-content:center;'>"
+                        "<span style='font-size:12.5px;color:#8A7C6C;'>Illustrated page</span></div>",
                         unsafe_allow_html=True,
                     )
                 st.caption(
