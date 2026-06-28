@@ -347,6 +347,18 @@ def _render_template_detail(template_id: str, api_key: str,
         return
 
     # ---- Customize + buy form ----
+    # Admins generate books for free (QA, ops, sample creation) — same
+    # bypass the custom-story flow already uses in main.py.
+    _cur_email = (
+        st.session_state.get("user_email", "")
+        or (st.session_state.get("auth_user") or {}).get("email", "")
+    )
+    try:
+        from auth import ADMIN_EMAILS as _ADMIN_EMAILS
+        _is_admin_tpl = bool(_cur_email) and _cur_email in _ADMIN_EMAILS
+    except Exception:
+        _is_admin_tpl = False
+
     st.markdown("### Make it theirs")
     tier = st.radio(
         "Choose your book",
@@ -365,25 +377,32 @@ def _render_template_detail(template_id: str, api_key: str,
             gender = st.selectbox("Gender *", ["boy", "girl"])
         with c3:
             age = st.number_input("Age *", min_value=1, max_value=12, value=5)
-        phone = st.text_input(
-            "Mobile number * (for payment receipt)", placeholder="10-digit mobile",
-            max_chars=10,
-        )
+        if _is_admin_tpl:
+            phone = ""  # phone is only needed for the payment receipt
+            st.caption("Signed in as admin — generation is free, no payment needed.")
+        else:
+            phone = st.text_input(
+                "Mobile number * (for payment receipt)", placeholder="10-digit mobile",
+                max_chars=10,
+            )
         photo_file = None
         if tier == "personalized":
             photo_file = st.file_uploader(
                 "Child's photo (clear face, good light)", type=["png", "jpg", "jpeg"]
             )
+        if _is_admin_tpl:
+            _btn_label = f"Generate book — {TIERS[tier]['label']} (admin, free)"
+        else:
+            _btn_label = f"Continue to payment — ₹{TIERS[tier]['price']}"
         submitted = st.form_submit_button(
-            f"Continue to payment — ₹{TIERS[tier]['price']}",
-            type="primary", use_container_width=True,
+            _btn_label, type="primary", use_container_width=True,
         )
 
     if submitted:
         if not child_name.strip():
             st.error("Please enter your child's name.")
             return
-        if not is_valid_phone(phone):
+        if not _is_admin_tpl and not is_valid_phone(phone):
             st.error("Please enter a valid 10-digit mobile number.")
             return
         if tier == "personalized" and photo_file is None:
@@ -398,6 +417,15 @@ def _render_template_detail(template_id: str, api_key: str,
             "photo_b64": photo_b64,
             "tier": tier,
         }
+        # Admin: skip Cashfree and build the book straight away.
+        if _is_admin_tpl:
+            _build_and_show(
+                template_id,
+                child_name.strip(), gender, int(age),
+                tier=tier, api_key=api_key, photo_b64=photo_b64,
+                save_history_cb=save_history_cb,
+            )
+            return
         result = create_cashfree_order(
             user_id=user_id,
             user_email=st.session_state.get("user_email", ""),
