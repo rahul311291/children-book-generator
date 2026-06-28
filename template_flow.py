@@ -14,6 +14,8 @@ save_history_cb into render_template_mode.
 """
 
 import logging
+import os
+import base64
 from typing import Callable, Optional
 
 import streamlit as st
@@ -91,6 +93,36 @@ def _reset_flow(keep_template: bool = False):
 # Customer flow
 # ---------------------------------------------------------------------------
 
+_COVER_BY_ID = {
+    "a1111111-1111-1111-1111-111111111111": "01_when_i_grow_up.png",
+    "a2222222-2222-2222-2222-222222222222": "02_snow_white.png",
+    "a3333333-3333-3333-3333-333333333333": "03_cricket_champion.png",
+    "a4444444-4444-4444-4444-444444444444": "04_cinderella.png",
+    "a5555555-5555-5555-5555-555555555555": "05_sports_day.png",
+    "a6666666-6666-6666-6666-666666666666": "06_space_adventure.png",
+    "a7777777-7777-7777-7777-777777777777": "07_world_of_friends.png",
+    "a8888888-8888-8888-8888-888888888888": "08_alphabet.png",
+}
+_COVER_CACHE = {}
+
+
+def _local_cover_uri(template_id: str) -> str:
+    """Return a data-URI for our bundled cover art for this template, or ''."""
+    if template_id in _COVER_CACHE:
+        return _COVER_CACHE[template_id]
+    uri = ""
+    fn = _COVER_BY_ID.get(template_id)
+    if fn:
+        path = os.path.join(os.path.dirname(__file__), "assets", "sample_covers", fn)
+        try:
+            with open(path, "rb") as f:
+                uri = "data:image/png;base64," + base64.b64encode(f.read()).decode()
+        except Exception:
+            uri = ""
+    _COVER_CACHE[template_id] = uri
+    return uri
+
+
 def render_template_mode(api_key: str, save_history_cb: Optional[Callable] = None):
     """Entry point for the template experience (called from main.py)."""
     st.markdown(_GALLERY_CSS, unsafe_allow_html=True)
@@ -127,7 +159,7 @@ def _render_gallery():
                 st.markdown(
                     f"""
                     <div class="tpl-card">
-                      <img src="{t.get('cover_image','')}" alt="{t['name']}">
+                      <img src="{_local_cover_uri(t['id']) or t.get('cover_image','')}" alt="{t['name']}">
                       <div class="tpl-card-body">
                         <h4>{t['name']}</h4>
                         <p>{t.get('description','').replace('{name}', 'your child')}</p>
@@ -172,8 +204,21 @@ def _render_template_detail(template_id: str, api_key: str,
         _reset_flow()
         st.rerun()
 
-    st.markdown(f"## {template['name']}")
-    st.caption(template.get("description", "").replace("{name}", "your child"))
+    _cov = _local_cover_uri(template_id)
+    if _cov:
+        _hc1, _hc2 = st.columns([1, 2])
+        with _hc1:
+            st.markdown(
+                f"<img src='{_cov}' style='width:100%;max-width:240px;border-radius:12px;"
+                f"box-shadow:0 14px 30px rgba(42,36,32,.18);'>",
+                unsafe_allow_html=True,
+            )
+        with _hc2:
+            st.markdown(f"## {template['name']}")
+            st.caption(template.get("description", "").replace("{name}", "your child"))
+    else:
+        st.markdown(f"## {template['name']}")
+        st.caption(template.get("description", "").replace("{name}", "your child"))
 
     # ---- Free preview: first N pages from pre-rendered assets ----
     pages = get_template_pages(template_id)
