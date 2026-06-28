@@ -2153,9 +2153,9 @@ def render_landing():
         </div>
       </div>
       <div style="position:relative;min-height:330px;">
-        <div class="ss-floaty" style="--rot:rotate(-9deg);position:absolute;left:5%;top:3%;width:45%;">{typo_cover_html("The Mountain of Courage", "Adventure", 4)}</div>
-        <div class="ss-floaty" style="--rot:rotate(5deg);position:absolute;right:5%;top:15%;width:45%;animation-delay:1.2s;">{typo_cover_html("The Wobbly Fort", "Bedtime", 0)}</div>
-        <div style="position:absolute;left:28%;bottom:0;background:#fff;border:1px solid var(--border);border-radius:14px;padding:9px 14px;box-shadow:0 14px 30px rgba(42,36,32,.14);font-size:13px;font-weight:700;">Personalized <span style="color:var(--teal);">&#10003;</span></div>
+        <div class="ss-floaty" style="--rot:rotate(-9deg);position:absolute;left:5%;top:3%;width:45%;">{image_cover_html(cover_data_uri(os.path.join(_ASSETS, "04_cinderella.png")))}</div>
+        <div class="ss-floaty" style="--rot:rotate(5deg);position:absolute;right:5%;top:15%;width:45%;animation-delay:1.2s;">{image_cover_html(cover_data_uri(os.path.join(_ASSETS, "01_when_i_grow_up.png")))}</div>
+        <div style="position:absolute;left:28%;bottom:0;background:#fff;border:1px solid var(--border);border-radius:14px;padding:9px 14px;box-shadow:0 14px 30px rgba(42,36,32,.14);font-size:13px;font-weight:700;">Their name &amp; face on every page <span style="color:var(--teal);">&#10003;</span></div>
       </div>
     </div>''', unsafe_allow_html=True)
 
