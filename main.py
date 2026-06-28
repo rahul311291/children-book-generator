@@ -3122,6 +3122,36 @@ def main():
     init_auth_state()
     _hydrate_api_keys_from_env_or_secrets()
 
+    # ── Card-click landing (?tpl=<id>) ─────────────────────────────
+    # Gallery cards in the template flow are <a href="?tpl=<id>"> links.
+    # On a fresh page load that URL wipes session_state, so the
+    # query_param handler that lives inside render_template_mode would
+    # never fire (book_mode is reset to None and we never reach that
+    # branch). Handle it here at the top of main() instead: set
+    # book_mode=template and stash the chosen id so the rest of the
+    # routing lands the user in _render_template_detail. Then clear the
+    # param so it doesn't re-trigger on subsequent reruns.
+    try:
+        _qp_tpl = st.query_params.get("tpl")
+    except Exception:
+        _qp_tpl = None
+    if _qp_tpl:
+        st.session_state.book_mode = "template"
+        st.session_state.selected_template_id = _qp_tpl
+        st.session_state.tpl_selected_id = _qp_tpl
+        # Drop any half-built state from a previous template detail visit
+        for _k in ("tpl_book_data", "tpl_cf_order_id", "tpl_cf_session",
+                   "tpl_tier", "tpl_form", "tpl_building"):
+            st.session_state.pop(_k, None)
+        try:
+            del st.query_params["tpl"]
+        except Exception:
+            try:
+                st.query_params.clear()
+            except Exception:
+                pass
+        st.rerun()
+
     # ── Cookie hydration ───────────────────────────────────────────
     # CookieManager.get() returns '' on the FIRST render because the JS
     # component hasn't responded yet. We retry up to 3 times with brief
