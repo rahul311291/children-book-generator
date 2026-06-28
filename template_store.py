@@ -52,11 +52,18 @@ def get_asset(template_id: str, page_number: int, gender: str, age: int) -> Opti
     try:
         doc = template_assets_col().find_one(
             {"template_id": template_id, "page_number": page_number},
-            {f"variants.{variant_key(gender, age)}": 1},
+            {"variants": 1},
         )
         if not doc:
             return None
-        return (doc.get("variants") or {}).get(variant_key(gender, age))
+        variants = doc.get("variants") or {}
+        # Prefer the exact (gender, age) variant; otherwise show ANY rendered
+        # variant so the sneak-peek still works regardless of which variant
+        # was pre-rendered in Template Studio.
+        exact = variants.get(variant_key(gender, age))
+        if exact:
+            return exact
+        return next((v for v in variants.values() if v), None)
     except Exception as e:
         logger.warning(f"get_asset failed: {e}")
         return None
