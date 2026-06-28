@@ -278,6 +278,10 @@ def sign_out():
     # Clear keys
     for k in ("api_key", "openrouter_api_key", "_session_token", "_pending_session_token"):
         st.session_state[k] = ""
+    # Drop any "continue your book" hints so the banner does not flash on
+    # the public homepage after signing out.
+    for k in ("_resumable_book_id", "_resume_checked"):
+        st.session_state.pop(k, None)
     # Also end Google OIDC session if active
     try:
         if hasattr(st, "user") and getattr(st.user, "is_logged_in", False):
