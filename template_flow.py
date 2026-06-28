@@ -72,8 +72,9 @@ _GALLERY_CSS = """
   box-shadow: 0 2px 10px rgba(0,0,0,0.06); margin-bottom: 8px; background: #fff; }
 .tpl-card img { width: 100%; height: 180px; object-fit: cover; }
 .tpl-card-body { padding: 12px 14px; }
-.tpl-card-body h4 { margin: 0 0 4px 0; font-size: 1.05rem; }
-.tpl-card-body p { color: #777; font-size: 0.85rem; margin: 0 0 8px 0;
+.tpl-card-body h4 { margin: 0 0 4px 0; font-size: 1.05rem; min-height: 2.5rem;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.tpl-card-body p { color: #777; font-size: 0.85rem; margin: 0 0 8px 0; min-height: 2.4rem;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .tpl-price { color: #FF6B6B; font-weight: 700; }
 .tpl-locked { position: relative; filter: blur(6px); }

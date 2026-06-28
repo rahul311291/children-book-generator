@@ -2082,6 +2082,15 @@ def _start_or_login(mode, template_id="", template_name=""):
     st.rerun()
 
 
+def _go_browse_library():
+    """Open the full Story Library (template gallery) for signed-in users;
+    for visitors just refresh the storefront (the library grid is below)."""
+    if is_authenticated():
+        st.session_state.book_mode = "template"
+        st.session_state.pop("tpl_selected_id", None)
+    st.rerun()
+
+
 def render_landing():
     """Storytime Studio storefront — Path B redesign (Lord Design handoff)."""
     import os
@@ -2155,7 +2164,8 @@ def render_landing():
         if st.button("Create a custom story →", type="primary", use_container_width=True, key="hero_custom"):
             _start_or_login("custom")
     with hb2:
-        st.markdown('<a href="#featured-books" style="display:block;text-align:center;padding:.62rem 1rem;border:1.5px solid var(--borderin);border-radius:999px;font-weight:700;color:var(--ink);text-decoration:none;">Browse the Story Library</a>', unsafe_allow_html=True)
+        if st.button("Browse the story library →", use_container_width=True, key="hero_browse"):
+            _go_browse_library()
 
     # ── TRUST STRIP ────────────────────────────────────────────────
     st.markdown('''<div class="ss-band" style="margin:26px 0;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:18px;text-align:center;">
@@ -2200,10 +2210,7 @@ def render_landing():
     _bcol1, _bcol2 = st.columns(2)
     with _bcol1:
         if st.button("Browse the library →", type="primary", use_container_width=True, key="twopath_browse"):
-            if is_authenticated():
-                st.session_state.book_mode = "template"
-                st.session_state.pop("tpl_selected_id", None)
-            st.rerun()
+            _go_browse_library()
     with _bcol2:
         if st.button("Start a custom story →", type="primary", use_container_width=True, key="twopath_custom"):
             _start_or_login("custom")
@@ -2235,7 +2242,7 @@ def render_landing():
                             "z-index:3;'>★ BESTSELLER</span></div>"
                         )
                     st.markdown(_cover_markup, unsafe_allow_html=True)
-                    st.markdown(f'<div style="margin:10px 0 2px;font-family:Spectral;font-weight:700;font-size:16px;line-height:1.15;">{name}</div><div style="font-size:12.5px;color:var(--muted2);margin-bottom:8px;">Ages {age} · from &#8377;{promo}</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div style="margin:10px 0 2px;font-family:Spectral;font-weight:700;font-size:16px;line-height:1.15;min-height:42px;">{name}</div><div style="font-size:12.5px;color:var(--muted2);margin-bottom:8px;">Ages {age} · from &#8377;{promo}</div>', unsafe_allow_html=True)
                     if st.button("Personalize", key=f"feat_{tmpl.get('id', gi)}", use_container_width=True):
                         _start_or_login("template", tmpl.get("id", ""), tmpl.get("name", ""))
     else:
@@ -2272,7 +2279,8 @@ def render_landing():
         if st.button("Create a custom story →", type="primary", use_container_width=True, key="final_custom"):
             _start_or_login("custom")
     with fb2:
-        st.markdown('<a href="#featured-books" style="display:block;text-align:center;padding:.62rem 1rem;border:1.5px solid var(--borderin);border-radius:999px;font-weight:700;color:var(--ink);text-decoration:none;">Browse books</a>', unsafe_allow_html=True)
+        if st.button("Browse books →", use_container_width=True, key="final_browse"):
+            _go_browse_library()
 
     st.markdown('<div class="ss-eyebrow teal" style="margin-top:22px;">From our community</div><h2 style="font-size:clamp(24px,4vw,34px);margin:4px 0 12px;">Books made by other families</h2>', unsafe_allow_html=True)
     render_gallery()
