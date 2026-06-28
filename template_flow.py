@@ -508,11 +508,34 @@ def _render_payment_pending(template_id: str, api_key: str,
 def _build_and_show(template_id: str, child_name: str, gender: str, age: int,
                     tier: str, api_key: str, photo_b64: Optional[str],
                     save_history_cb: Optional[Callable]):
-    """Assemble the book (instant for basic; re-render for personalized)."""
-    with st.spinner("Putting your book together…"):
-        book = build_book_from_assets(template_id, child_name, gender, age)
+    """Assemble the book (instant for basic; re-render for personalized).
+
+    The build can take 1–2 minutes when Template Studio hasn’t pre-rendered
+    every page yet (live image generation) or when the customer chose the
+    photo-personalized tier (every page re-rendered with the child’s
+    photo). To keep the screen warm we render a friendly header, a status
+    line, a progress bar, and a live preview row where finished images
+    appear as they come in — instead of a blank page with a tiny spinner.
+    """
+    # Status header — same shape for every build so the user always sees
+    # something happen the moment they click Generate.
+    st.markdown(
+        f"<div style='background:#FFF6E5;border:1px solid #F2D8A8;"
+        f"border-radius:14px;padding:18px 22px;margin:8px 0 14px;'>"
+        f"<div style='font-family:Spectral;font-size:20px;font-weight:700;"
+        f"color:#5C3A1E;'>🍳 We’re cooking up <strong>{child_name}</strong>’s story</div>"
+        f"<div style='color:#7a6249;font-size:13.5px;margin-top:4px;'>"
+        f"This usually takes 1–2 minutes. Hang tight — pages will appear "
+        f"below as soon as they’re ready.</div></div>",
+        unsafe_allow_html=True,
+    )
+
+    status_line = st.empty()
+    status_line.info("📖 Stitching the story together with your child’s name…")
+
+    book = build_book_from_assets(template_id, child_name, gender, age)
     if not book:
-        st.error("Sorry — this template isn't available right now.")
+        st.error("Sorry — this template isn’t available right now.")
         return
 
     missing = [p for p in book["pages"] if not p.get("image_url")]
@@ -520,10 +543,19 @@ def _build_and_show(template_id: str, child_name: str, gender: str, age: int,
         "openrouter_api_key", ""
     )
 
-    # Fill any missing assets live (rare; only if studio pre-render incomplete)
+    # Fill any missing assets live (rare; only if studio pre-render incomplete).
+    # We render each finished image inline so the screen is never silent for
+    # long while we wait on the image model.
     if missing and api_key:
         from template_book_generator import generate_page_image, compress_image_for_storage
-        prog = st.progress(0.0, text="Illustrating a few pages…")
+        status_line.info(
+            f"🎨 Painting {len(missing)} illustration"
+            + ("s" if len(missing) != 1 else "")
+            + " — the first one usually shows up in about 15–20 seconds…"
+        )
+        prog = st.progress(0.0, text=f"Painting page 1 of {len(missing)}…")
+        preview_box = st.container()
+        first_image_done = False
         for i, page in enumerate(missing):
             try:
                 img = generate_page_image(api_key, page["image_prompt"], None,
@@ -535,18 +567,61 @@ def _build_and_show(template_id: str, child_name: str, gender: str, age: int,
                         template_id, page["page_number"], gender,
                         template_store._age_to_group(age), img,
                     )
+                    # Live preview of every finished image; first one also
+                    # flips the status line so the user knows we’re moving.
+                    if not first_image_done:
+                        status_line.success(
+                            "✨ First page is ready — painting the rest now…"
+                        )
+                        first_image_done = True
+                    with preview_box:
+                        st.markdown(
+                            f"<div style=\"margin-top:8px;font-size:13px;color:#6b5b46;\">"
+                            f"Page {page['page_number']} of {len(book['pages'])} — "
+                            f"{page.get('profession_title','')}</div>",
+                            unsafe_allow_html=True,
+                        )
+                        st.image(img, use_container_width=True)
             except Exception:
                 pass
-            prog.progress((i + 1) / len(missing))
+            done = i + 1
+            prog.progress(
+                done / len(missing),
+                text=f"Painting page {min(done + 1, len(missing))} of {len(missing)}…",
+            )
         prog.empty()
 
     if tier == "personalized" and photo_b64 and api_key:
-        prog = st.progress(0.0, text="Illustrating your child into the story…")
+        status_line.info(
+            "🖌️ Adding your child’s face to every page — this usually "
+            "takes 1–2 minutes. We’ll show each page as it finishes."
+        )
+        prog = st.progress(0.0, text="Starting…")
+        preview_box = st.container()
+        first_photo_done = {"v": False}
+
+        def _photo_progress(msg, frac):
+            prog.progress(min(frac, 1.0), text=msg)
+            if not first_photo_done["v"] and frac > 0.05:
+                status_line.success(
+                    "✨ First personalized page is in — painting the rest…"
+                )
+                first_photo_done["v"] = True
+
         book = personalize_book_with_photo(
             book, api_key, photo_b64, openrouter_key=openrouter_key,
-            progress_cb=lambda msg, frac: prog.progress(min(frac, 1.0), text=msg),
+            progress_cb=_photo_progress,
         )
+        # After all photo re-renders, drop the finished images into the
+        # preview box so the user can see the result before the page reruns.
+        with preview_box:
+            for page in book.get("pages", [])[:6]:
+                if page.get("image_url"):
+                    st.image(page["image_url"], use_container_width=True,
+                             caption=f"Page {page.get('page_number','?')}")
         prog.empty()
+
+    status_line.success("🎉 All done — opening your preview…")
 
     st.session_state.tpl_book_data = book
     # Purchase verified — unlock the legacy preview's payment gate
