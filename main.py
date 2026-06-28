@@ -1956,6 +1956,45 @@ def _load_gallery_book(doc_id: str) -> None:
         st.error(f"Failed to load book: {e}")
 
 
+def _real_book_covers_for_hero(n: int = 2) -> list:
+    """Return up to n cover-image data-URIs pulled from real generated books.
+
+    Source order mirrors render_gallery() so the hero shows the same kind of
+    artwork families see lower on the page. Falls back to bundled local
+    covers when MongoDB is empty or unreachable so the hero never looks
+    broken.
+    """
+    out: list = []
+    try:
+        from mongo_client import book_history_col
+        rows = list(
+            book_history_col().find(
+                {
+                    "images": {"$elemMatch": {"$type": "string", "$regex": "^data:image"}},
+                    "is_private": {"$ne": True},
+                },
+                {"cover_thumbnail": 1, "images": {"$slice": 1}},
+            ).sort("created_at", -1).limit(n * 4)
+        )
+        for row in rows:
+            cover = row.get("cover_thumbnail")
+            if not (isinstance(cover, str) and cover.startswith("data:image")):
+                cover = next(
+                    (
+                        im for im in (row.get("images") or [])
+                        if isinstance(im, str) and im.startswith("data:image")
+                    ),
+                    "",
+                )
+            if cover and cover not in out:
+                out.append(cover)
+            if len(out) >= n:
+                break
+    except Exception:
+        pass
+    return out
+
+
 def render_gallery():
     """Show recent books from all users as inspiration. Only non-private books are shown."""
     try:
@@ -2083,11 +2122,19 @@ def _start_or_login(mode, template_id="", template_name=""):
 
 
 def _go_browse_library():
-    """Open the full Story Library (template gallery) for signed-in users;
-    for visitors just refresh the storefront (the library grid is below)."""
+    """Open the full Story Library (template gallery).
+
+    Logged-in users land in template mode directly. Logged-out visitors get
+    routed to the sign-in page with a pending intent, so that after they
+    authenticate we drop them straight into the library instead of back on
+    the homepage.
+    """
     if is_authenticated():
         st.session_state.book_mode = "template"
         st.session_state.pop("tpl_selected_id", None)
+    else:
+        st.session_state["_pending_start"] = ("template", "", "")
+        st.session_state["_wants_auth"] = True
     st.rerun()
 
 
@@ -2126,7 +2173,13 @@ def render_landing():
 
     # ── HERO ───────────────────────────────────────────────────────
     # Continue an in-progress book (homepage-first; never auto-opened).
-    if st.session_state.get("_resumable_book_id") and not st.session_state.get("generated_story"):
+    # Gate on is_authenticated() so a stale session_state value from a prior
+    # logged-in tab never leaks the banner onto the public homepage.
+    if (
+        is_authenticated()
+        and st.session_state.get("_resumable_book_id")
+        and not st.session_state.get("generated_story")
+    ):
         _rb1, _rb2 = st.columns([3, 1])
         with _rb1:
             st.markdown(
@@ -2141,6 +2194,9 @@ def render_landing():
                 if _auto_resume_in_progress_book(force=True):
                     st.rerun()
 
+    _hero_real = _real_book_covers_for_hero(2)
+    _hero_left = _hero_real[0] if len(_hero_real) >= 1 else cover_data_uri(os.path.join(_ASSETS, "04_cinderella.png"))
+    _hero_right = _hero_real[1] if len(_hero_real) >= 2 else cover_data_uri(os.path.join(_ASSETS, "01_when_i_grow_up.png"))
     st.markdown(f'''<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:36px;align-items:center;padding:14px 0 6px;">
       <div>
         <span class="ss-pill clay">A keepsake they'll treasure for years</span>
@@ -2153,8 +2209,8 @@ def render_landing():
         </div>
       </div>
       <div style="position:relative;min-height:330px;">
-        <div class="ss-floaty" style="--rot:rotate(-9deg);position:absolute;left:5%;top:3%;width:45%;">{image_cover_html(cover_data_uri(os.path.join(_ASSETS, "04_cinderella.png")))}</div>
-        <div class="ss-floaty" style="--rot:rotate(5deg);position:absolute;right:5%;top:15%;width:45%;animation-delay:1.2s;">{image_cover_html(cover_data_uri(os.path.join(_ASSETS, "01_when_i_grow_up.png")))}</div>
+        <div class="ss-floaty" style="--rot:rotate(-9deg);position:absolute;left:5%;top:3%;width:45%;">{image_cover_html(_hero_left)}</div>
+        <div class="ss-floaty" style="--rot:rotate(5deg);position:absolute;right:5%;top:15%;width:45%;animation-delay:1.2s;">{image_cover_html(_hero_right)}</div>
         <div style="position:absolute;left:28%;bottom:0;background:#fff;border:1px solid var(--border);border-radius:14px;padding:9px 14px;box-shadow:0 14px 30px rgba(42,36,32,.14);font-size:13px;font-weight:700;">Their name &amp; face on every page <span style="color:var(--teal);">&#10003;</span></div>
       </div>
     </div>''', unsafe_allow_html=True)
