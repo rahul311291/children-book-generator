@@ -36,6 +36,7 @@ from template_book_generator import (
     get_template_pages,
     display_template_book_preview,
     convert_uploaded_file_to_base64,
+    get_any_pool_image_for_page,
 )
 from payments import (
     create_cashfree_order,
@@ -70,7 +71,7 @@ _GALLERY_CSS = """
 <style>
 .tpl-card { border: 1px solid #eee; border-radius: 16px; overflow: hidden;
   box-shadow: 0 2px 10px rgba(0,0,0,0.06); margin-bottom: 8px; background: #fff; }
-.tpl-card img { width: 100%; height: 180px; object-fit: cover; }
+.tpl-card img { width: 100%; aspect-ratio: 3/4; object-fit: cover; display: block; }
 .tpl-card-body { padding: 12px 14px; }
 .tpl-card-body h4 { margin: 0 0 4px 0; font-size: 1.05rem; min-height: 2.5rem;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
@@ -78,8 +79,57 @@ _GALLERY_CSS = """
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .tpl-price { color: #FF6B6B; font-weight: 700; }
 .tpl-locked { position: relative; filter: blur(6px); }
+.tpl-peek-img { width: 100%; aspect-ratio: 3/4; object-fit: cover; border-radius: 12px;
+  display: block; box-shadow: 0 6px 16px rgba(42,36,32,0.10); }
+.tpl-peek-ph { width: 100%; aspect-ratio: 3/4; border-radius: 12px;
+  background: linear-gradient(135deg,#F4E7DC,#E7EFE9);
+  display: flex; align-items: center; justify-content: center; }
+.tpl-peek-ph span { font-size: 12.5px; color: #8A7C6C; }
 </style>
 """
+
+
+def _sample_page_image(template_id: str, page_number: int,
+                       gender: str, age: int) -> Optional[str]:
+    """Best-effort sample image for a sneak-peek page.
+
+    1) Admin pre-rendered template asset (exact variant, then any variant).
+    2) Any image previously generated for this template+page by real users
+       (shared image pool).
+    3) Any image stored on a past book in book_history for this template+page.
+    Returns None if nothing is available — caller renders a placeholder.
+    """
+    try:
+        img = template_store.get_asset(template_id, page_number, gender, age)
+        if img:
+            return img
+    except Exception:
+        pass
+    try:
+        img = get_any_pool_image_for_page(template_id, page_number)
+        if img:
+            return img
+    except Exception:
+        pass
+    # Last fallback: scan book_history for any prior book of this template
+    # that has an image at the requested page index.
+    try:
+        from mongo_client import book_history_col
+        doc = book_history_col().find_one(
+            {"template_id": template_id, "images": {"$exists": True, "$ne": []}},
+            {"images": 1},
+        )
+        if doc:
+            imgs = doc.get("images") or []
+            idx = page_number - 1
+            if 0 <= idx < len(imgs) and imgs[idx]:
+                return imgs[idx]
+            if imgs:
+                # fall back to first available image so something shows up
+                return next((i for i in imgs if i), None)
+    except Exception:
+        pass
+    return None
 
 
 def _reset_flow(keep_template: bool = False):
@@ -231,18 +281,20 @@ def _render_template_detail(template_id: str, api_key: str,
         prev_cols = st.columns(FREE_PREVIEW_PAGES)
         shown = 0
         for page in pages[:FREE_PREVIEW_PAGES]:
-            img = template_store.get_asset(
+            img = _sample_page_image(
                 template_id, page["page_number"], preview_gender, preview_age
             )
             with prev_cols[shown]:
                 if img:
-                    st.image(img, use_container_width=True)
+                    # Portrait sample illustration from a previously generated book.
+                    st.markdown(
+                        f"<img class='tpl-peek-img' src='{img}' alt='Sample page' />",
+                        unsafe_allow_html=True,
+                    )
                 else:
                     st.markdown(
-                        "<div style='height:140px;border-radius:12px;"
-                        "background:linear-gradient(135deg,#F4E7DC,#E7EFE9);"
-                        "display:flex;align-items:center;justify-content:center;'>"
-                        "<span style='font-size:12.5px;color:#8A7C6C;'>Illustrated page</span></div>",
+                        "<div class='tpl-peek-ph'>"
+                        "<span>Illustrated page</span></div>",
                         unsafe_allow_html=True,
                     )
                 st.caption(
