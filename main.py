@@ -2158,7 +2158,8 @@ def render_landing():
         promo, regular = 199, 350
 
     _ASSETS = os.path.join(os.path.dirname(__file__), "assets", "sample_covers")
-    _COVERS = ["01_when_i_grow_up.png", "02_legends.png", "03_cricket_champion.png",
+    _COVERS = ["01_when_i_grow_up.png", "02_legends.png",
+               "09_peppa_suzy.png", "10_peppa_cousins.png", "11_peppa_police.png",
                "04_cinderella.png", "05_sports_day.png", "06_space_adventure.png",
                "07_world_of_friends.png", "08_alphabet.png"]
 
