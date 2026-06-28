@@ -2158,7 +2158,7 @@ def render_landing():
         promo, regular = 199, 350
 
     _ASSETS = os.path.join(os.path.dirname(__file__), "assets", "sample_covers")
-    _COVERS = ["01_when_i_grow_up.png", "02_snow_white.png", "03_cricket_champion.png",
+    _COVERS = ["01_when_i_grow_up.png", "02_legends.png", "03_cricket_champion.png",
                "04_cinderella.png", "05_sports_day.png", "06_space_adventure.png",
                "07_world_of_friends.png", "08_alphabet.png"]
 
@@ -2288,7 +2288,7 @@ def render_landing():
                     age = tmpl.get("age_range", "")
                     src = _cover_for(gi)
                     _cover_markup = image_cover_html(src) if src else typo_cover_html(name, cat, gi)
-                    _is_best = any(_k in raw_name for _k in ("When I Grow Up", "Snow White", "Space Adventure"))
+                    _is_best = any(_k in raw_name for _k in ("When I Grow Up", "Legends in the Making", "Space Adventure"))
                     if _is_best:
                         _cover_markup = (
                             "<div style='position:relative;'>" + _cover_markup +

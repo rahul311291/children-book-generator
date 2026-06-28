@@ -211,159 +211,184 @@ DEFAULT_TEMPLATES: List[Dict] = [
         ],
     },
     {
-        "id": "a2222222-2222-2222-2222-222222222222",
-        "name": "Snow White and the Kind-Hearted Child",
-        "description": "A gentle Snow White retelling where {name} faces unkind sisters and a cruel stepmother, but finds courage, friends, and a kind prince.",
-        "cover_image": "https://images.pexels.com/photos/11890414/pexels-photo-11890414.jpeg?auto=compress&cs=tinysrgb&w=800",
-        "total_pages": 10,
+        "id": "b1111111-1111-1111-1111-111111111111",
+        "name": "Legends in the Making",
+        "description": (
+            "Fifteen real childhood stories of world champions in cricket, football, "
+            "tennis, F1, chess, athletics, swimming and basketball — gathered into a "
+            "personalised book that quietly asks {name}: which legend will *you* become?"
+        ),
+        "cover_image": "https://images.pexels.com/photos/863988/pexels-photo-863988.jpeg?auto=compress&cs=tinysrgb&w=800",
+        "total_pages": 17,
         "pages": [
             {
                 "page_number": 1,
-                "profession_title": "Once Upon a Time",
+                "profession_title": "A Book of Legends, for You",
                 "text_template": (
-                    "Long ago, in a peaceful kingdom surrounded by mountains and meadows, "
-                    "there lived a kind child named {name}. {He_She} had two jealous sisters and a cruel stepmother "
-                    "who made {him_her} do all the chores while they wore fine dresses and laughed."
+                    "Hello, {name}! Every legend you'll meet in this book started as a child just like you. They tripped, they fell, they doubted themselves — and kept going. Their stories are not just about winning; they are about the moments that made them keep showing up. As you read, ask yourself: which spark inside *me* could one day light up the world like theirs?"
                 ),
                 "image_prompt_template": (
-                    "Cartoon animated children's storybook illustration in vibrant cel-shaded style: a {age}-year-old {gender} child named {name} in simple "
-                    "patched clothes, carrying a heavy wicker basket through a grand stone castle kitchen. Two elaborately "
-                    "dressed sisters point and snicker while a stern stepmother watches from a throne-like chair. Warm "
-                    "candlelight, cobblestone floor, copper pots hanging on walls. Bold outlines, bright saturated colors, smooth shading, animated movie quality, no text."
+                    "Children's storybook illustration in vibrant cel-shaded style: a warm cozy bedroom with a child-aged dreamer looking out a window at a starry night sky. Soft glowing silhouettes of a tennis racket, a cricket bat, a football, a chess king, a javelin, a swim cap, a racing helmet and a basketball float gently like constellations among the stars. Warm bedside lamp glow, blanket on lap, soft pastel night palette. Bold outlines, bright saturated colors, animated movie quality, no text."
                 ),
             },
             {
                 "page_number": 2,
-                "profession_title": "A Heart of Kindness",
+                "profession_title": "The Boy from Mumbai Who Loved a Heavy Bat",
                 "text_template": (
-                    "Even though {name}'s sisters were unkind, {he_she} stayed gentle and brave. "
-                    "Whenever they snapped at {him_her}, {name} took a deep breath and remembered that kindness "
-                    "is a special kind of magic no one can take away."
+                    "In a small flat in Mumbai, a curly-haired boy named Sachin Tendulkar was so restless his older brother Ajit took him to coach Ramakant Achrekar. Sachin was eleven, his bat heavier than his arms could lift. Every morning before school, Achrekar made him bat for hours. The coach placed a one-rupee coin on the stumps — whoever got Sachin out kept it. Sachin still has those coins. He went on to bat for India at sixteen, score 100 international centuries, and make a billion people stand still each time he walked to the crease. {name}, the smallest daily habit is where greatness quietly hides."
                 ),
                 "image_prompt_template": (
-                    "Cartoon animated children's storybook illustration in vibrant cel-shaded style: a {age}-year-old {gender} child named {name} sitting "
-                    "on a stone castle windowsill, smiling softly while feeding colorful songbirds from {name}'s open palm. "
-                    "Morning sunlight streams through the arched window. Two sisters frown in the shadowy background. "
-                    "Bold outlines, bright saturated colors, smooth shading, animated movie quality, no text."
+                    "Children's storybook illustration in vibrant cel-shaded style: an 11-year-old curly-haired Indian boy in white cricket clothes standing in a sunlit Mumbai maidan, gripping a wooden cricket bat almost as tall as him. A wise older coach in a white cap watches from behind the stumps where a single one-rupee coin glints in the sun. Other young cricketers practice in the background. Warm golden morning light, bold outlines, bright saturated colors, animated movie quality, no text."
                 ),
             },
             {
                 "page_number": 3,
-                "profession_title": "Into the Forest",
+                "profession_title": "The Kid Who Came Back to Bat",
                 "text_template": (
-                    "One day, the stepmother grew so jealous of {name}'s goodness that she ordered {him_her} "
-                    "to leave the castle. With tears in {his_her} eyes but courage in {his_her} heart, "
-                    "{name} walked into the deep green forest, not knowing what would happen next."
+                    "Virat Kohli was a fierce 18-year-old playing for Delhi in a Ranji Trophy match when his father passed away in the middle of the night. The next morning, with red eyes and an aching heart, Virat asked his coach for one favour: please let him bat. He walked out, faced over a hundred balls, scored 90 runs, and only then went home for the funeral. {name}, that day Virat did not choose cricket over sadness — he chose discipline as a way to honour someone he loved. That same fire is why he later led India and broke records the world thought were untouchable."
                 ),
                 "image_prompt_template": (
-                    "Cartoon animated children's storybook illustration in vibrant cel-shaded style: a {age}-year-old {gender} child named {name} walking "
-                    "along a winding path into a tall, ancient forest. Golden rays of sunlight filter through the canopy. "
-                    "A rabbit peeks from behind ferns, a bluebird perches on a branch overhead. The mood shifts from "
-                    "sadness to quiet hope. Rich greens, dappled light, bold outlines, bright saturated colors, smooth shading, animated movie quality, no text."
+                    "Children's storybook illustration in vibrant cel-shaded style: a young 18-year-old Indian cricketer in white kit walking out of a stadium dressing room with quiet determination, bat tucked under his arm. Early morning light, a stadium half full, a teammate's reassuring hand on his shoulder. Subtle emotion, dignified mood, bold outlines, bright but slightly muted colors, animated movie quality, no text."
                 ),
             },
             {
                 "page_number": 4,
-                "profession_title": "The Little Cottage",
+                "profession_title": "The Boy Who Couldn't Stop Tinkering",
                 "text_template": (
-                    "After a long walk, {name} found a tiny, cozy cottage hidden among the trees. "
-                    "Inside, everything was messy and dusty. {He_She} decided to clean and tidy the little home, "
-                    "humming softly to feel less afraid."
+                    "In a backyard in Sydney, a thin Australian boy named Steve Smith would bowl leg-spin to his dad for hours, then bat against him, then write down everything in a notebook. He was told he batted weirdly — twitchy, fidgety, all the wrong angles. Selectors picked him as a spinner who could bat a little. But Steve studied his own technique like a scientist. He turned what coaches called 'wrong' into the most run-hungry batting style of his generation. {name}, sometimes your strangest habit is your secret weapon — do not iron it out, study it."
                 ),
                 "image_prompt_template": (
-                    "Cartoon animated children's storybook illustration in vibrant cel-shaded style: a charming thatched-roof cottage nestled among tall "
-                    "forest trees with a mushroom-lined path leading to the door. Inside, a {age}-year-old {gender} child "
-                    "named {name} sweeps the wooden floor while sunlight pours through small round windows. Seven tiny "
-                    "chairs, seven tiny beds, cozy hearth. Bold outlines, bright saturated colors, smooth shading, animated movie quality, no text."
+                    "Children's storybook illustration in vibrant cel-shaded style: a thin teenage Australian boy with sandy hair in his suburban Sydney backyard at dusk, batting against an invisible bowler with a famously twitchy stance. A weathered notebook open on the grass beside him. Warm porch light, scribbled chalk markings on a brick wall behind him for stumps. Bold outlines, bright saturated colors, animated movie quality, no text."
                 ),
             },
             {
                 "page_number": 5,
-                "profession_title": "New Friends",
+                "profession_title": "The Smallest Boy in Rosario",
                 "text_template": (
-                    "When the owners of the cottage came home -- seven kind dwarfs -- they were surprised to find their house "
-                    "sparkling clean. They listened to {name}'s story and promised, 'You can stay with us. "
-                    "We will be your family and keep you safe.'"
+                    "In the dusty streets of Rosario, Argentina, a tiny boy named Leo Messi played football with a worn rubber ball almost as big as his head. When he was eleven, doctors said his body was not growing and he needed daily hormone injections his family could not afford. A club in Spain, Barcelona, saw a video of him dribbling and offered to pay for the treatment if his family moved there. Every day for years, Leo gave himself those injections in his own leg before practice. {name}, the hardest things you do quietly are often what shape the brightest part of you."
                 ),
                 "image_prompt_template": (
-                    "Cartoon animated children's storybook illustration in vibrant cel-shaded style: a {age}-year-old {gender} child named {name} sitting at "
-                    "a small round wooden table surrounded by seven cheerful cartoon dwarfs of different heights and personalities, "
-                    "all sharing a warm meal. Cozy candlelight, wooden beams overhead, a crackling fireplace. Everyone smiles "
-                    "kindly at {name}. Bold outlines, bright saturated colors, smooth shading, animated movie quality, no text."
+                    "Children's storybook illustration in vibrant cel-shaded style: a small 10-year-old Argentine boy with brown hair dribbling a worn rubber football down a dusty Rosario street at sunset, head down, left foot glued to the ball. Older kids run after him but cannot catch him. Cobbled street, soft warm orange sky, distant houses. Bold outlines, bright saturated colors, animated movie quality, no text."
                 ),
             },
             {
                 "page_number": 6,
-                "profession_title": "The Poisoned Gift",
+                "profession_title": "The Boy from Madeira Who Never Sat Down",
                 "text_template": (
-                    "Far away, the stepmother learned that {name} was still alive and happy. Disguised as an old woman, "
-                    "she brought a beautiful red apple to the cottage. Trusting others, {name} took a bite -- and everything "
-                    "suddenly turned dark."
+                    "On the small Portuguese island of Madeira, a skinny boy named Cristiano Ronaldo would sneak out of his bedroom at night with a football, kicking it against walls until dawn. His family had very little money — four of them shared one room. At twelve he flew alone to Lisbon to join a football academy. He missed home so much he cried into his pillow every night. But every single morning, he was the first on the training pitch and the last to leave. {name}, talent is the spark, but showing up every single day is the fire."
                 ),
                 "image_prompt_template": (
-                    "Cartoon animated children's storybook illustration in vibrant cel-shaded style: a cloaked old woman with hidden eyes offers a single "
-                    "gleaming red apple to a {age}-year-old {gender} child named {name} at the cottage door. The apple "
-                    "glows ominously. Shadows creep at the edges while the cottage remains warm. Dramatic lighting, "
-                    "bold outlines, rich deep colors, smooth shading, animated movie quality, no text."
+                    "Children's storybook illustration in vibrant cel-shaded style: a thin 12-year-old Portuguese boy in old football boots kicking a ball against a stone wall under moonlight on a quiet Madeira street. Stars above, soft lamp glow, the boy's face fierce with focus, sweat on his brow. A small bedroom window open in the background. Bold outlines, bright saturated colors, animated movie quality, no text."
                 ),
             },
             {
                 "page_number": 7,
-                "profession_title": "Asleep in Glass",
+                "profession_title": "The Boy Who Smashed His Racket",
                 "text_template": (
-                    "The dwarfs were heartbroken. They gently laid {name} in a clear glass coffin on a soft hill, "
-                    "surrounded by flowers. Though {name} seemed asleep, {his_her} gentle face still looked full of "
-                    "hope and kindness."
+                    "As a young teenager in Switzerland, Roger Federer had a serious problem: he kept losing his temper. He would throw his racket, scream at himself, and storm off the court even after winning. His coaches almost gave up on him. One day, sitting alone after another tantrum, Roger decided he was tired of being his own enemy. He learned to breathe between points, to smile even when losing, to bow slightly to the crowd. {name}, the biggest opponent in any game is rarely the person on the other side of the net — it is usually yourself."
                 ),
                 "image_prompt_template": (
-                    "Cartoon animated children's storybook illustration in vibrant cel-shaded style: a crystal glass coffin resting on a flower-covered "
-                    "hilltop under a canopy of blossoming trees. A {age}-year-old {gender} child named {name} lies "
-                    "peacefully inside with folded hands. Seven cartoon dwarfs weep nearby while forest animals -- deer, rabbits, "
-                    "birds -- gather in a circle. Tender, bittersweet mood, bold outlines, bright colors, smooth shading, animated movie quality, no text."
+                    "Children's storybook illustration in vibrant cel-shaded style: a 12-year-old Swiss boy with curly brown hair sitting alone on a clay tennis court, a tennis racket on his lap, eyes closed in deep thought. Soft late afternoon light, empty stadium seats, a single yellow tennis ball at his feet. Calm and reflective mood. Bold outlines, bright soft colors, animated movie quality, no text."
                 ),
             },
             {
                 "page_number": 8,
-                "profession_title": "The Prince Arrives",
+                "profession_title": "The Sisters from Compton",
                 "text_template": (
-                    "One day, a kind prince passed through the forest and saw {name}. He listened to the dwarfs and felt "
-                    "deep respect for {name}'s brave heart. As the coffin was moved, the apple piece slipped from "
-                    "{name}'s throat, and {he_she} woke up with a gentle gasp."
+                    "In Compton, California, a father named Richard taught his two daughters — Venus and Serena — to play tennis on cracked public courts, sweeping broken glass off the lines before practice. They were the only Black children there, and people stared. Richard told them: 'You do not play tennis to belong — you play because you love it.' Serena trained six days a week from age four. She would grow up to win 23 Grand Slam titles, more than any other player in the open era. {name}, where you start does not decide where you finish."
                 ),
                 "image_prompt_template": (
-                    "Cartoon animated children's storybook illustration in vibrant cel-shaded style: a gentle young prince on a white horse arriving at the "
-                    "glass coffin on the hilltop. A {age}-year-old {gender} child named {name} begins to stir awake, "
-                    "eyes fluttering open. Cartoon dwarfs look up in astonished hope, golden sunlight breaking through clouds. "
-                    "Magical moment, bold outlines, bright hopeful colors, smooth shading, animated movie quality, no text."
+                    "Children's storybook illustration in vibrant cel-shaded style: two young African-American sisters around six and seven years old in matching white tennis outfits practicing on a cracked outdoor public court in Compton. A tall father in a tracksuit feeds them tennis balls from a basket. Chain-link fence, palm trees, warm late afternoon sun. Bold outlines, bright saturated colors, animated movie quality, no text."
                 ),
             },
             {
                 "page_number": 9,
-                "profession_title": "A New Beginning",
+                "profession_title": "The Karting Kid Who Wouldn't Take No",
                 "text_template": (
-                    "{name} thanked the dwarfs for their love and courage. The prince said, 'I admire your kindness and strength, "
-                    "{name}. Would you like to come to my castle, where people will treat you the way you deserve?'"
+                    "In Stevenage, England, an 8-year-old Lewis Hamilton was already winning go-kart championships. His dad worked four jobs at once to pay for the kart parts. At ten, Lewis walked up to McLaren's team boss at an awards ceremony and shook his hand: 'One day, sir, I want to race for you.' He was told to come back when he was older. Nine years later, he signed for McLaren. He became the first Black driver in Formula 1 and tied the record for most championships ever — seven. {name}, when you say what you want out loud to the right people, the world starts listening differently."
                 ),
                 "image_prompt_template": (
-                    "Cartoon animated children's storybook illustration in vibrant cel-shaded style: a {age}-year-old {gender} child named {name} standing "
-                    "between the kind prince and the seven cartoon dwarfs, holding a dwarf's hand in farewell. A winding forest "
-                    "path leads to a sunlit white castle on a distant hill. Bold outlines, bright saturated colors, warm golden hour lighting, "
-                    "smooth shading, animated movie quality, no text."
+                    "Children's storybook illustration in vibrant cel-shaded style: a 10-year-old Black British boy in a yellow racing suit holding a small trophy, shaking hands with a smiling team principal in a smart suit at an indoor karting awards event. Other kid racers and parents in the background applauding gently. Warm fluorescent lights, racing posters on the walls. Bold outlines, bright saturated colors, animated movie quality, no text."
                 ),
             },
             {
                 "page_number": 10,
-                "profession_title": "Happily Ever After",
+                "profession_title": "The Boy with a Famous Surname",
                 "text_template": (
-                    "{name} went to the prince's castle, where {he_she} was finally treated with love and respect. "
-                    "{His_Her} unkind stepmother and sisters had to live with their choices, while {name}'s kindness shone "
-                    "brighter than ever. From that day on, {name} knew that being gentle and brave could change {his_her} story."
+                    "Carlos Sainz Jr.'s father was already a two-time World Rally Champion — one of the most famous racers Spain had ever produced. Imagine starting a sport where everyone whispers, 'Yes, but his dad…' Carlos refused to coast on the surname. He moved to Italy alone at sixteen to race karts, lived in a small apartment, learned three languages, and beat drivers who had been racing on faster karts than him for years. He fought his way into Formula 1 on his own terms. {name}, no shadow is so big that you cannot grow taller than it — but you have to be willing to grow."
                 ),
                 "image_prompt_template": (
-                    "Cartoon animated children's storybook illustration in vibrant cel-shaded style: a grand castle courtyard celebration with banners and "
-                    "flowers. A {age}-year-old {gender} child named {name} in beautiful royal clothes stands at the center, "
-                    "surrounded by the prince, the seven cartoon dwarfs visiting, and new friends all smiling. Bright golden "
-                    "sunlight, joyful atmosphere, bold outlines, bright saturated colors, smooth shading, animated movie quality happily-ever-after ending, no text."
+                    "Children's storybook illustration in vibrant cel-shaded style: a 16-year-old Spanish boy in a karting suit standing alone next to his go-kart in a small Italian paddock at sunrise. Light fog, scattered toolboxes, a determined look on his face. A photograph of his famous rally-champion father pinned to the toolbox. Bold outlines, bright saturated colors, animated movie quality, no text."
+                ),
+            },
+            {
+                "page_number": 11,
+                "profession_title": "The Boy Who Drew at the Grandmaster",
+                "text_template": (
+                    "In Norway, a five-year-old boy named Magnus Carlsen could already solve jigsaw puzzles with five hundred pieces. By eight he started chess. By thirteen he was a Grandmaster — the third youngest in history. At a tournament in Iceland, 13-year-old Magnus drew against the legendary Garry Kasparov, the world's greatest player. People say Kasparov could not believe what he was seeing. Magnus would go on to become World Champion five times. {name}, your brain is a muscle. Most of being a genius is just being deeply curious for longer than anyone else thought to be."
+                ),
+                "image_prompt_template": (
+                    "Children's storybook illustration in vibrant cel-shaded style: a focused 13-year-old Norwegian boy with messy blond hair sitting across a chess board from a much older, world-famous chess champion. A large chess clock between them, tournament hall in soft focus behind. The boy's hand hovers thoughtfully over a knight. Bold outlines, bright but soft colors, animated movie quality, no text."
+                ),
+            },
+            {
+                "page_number": 12,
+                "profession_title": "The Chennai Boy Who Played the Best",
+                "text_template": (
+                    "In Chennai, India, a small boy named Praggnanandhaa learned chess at age three from his older sister Vaishali, who had taken up the game because their parents wanted to limit her TV time. At ten he became the youngest International Master in history. At twelve, the youngest Grandmaster ever. At eighteen he beat Magnus Carlsen — the World Champion — three times in the same year. His mother Nagalakshmi travelled with him to every tournament, cooking his food and packing his clothes. {name}, behind every champion you'll meet, there is someone quietly making the small things possible."
+                ),
+                "image_prompt_template": (
+                    "Children's storybook illustration in vibrant cel-shaded style: a small 10-year-old Indian boy in a tournament shirt staring intently at a chessboard. His mother sits a few rows back in the audience in a sari, smiling proudly. Other Grandmasters at adjacent boards. Soft hall lighting, warm Chennai afternoon glow through tall windows. Bold outlines, bright saturated colors, animated movie quality, no text."
+                ),
+            },
+            {
+                "page_number": 13,
+                "profession_title": "The Jamaican Boy Who Ran Everywhere",
+                "text_template": (
+                    "In a tiny town in Jamaica called Sherwood Content, a tall, lanky boy named Usain Bolt was always running — to the shop for his mother, between cricket wickets in the schoolyard, anywhere his long legs could carry him. His childhood dream was actually cricket, but a coach noticed him sprinting and said, 'Boy, you are not a cricketer, you are a sprinter.' At fifteen, Bolt won his first World Junior Gold. He would later run 100 metres in 9.58 seconds — the fastest human ever timed. {name}, sometimes the thing you do without thinking is the very thing the world needs to see."
+                ),
+                "image_prompt_template": (
+                    "Children's storybook illustration in vibrant cel-shaded style: a tall, lanky 12-year-old Jamaican boy sprinting barefoot through a sun-drenched grassy field toward a small village shop, laughing freely. A few other village kids run far behind, cannot keep up. Bright blue sky, palm trees, vibrant Caribbean colors. Bold outlines, bright saturated colors, animated movie quality, no text."
+                ),
+            },
+            {
+                "page_number": 14,
+                "profession_title": "The Boy from Khandra Who Threw His Heart",
+                "text_template": (
+                    "In a small village called Khandra in Haryana, India, a slightly overweight 11-year-old boy named Neeraj Chopra was sent by his family to a local stadium to lose weight by jogging. While there, he saw older boys throwing a javelin. He picked one up. It felt right. He had no proper shoes, no proper coach, no proper grounds — just a long stick and a stubborn dream. Years later, at the Tokyo Olympics, Neeraj threw a javelin 87.58 metres and won India its first ever Olympic Athletics gold. {name}, the path nobody else is walking is often the one waiting for you."
+                ),
+                "image_prompt_template": (
+                    "Children's storybook illustration in vibrant cel-shaded style: an 11-year-old Indian boy in a t-shirt and shorts at a dusty village stadium in Haryana, picking up a long javelin for the first time. Older athletes practice in the background. Late afternoon sun, golden dust haze, a small audience of curious children watching. Bold outlines, bright saturated colors, animated movie quality, no text."
+                ),
+            },
+            {
+                "page_number": 15,
+                "profession_title": "The Boy They Said Couldn't Sit Still",
+                "text_template": (
+                    "In Baltimore, USA, a hyperactive boy named Michael Phelps was so restless in class his teacher told his mother, 'Your son will never be able to focus on anything.' His mother put him in swimming. At first he was scared to put his face under water. So a coach taught him to float on his back. By fifteen, Michael was at the Olympics. By twenty-seven, he had won 23 Olympic gold medals — more than any human in history. {name}, what looks like a weakness in one room is often a superpower in another. You just have to find the right pool."
+                ),
+                "image_prompt_template": (
+                    "Children's storybook illustration in vibrant cel-shaded style: a 10-year-old American boy floating on his back in a swimming pool, arms outstretched, eyes wide with wonder at the ceiling. A patient coach stands at the pool's edge, smiling. Soft turquoise water, gentle ceiling lights reflecting on the surface. Bold outlines, bright saturated colors, animated movie quality, no text."
+                ),
+            },
+            {
+                "page_number": 16,
+                "profession_title": "The Boy Who Got Cut From the Team",
+                "text_template": (
+                    "As a 15-year-old in North Carolina, USA, Michael Jordan tried out for his high school's varsity basketball team — and was cut. His name was not on the list. He went home, locked himself in his room, and cried. Then he decided to use the pain. He practised harder than anyone, sometimes alone in the dark in the school gym. The next year, he made the team. He would later become the player most people on Earth still call the greatest basketball player of all time. {name}, the day someone tells you no can become the day you start saying yes — to yourself."
+                ),
+                "image_prompt_template": (
+                    "Children's storybook illustration in vibrant cel-shaded style: a 15-year-old African-American boy in a school gym, alone, practising a layup as the sun sets through high windows. Empty bleachers, a single basketball hoop, a clipboard with a team list on the floor without his name on it. Bold outlines, bright but moody colors, animated movie quality, no text."
+                ),
+            },
+            {
+                "page_number": 17,
+                "profession_title": "And Now… It's Your Turn, {name}",
+                "text_template": (
+                    "Did you notice something, {name}? Every legend in this book started as a child. Tiny. Doubted. Sometimes ignored. None of them knew yet that they would change the world. They just kept showing up, kept practising, kept caring — even on the days nobody was watching. Somewhere right now, a future legend is reading these very words. Maybe that legend is you. {name}, the world is waiting for the story only you can write. Start today."
+                ),
+                "image_prompt_template": (
+                    "Children's storybook illustration in vibrant cel-shaded style: a young child silhouetted at sunrise on a hill, arms wide open, looking toward a horizon filled with soft glowing silhouettes — a tennis racket, a cricket bat, a football, a chess king, a javelin, a swim cap, a basketball, a racing helmet — all rising in a warm halo of light. Hopeful, dreamy, cinematic mood. Bold outlines, bright saturated colors, golden hour palette, animated movie quality, no text."
                 ),
             },
         ],
