@@ -701,13 +701,23 @@ def render_template_studio(api_key: str):
     # session_state, only an authenticated admin can render this page.
     try:
         from auth import ADMIN_EMAILS
-        _email = (st.session_state.get("auth_user") or {}).get("email", "") \
-                 or st.session_state.get("user_email", "")
-        if _email not in ADMIN_EMAILS:
-            st.error("This page is for admins only.")
+        _email = (
+            (st.session_state.get("auth_user") or {}).get("email", "")
+            or st.session_state.get("user_email", "")
+            or ""
+        ).strip().lower()
+        _is_admin = (
+            bool(st.session_state.get("is_admin"))
+            or (_email and _email in ADMIN_EMAILS)
+        )
+        if not _is_admin:
+            st.error(
+                "Template Studio is admin-only. Signed-in email "
+                f"`{_email or '(none)'}` is not in the admin list."
+            )
             return
-    except Exception:
-        st.error("This page is for admins only.")
+    except Exception as _e:
+        st.error(f"Template Studio is admin-only. Auth lookup failed: {_e}")
         return
     st.markdown("## 🎨 Template Studio")
     st.caption(

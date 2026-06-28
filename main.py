@@ -3873,15 +3873,35 @@ def main():
     # Coverage status icons (✅ / ⏳ / ❌) and the per-variant matrix must
     # never leak onto a customer-facing page.
     if st.session_state.get("show_template_studio") and TEMPLATE_FLOW_AVAILABLE:
-        _studio_email = (st.session_state.get("auth_user") or {}).get("email", "")
-        if _studio_email not in ADMIN_EMAILS:
-            st.session_state.show_template_studio = False
-        else:
-            if st.button("← Back to Main", key="back_from_studio"):
+        # Look through every place the session keeps the signed-in email so
+        # a Google OIDC session, a legacy auth_user dict, or the newer
+        # user_email all resolve to admin correctly.
+        _studio_email = (
+            (st.session_state.get("auth_user") or {}).get("email", "")
+            or st.session_state.get("user_email", "")
+            or ""
+        ).strip().lower()
+        _studio_is_admin = (
+            bool(st.session_state.get("is_admin"))
+            or (_studio_email and _studio_email in ADMIN_EMAILS)
+        )
+        if not _studio_is_admin:
+            # Surface the failure instead of silently swallowing the click —
+            # otherwise an admin clicking the button just lands back on the
+            # storefront with no explanation.
+            st.error(
+                "Template Studio is admin-only. Signed-in email "
+                f"`{_studio_email or '(none)'}` is not in the admin list."
+            )
+            if st.button("← Back to Main", key="back_from_studio_denied"):
                 st.session_state.show_template_studio = False
                 st.rerun()
-            render_template_studio(api_key)
             return
+        if st.button("← Back to Main", key="back_from_studio"):
+            st.session_state.show_template_studio = False
+            st.rerun()
+        render_template_studio(api_key)
+        return
 
     # Template mode — asset-backed storefront flow
     if st.session_state.book_mode == "template" and TEMPLATE_FLOW_AVAILABLE:
