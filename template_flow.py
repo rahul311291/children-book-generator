@@ -561,6 +561,42 @@ def render_template_studio(api_key: str):
             st.write(f"**{k}:** {v}")
 
     templates = get_available_templates()
+
+    # ---- Global overview: which templates have ANY images rendered ----
+    st.markdown("#### All templates — pre-render status")
+    overview_rows = []
+    incomplete_ids = []
+    for t in templates:
+        t_id = t["id"]
+        t_pages = get_template_pages(t_id)
+        t_status = asset_status(t_id)
+        total_pages = len(t_pages)
+        pages_with_any = sum(1 for pg in t_pages if t_status.get(pg["page_number"]))
+        pct = int(round(100 * pages_with_any / total_pages)) if total_pages else 0
+        first_done = "✅" if t_pages and t_status.get(t_pages[0]["page_number"]) else "—"
+        if pages_with_any < total_pages:
+            incomplete_ids.append(t["name"])
+        overview_rows.append({
+            "Template": t["name"],
+            "Pages": total_pages,
+            "Pages w/ image": pages_with_any,
+            "% rendered": f"{pct}%",
+            "First page": first_done,
+            "Status": "✅ complete" if pages_with_any == total_pages and total_pages > 0
+                       else ("⏳ partial" if pages_with_any > 0 else "❌ none"),
+        })
+    st.dataframe(overview_rows, use_container_width=True, hide_index=True)
+    if incomplete_ids:
+        st.warning(
+            "Templates missing one or more images: "
+            + ", ".join(incomplete_ids)
+            + ". Pick one below and click Pre-render assets to fill it in."
+        )
+    else:
+        st.success("Every template has at least one rendered variant for every page.")
+
+    st.divider()
+
     template = st.selectbox(
         "Template", templates,
         format_func=lambda t: f"{t['name']} ({t.get('total_pages','?')} pages)",
