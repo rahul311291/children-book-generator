@@ -214,13 +214,13 @@ DEFAULT_TEMPLATES: List[Dict] = [
         "id": "b1111111-1111-1111-1111-111111111111",
         "name": "Legends in the Making",
         "description": (
-            "Nineteen real childhood stories of world champions in cricket, football, "
-            "tennis, F1, chess, athletics, swimming, basketball, gymnastics, boxing, "
-            "weightlifting and badminton — gathered into a personalised book that quietly "
-            "asks {name}: which legend will *you* become?"
+            "Seventeen real childhood stories of world champions in cricket, football, "
+            "tennis, F1, chess, athletics, swimming, basketball, gymnastics and boxing — "
+            "gathered into a personalised book that quietly asks {name}: which legend will "
+            "*you* become?"
         ),
         "cover_image": "https://images.pexels.com/photos/863988/pexels-photo-863988.jpeg?auto=compress&cs=tinysrgb&w=800",
-        "total_pages": 21,
+        "total_pages": 19,
         "pages": [
             {
                 "page_number": 1,
@@ -234,7 +234,7 @@ DEFAULT_TEMPLATES: List[Dict] = [
             },
             {
                 "page_number": 2,
-                "profession_title": "The Boy from Mumbai Who Loved a Heavy Bat",
+                "profession_title": "Sachin Tendulkar — Cricket · India",
                 "text_template": (
                     "In a small flat in Mumbai, a curly-haired boy named Sachin Tendulkar was so restless his older brother Ajit took him to coach Ramakant Achrekar. Sachin was eleven, his bat heavier than his arms could lift. Every morning before school, Achrekar made him bat for hours. The coach placed a one-rupee coin on the stumps — whoever got Sachin out kept it. Sachin still has those coins. He went on to bat for India at sixteen, score 100 international centuries, and make a billion people stand still each time he walked to the crease. {name}, the smallest daily habit is where greatness quietly hides."
                 ),
@@ -246,7 +246,7 @@ DEFAULT_TEMPLATES: List[Dict] = [
             },
             {
                 "page_number": 3,
-                "profession_title": "The Kid Who Came Back to Bat",
+                "profession_title": "Virat Kohli — Cricket · India",
                 "text_template": (
                     "Virat Kohli was a fierce 18-year-old playing for Delhi in a Ranji Trophy match when his father passed away in the middle of the night. The next morning, with red eyes and an aching heart, Virat asked his coach for one favour: please let him bat. He walked out, faced over a hundred balls, scored 90 runs, and only then went home for the funeral. {name}, that day Virat did not choose cricket over sadness — he chose discipline as a way to honour someone he loved. That same fire is why he later led India and broke records the world thought were untouchable."
                 ),
@@ -258,7 +258,7 @@ DEFAULT_TEMPLATES: List[Dict] = [
             },
             {
                 "page_number": 4,
-                "profession_title": "The Boy Who Couldn't Stop Tinkering",
+                "profession_title": "Steve Smith — Cricket · Australia",
                 "text_template": (
                     "In a backyard in Sydney, a thin Australian boy named Steve Smith would bowl leg-spin to his dad for hours, then bat against him, then write down everything in a notebook. He was told he batted weirdly — twitchy, fidgety, all the wrong angles. Selectors picked him as a spinner who could bat a little. But Steve studied his own technique like a scientist. He turned what coaches called 'wrong' into the most run-hungry batting style of his generation. {name}, sometimes your strangest habit is your secret weapon — do not iron it out, study it."
                 ),
@@ -270,7 +270,7 @@ DEFAULT_TEMPLATES: List[Dict] = [
             },
             {
                 "page_number": 5,
-                "profession_title": "The Smallest Boy in Rosario",
+                "profession_title": "Lionel Messi — Football · Argentina",
                 "text_template": (
                     "In the dusty streets of Rosario, Argentina, a tiny boy named Leo Messi played football with a worn rubber ball almost as big as his head. When he was eleven, doctors said his body was not growing and he needed daily hormone injections his family could not afford. A club in Spain, Barcelona, saw a video of him dribbling and offered to pay for the treatment if his family moved there. Every day for years, Leo gave himself those injections in his own leg before practice. {name}, the hardest things you do quietly are often what shape the brightest part of you."
                 ),
@@ -282,7 +282,7 @@ DEFAULT_TEMPLATES: List[Dict] = [
             },
             {
                 "page_number": 6,
-                "profession_title": "The Boy from Madeira Who Never Sat Down",
+                "profession_title": "Cristiano Ronaldo — Football · Portugal",
                 "text_template": (
                     "On the small Portuguese island of Madeira, a skinny boy named Cristiano Ronaldo would sneak out of his bedroom at night with a football, kicking it against walls until dawn. His family had very little money — four of them shared one room. At twelve he flew alone to Lisbon to join a football academy. He missed home so much he cried into his pillow every night. But every single morning, he was the first on the training pitch and the last to leave. {name}, talent is the spark, but showing up every single day is the fire."
                 ),
@@ -294,7 +294,7 @@ DEFAULT_TEMPLATES: List[Dict] = [
             },
             {
                 "page_number": 7,
-                "profession_title": "The Boy Who Smashed His Racket",
+                "profession_title": "Roger Federer — Tennis · Switzerland",
                 "text_template": (
                     "As a young teenager in Switzerland, Roger Federer had a serious problem: he kept losing his temper. He would throw his racket, scream at himself, and storm off the court even after winning. His coaches almost gave up on him. One day, sitting alone after another tantrum, Roger decided he was tired of being his own enemy. He learned to breathe between points, to smile even when losing, to bow slightly to the crowd. {name}, the biggest opponent in any game is rarely the person on the other side of the net — it is usually yourself."
                 ),
@@ -306,7 +306,7 @@ DEFAULT_TEMPLATES: List[Dict] = [
             },
             {
                 "page_number": 8,
-                "profession_title": "The Sisters from Compton",
+                "profession_title": "Serena Williams — Tennis · USA",
                 "text_template": (
                     "In Compton, California, a father named Richard taught his two daughters — Venus and Serena — to play tennis on cracked public courts, sweeping broken glass off the lines before practice. They were the only Black children there, and people stared. Richard told them: 'You do not play tennis to belong — you play because you love it.' Serena trained six days a week from age four. She would grow up to win 23 Grand Slam titles, more than any other player in the open era. {name}, where you start does not decide where you finish."
                 ),
@@ -318,7 +318,7 @@ DEFAULT_TEMPLATES: List[Dict] = [
             },
             {
                 "page_number": 9,
-                "profession_title": "The Karting Kid Who Wouldn't Take No",
+                "profession_title": "Lewis Hamilton — Formula 1 · UK",
                 "text_template": (
                     "In Stevenage, England, an 8-year-old Lewis Hamilton was already winning go-kart championships. His dad worked four jobs at once to pay for the kart parts. At ten, Lewis walked up to McLaren's team boss at an awards ceremony and shook his hand: 'One day, sir, I want to race for you.' He was told to come back when he was older. Nine years later, he signed for McLaren. He became the first Black driver in Formula 1 and tied the record for most championships ever — seven. {name}, when you say what you want out loud to the right people, the world starts listening differently."
                 ),
@@ -330,7 +330,7 @@ DEFAULT_TEMPLATES: List[Dict] = [
             },
             {
                 "page_number": 10,
-                "profession_title": "The Boy with a Famous Surname",
+                "profession_title": "Carlos Sainz Jr. — Formula 1 · Spain",
                 "text_template": (
                     "Carlos Sainz Jr.'s father was already a two-time World Rally Champion — one of the most famous racers Spain had ever produced. Imagine starting a sport where everyone whispers, 'Yes, but his dad…' Carlos refused to coast on the surname. He moved to Italy alone at sixteen to race karts, lived in a small apartment, learned three languages, and beat drivers who had been racing on faster karts than him for years. He fought his way into Formula 1 on his own terms. {name}, no shadow is so big that you cannot grow taller than it — but you have to be willing to grow."
                 ),
@@ -342,7 +342,7 @@ DEFAULT_TEMPLATES: List[Dict] = [
             },
             {
                 "page_number": 11,
-                "profession_title": "The Boy Who Drew with the Grandmaster",
+                "profession_title": "Magnus Carlsen — Chess · Norway",
                 "text_template": (
                     "In Norway, a five-year-old boy named Magnus Carlsen could already solve jigsaw puzzles with five hundred pieces. By eight he started chess. By thirteen he was a Grandmaster — the third youngest in history. At a tournament in Iceland, 13-year-old Magnus drew against the legendary Garry Kasparov, the world's greatest player. People say Kasparov could not believe what he was seeing. Magnus would go on to become World Champion five times. {name}, your brain is a muscle. Most of being a genius is just being deeply curious for longer than anyone else thought to be."
                 ),
@@ -354,7 +354,7 @@ DEFAULT_TEMPLATES: List[Dict] = [
             },
             {
                 "page_number": 12,
-                "profession_title": "The Chennai Boy Who Played the Best",
+                "profession_title": "R Praggnanandhaa — Chess · India",
                 "text_template": (
                     "In Chennai, India, a small boy named Praggnanandhaa learned chess at age three from his older sister Vaishali, who had taken up the game because their parents wanted to limit her TV time. At ten he became the youngest International Master in history. At twelve, the youngest Grandmaster ever. At eighteen he beat Magnus Carlsen — the World Champion — three times in the same year. His mother Nagalakshmi travelled with him to every tournament, cooking his food and packing his clothes. {name}, behind every champion you'll meet, there is someone quietly making the small things possible."
                 ),
@@ -366,7 +366,7 @@ DEFAULT_TEMPLATES: List[Dict] = [
             },
             {
                 "page_number": 13,
-                "profession_title": "The Jamaican Boy Who Ran Everywhere",
+                "profession_title": "Usain Bolt — Athletics · Jamaica",
                 "text_template": (
                     "In a tiny town in Jamaica called Sherwood Content, a tall, lanky boy named Usain Bolt was always running — to the shop for his mother, between cricket wickets in the schoolyard, anywhere his long legs could carry him. His childhood dream was actually cricket, but a coach noticed him sprinting and said, 'Boy, you are not a cricketer, you are a sprinter.' At fifteen, Bolt won his first World Junior Gold. He would later run 100 metres in 9.58 seconds — the fastest human ever timed. {name}, sometimes the thing you do without thinking is the very thing the world needs to see."
                 ),
@@ -378,7 +378,7 @@ DEFAULT_TEMPLATES: List[Dict] = [
             },
             {
                 "page_number": 14,
-                "profession_title": "The Boy from Khandra Who Threw His Heart",
+                "profession_title": "Neeraj Chopra — Athletics · India",
                 "text_template": (
                     "In a small village called Khandra in Haryana, India, a slightly overweight 11-year-old boy named Neeraj Chopra was sent by his family to a local stadium to lose weight by jogging. While there, he saw older boys throwing a javelin. He picked one up. It felt right. He had no proper shoes, no proper coach, no proper grounds — just a long stick and a stubborn dream. Years later, at the Tokyo Olympics, Neeraj threw a javelin 87.58 metres and won India its first ever Olympic Athletics gold. {name}, the path nobody else is walking is often the one waiting for you."
                 ),
@@ -390,7 +390,7 @@ DEFAULT_TEMPLATES: List[Dict] = [
             },
             {
                 "page_number": 15,
-                "profession_title": "The Boy They Said Couldn't Sit Still",
+                "profession_title": "Michael Phelps — Swimming · USA",
                 "text_template": (
                     "In Baltimore, USA, a hyperactive boy named Michael Phelps was so restless in class his teacher told his mother, 'Your son will never be able to focus on anything.' His mother put him in swimming. At first he was scared to put his face under water. So a coach taught him to float on his back. By fifteen, Michael was at the Olympics. By twenty-seven, he had won 23 Olympic gold medals — more than any human in history. {name}, what looks like a weakness in one room is often a superpower in another. You just have to find the right pool."
                 ),
@@ -402,7 +402,7 @@ DEFAULT_TEMPLATES: List[Dict] = [
             },
             {
                 "page_number": 16,
-                "profession_title": "The Boy Who Got Cut From the Team",
+                "profession_title": "Michael Jordan — Basketball · USA",
                 "text_template": (
                     "As a 15-year-old in North Carolina, USA, Michael Jordan tried out for his high school's varsity basketball team — and was cut. His name was not on the list. He went home, locked himself in his room, and cried. Then he decided to use the pain. He practised harder than anyone, sometimes alone in the dark in the school gym. The next year, he made the team. He would later become the player most people on Earth still call the greatest basketball player of all time. {name}, the day someone tells you no can become the day you start saying yes — to yourself."
                 ),
@@ -414,7 +414,7 @@ DEFAULT_TEMPLATES: List[Dict] = [
             },
             {
                 "page_number": 17,
-                "profession_title": "The Girl Who Tumbled Into History",
+                "profession_title": "Simone Biles — Gymnastics · USA",
                 "text_template": (
                     "In Ohio, USA, a tiny 6-year-old named Simone Biles was on a school day trip to a gym when she copied a routine she had seen on TV. The coach called her parents that evening: 'Your daughter is a once-in-a-generation talent.' Adopted as a young girl, Simone grew up grateful — and stubborn. She trained for fifteen years to land moves no other human being has ever landed. She has won seven Olympic medals and thirty World Championship medals — more than any gymnast in history. {name}, your superpower might already be living quietly inside you, waiting for the moment you say yes to it."
                 ),
@@ -426,7 +426,7 @@ DEFAULT_TEMPLATES: List[Dict] = [
             },
             {
                 "page_number": 18,
-                "profession_title": "The Girl from Manipur Who Boxed in Secret",
+                "profession_title": "Mary Kom — Boxing · India",
                 "text_template": (
                     "In a small village in Manipur, India, a girl named Mary Kom helped her parents on their farm. At fourteen she watched a boxer return home wearing a champion's medal — and knew, instantly, what she wanted. Mary trained in secret because her father thought boxing was 'too rough for a daughter.' When she finally won her first national title, her father came to watch. He cried. Mary went on to win SIX World Boxing Championships and an Olympic medal — the only woman boxer in history with that record. {name}, the people who once said 'no' often become the proudest when you say 'yes.'"
                 ),
@@ -438,30 +438,6 @@ DEFAULT_TEMPLATES: List[Dict] = [
             },
             {
                 "page_number": 19,
-                "profession_title": "The Girl Who Lifted Up Her Whole Village",
-                "text_template": (
-                    "As a 12-year-old in Manipur, India, Mirabai Chanu could carry firewood bundles heavier than the weights other children her age struggled with. Watching her, a coach said quietly, 'This girl is meant for the barbell.' She took it up. Her family could barely afford proper shoes — Mirabai trained in flip-flops, sometimes barefoot. Years later at the Tokyo Olympics, she lifted 202 kilograms above her head and won India its very first medal of the entire Games — silver in weightlifting. {name}, the strength you do not know you have is usually the one that has always been with you."
-                ),
-                "image_prompt_template": (
-                    "Children's storybook illustration: a 12-year-old Manipuri girl carrying a tall bundle of firewood on her head along a hillside path at dawn, smiling with effort. Bold outlines, animated quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
-                ),
-                "static_image_url": "https://commons.wikimedia.org/wiki/Special:FilePath/Mirabai_Chanu_at_Khel_Ratna_Award_2018.jpg",
-                "image_credit": "Photo: Wikimedia Commons",
-            },
-            {
-                "page_number": 20,
-                "profession_title": "The Girl Who Trained at Four in the Morning",
-                "text_template": (
-                    "In Hyderabad, India, an 8-year-old PV Sindhu watched her parents — both former national volleyball players — practise in the evenings. She picked up a badminton racket and would not put it down. Her coach Pullela Gopichand soon made her wake at 4 a.m. every morning to train. She practised on her birthday. She practised on holidays. At twenty-one, she became the first Indian woman to win an Olympic silver medal in badminton — and later a bronze too. {name}, the smallest sacrifices, repeated daily, are how big dreams quietly come true."
-                ),
-                "image_prompt_template": (
-                    "Children's storybook illustration: an 8-year-old Indian girl in tracksuit holding a badminton racket in a dim hall at dawn, just a single ceiling light on, coach feeding shuttlecocks. Bold outlines, animated quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
-                ),
-                "static_image_url": "https://commons.wikimedia.org/wiki/Special:FilePath/Pusarla_Venkata_Sindhu_(cropped).jpg",
-                "image_credit": "Photo: Wikimedia Commons",
-            },
-            {
-                "page_number": 21,
                 "profession_title": "And Now… It's Your Turn, {name}",
                 "text_template": (
                     "Did you notice something, {name}? Every legend in this book started as a child. Tiny. Doubted. Sometimes ignored. None of them knew yet that they would change the world. They just kept showing up, kept practising, kept caring — even on the days nobody was watching. Somewhere right now, a future legend is reading these very words. Maybe that legend is you. {name}, the world is waiting for the story only you can write. Start today."
@@ -2825,10 +2801,37 @@ def convert_uploaded_file_to_base64(uploaded_file) -> str:
         return None
 
 
+# Rate-limit resilience: support a *pool* of Gemini API keys so concurrent
+# image generations don't all hit one project's per-minute quota. Set
+# GEMINI_API_KEYS in the environment as a comma-separated list. Each key
+# ideally belongs to a *different* Google Cloud project — keys inside the
+# same project share the same quota, so multiple keys there don't help.
+_KEY_POOL_INDEX = 0
+
+
+def _gemini_key_pool(primary: str = "") -> List[str]:
+    """Return the rotation pool — primary key first, then env-defined extras."""
+    import os as _os
+    pool = []
+    if primary:
+        pool.append(primary)
+    multi = _os.environ.get("GEMINI_API_KEYS", "")
+    if multi:
+        for k in multi.split(","):
+            k = k.strip()
+            if k and k not in pool:
+                pool.append(k)
+    return pool
+
+
 def generate_page_image(api_key: str, prompt: str, reference_image_base64: Optional[str] = None, openrouter_key: str = "") -> Optional[str]:
     """Generate a single image using Gemini API with optional reference image.
 
-    Falls back to OpenRouter (Gemini models) when the primary call fails.
+    Resilience layers (each tried in order on failure):
+      1. Rotate through the GEMINI_API_KEYS pool, starting at the next slot
+         so concurrent calls naturally spread across keys/projects.
+      2. Fall back to the explicitly passed-in api_key if the pool ran dry.
+      3. Fall back to OpenRouter (Gemini models) if available.
     """
     no_text_instruction = "CRITICAL: NO TEXT in this image. No words, letters, numbers, speech bubbles, captions, signs, or labels. Pure illustration only."
     if "cartoon animated" in prompt.lower() or "cel-shaded" in prompt.lower():
@@ -2844,13 +2847,28 @@ def generate_page_image(api_key: str, prompt: str, reference_image_base64: Optio
         )
     enhanced_prompt = f"{no_text_instruction}. {prompt}.{likeness_note} {style_modifiers}. {no_text_instruction}"
 
-    result_url = _call_gemini_image_api(api_key, enhanced_prompt, reference_image_base64)
-    if result_url:
-        return result_url
+    global _KEY_POOL_INDEX
+    pool = _gemini_key_pool(api_key)
+    if not pool:
+        logger.warning("No Gemini API key configured")
+    else:
+        # Round-robin starting point; each call advances the index so two
+        # concurrent calls naturally pick different keys.
+        start = _KEY_POOL_INDEX % len(pool)
+        _KEY_POOL_INDEX = (_KEY_POOL_INDEX + 1) % len(pool)
+        for offset in range(len(pool)):
+            key = pool[(start + offset) % len(pool)]
+            result_url = _call_gemini_image_api(key, enhanced_prompt, reference_image_base64)
+            if result_url:
+                return result_url
+            logger.info(
+                f"Gemini image call failed on key #{(start + offset) % len(pool) + 1} "
+                f"of {len(pool)}; trying next key."
+            )
 
     # --- OpenRouter fallback (Gemini models, no ChatGPT/DALL-E) ---
     if openrouter_key:
-        logger.info("Gemini image API failed, trying OpenRouter fallback")
+        logger.info("Gemini image API failed for all keys; trying OpenRouter fallback")
         result_url = _call_openrouter_image(openrouter_key, enhanced_prompt)
         if result_url:
             return result_url

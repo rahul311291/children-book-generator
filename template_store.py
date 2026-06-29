@@ -133,6 +133,10 @@ def generate_assets_for_template(
     status = asset_status(template_id)
     jobs = []
     for page in pages:
+        # Skip pages that ship a real photo (Legends — Wikipedia portraits);
+        # there is nothing for the image model to render for those.
+        if page.get("static_image_url"):
+            continue
         existing = status.get(page["page_number"], [])
         for gender in genders:
             for group in age_groups:
