@@ -214,12 +214,13 @@ DEFAULT_TEMPLATES: List[Dict] = [
         "id": "b1111111-1111-1111-1111-111111111111",
         "name": "Legends in the Making",
         "description": (
-            "Fifteen real childhood stories of world champions in cricket, football, "
-            "tennis, F1, chess, athletics, swimming and basketball — gathered into a "
-            "personalised book that quietly asks {name}: which legend will *you* become?"
+            "Nineteen real childhood stories of world champions in cricket, football, "
+            "tennis, F1, chess, athletics, swimming, basketball, gymnastics, boxing, "
+            "weightlifting and badminton — gathered into a personalised book that quietly "
+            "asks {name}: which legend will *you* become?"
         ),
         "cover_image": "https://images.pexels.com/photos/863988/pexels-photo-863988.jpeg?auto=compress&cs=tinysrgb&w=800",
-        "total_pages": 17,
+        "total_pages": 21,
         "pages": [
             {
                 "page_number": 1,
@@ -228,7 +229,7 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "Hello, {name}! Every legend you'll meet in this book started as a child just like you. They tripped, they fell, they doubted themselves — and kept going. Their stories are not just about winning; they are about the moments that made them keep showing up. As you read, ask yourself: which spark inside *me* could one day light up the world like theirs?"
                 ),
                 "image_prompt_template": (
-                    "Children's storybook illustration in vibrant cel-shaded style: a warm cozy bedroom with a child-aged dreamer looking out a window at a starry night sky. Soft glowing silhouettes of a tennis racket, a cricket bat, a football, a chess king, a javelin, a swim cap, a racing helmet and a basketball float gently like constellations among the stars. Warm bedside lamp glow, blanket on lap, soft pastel night palette. Bold outlines, bright saturated colors, animated movie quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
+                    "Children's storybook illustration: a warm cosy bedroom with a child looking out a window at a starry night sky. Soft glowing silhouettes of a tennis racket, a cricket bat, a football, a chess king, a javelin, a swim cap, a racing helmet and a basketball float like constellations among the stars. Bold outlines, animated quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
                 ),
             },
             {
@@ -238,8 +239,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "In a small flat in Mumbai, a curly-haired boy named Sachin Tendulkar was so restless his older brother Ajit took him to coach Ramakant Achrekar. Sachin was eleven, his bat heavier than his arms could lift. Every morning before school, Achrekar made him bat for hours. The coach placed a one-rupee coin on the stumps — whoever got Sachin out kept it. Sachin still has those coins. He went on to bat for India at sixteen, score 100 international centuries, and make a billion people stand still each time he walked to the crease. {name}, the smallest daily habit is where greatness quietly hides."
                 ),
                 "image_prompt_template": (
-                    "Children's storybook illustration in vibrant cel-shaded style: an 11-year-old curly-haired Indian boy in white cricket clothes standing in a sunlit Mumbai maidan, gripping a wooden cricket bat almost as tall as him. A wise older coach in a white cap watches from behind the stumps where a single one-rupee coin glints in the sun. Other young cricketers practice in the background. Warm golden morning light, bold outlines, bright saturated colors, animated movie quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
+                    "Children's storybook illustration: an 11-year-old curly-haired Indian boy in white cricket clothes at a sunny Mumbai maidan, gripping a wooden cricket bat almost as tall as him. Coach watches from behind the stumps where a one-rupee coin glints. Bold outlines, animated quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
                 ),
+                "static_image_url": "https://commons.wikimedia.org/wiki/Special:FilePath/Sachin_Tendulkar_at_the_BMW_Pro-Am_Golf_event,_New_Delhi,_2009.jpg",
+                "image_credit": "Photo: Wikimedia Commons",
             },
             {
                 "page_number": 3,
@@ -248,8 +251,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "Virat Kohli was a fierce 18-year-old playing for Delhi in a Ranji Trophy match when his father passed away in the middle of the night. The next morning, with red eyes and an aching heart, Virat asked his coach for one favour: please let him bat. He walked out, faced over a hundred balls, scored 90 runs, and only then went home for the funeral. {name}, that day Virat did not choose cricket over sadness — he chose discipline as a way to honour someone he loved. That same fire is why he later led India and broke records the world thought were untouchable."
                 ),
                 "image_prompt_template": (
-                    "Children's storybook illustration in vibrant cel-shaded style: a young 18-year-old Indian cricketer in white kit walking out of a stadium dressing room with quiet determination, bat tucked under his arm. Early morning light, a stadium half full, a teammate's reassuring hand on his shoulder. Subtle emotion, dignified mood, bold outlines, bright but slightly muted colors, animated movie quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
+                    "Children's storybook illustration: a young Indian cricketer in white kit walking out of a dressing room at dawn with quiet determination, bat under arm, teammate's hand on shoulder. Bold outlines, animated quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
                 ),
+                "static_image_url": "https://commons.wikimedia.org/wiki/Special:FilePath/Virat_Kohli_in_PMs_residence.jpg",
+                "image_credit": "Photo: Wikimedia Commons",
             },
             {
                 "page_number": 4,
@@ -258,8 +263,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "In a backyard in Sydney, a thin Australian boy named Steve Smith would bowl leg-spin to his dad for hours, then bat against him, then write down everything in a notebook. He was told he batted weirdly — twitchy, fidgety, all the wrong angles. Selectors picked him as a spinner who could bat a little. But Steve studied his own technique like a scientist. He turned what coaches called 'wrong' into the most run-hungry batting style of his generation. {name}, sometimes your strangest habit is your secret weapon — do not iron it out, study it."
                 ),
                 "image_prompt_template": (
-                    "Children's storybook illustration in vibrant cel-shaded style: a thin teenage Australian boy with sandy hair in his suburban Sydney backyard at dusk, batting against an invisible bowler with a famously twitchy stance. A weathered notebook open on the grass beside him. Warm porch light, scribbled chalk markings on a brick wall behind him for stumps. Bold outlines, bright saturated colors, animated movie quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
+                    "Children's storybook illustration: a thin teenage Australian boy with sandy hair in his suburban Sydney backyard at dusk, batting with a famously twitchy stance. A weathered notebook open on the grass. Bold outlines, animated quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
                 ),
+                "static_image_url": "https://commons.wikimedia.org/wiki/Special:FilePath/Steve_Smith_June_2015.jpg",
+                "image_credit": "Photo: Wikimedia Commons",
             },
             {
                 "page_number": 5,
@@ -268,8 +275,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "In the dusty streets of Rosario, Argentina, a tiny boy named Leo Messi played football with a worn rubber ball almost as big as his head. When he was eleven, doctors said his body was not growing and he needed daily hormone injections his family could not afford. A club in Spain, Barcelona, saw a video of him dribbling and offered to pay for the treatment if his family moved there. Every day for years, Leo gave himself those injections in his own leg before practice. {name}, the hardest things you do quietly are often what shape the brightest part of you."
                 ),
                 "image_prompt_template": (
-                    "Children's storybook illustration in vibrant cel-shaded style: a small 10-year-old Argentine boy with brown hair dribbling a worn rubber football down a dusty Rosario street at sunset, head down, left foot glued to the ball. Older kids run after him but cannot catch him. Cobbled street, soft warm orange sky, distant houses. Bold outlines, bright saturated colors, animated movie quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
+                    "Children's storybook illustration: a small Argentine boy with brown hair dribbling a worn rubber football down a Rosario street at sunset. Older kids chase but can't catch him. Bold outlines, animated quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
                 ),
+                "static_image_url": "https://commons.wikimedia.org/wiki/Special:FilePath/Lionel_Messi_20180626.jpg",
+                "image_credit": "Photo: Wikimedia Commons",
             },
             {
                 "page_number": 6,
@@ -278,8 +287,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "On the small Portuguese island of Madeira, a skinny boy named Cristiano Ronaldo would sneak out of his bedroom at night with a football, kicking it against walls until dawn. His family had very little money — four of them shared one room. At twelve he flew alone to Lisbon to join a football academy. He missed home so much he cried into his pillow every night. But every single morning, he was the first on the training pitch and the last to leave. {name}, talent is the spark, but showing up every single day is the fire."
                 ),
                 "image_prompt_template": (
-                    "Children's storybook illustration in vibrant cel-shaded style: a thin 12-year-old Portuguese boy in old football boots kicking a ball against a stone wall under moonlight on a quiet Madeira street. Stars above, soft lamp glow, the boy's face fierce with focus, sweat on his brow. A small bedroom window open in the background. Bold outlines, bright saturated colors, animated movie quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
+                    "Children's storybook illustration: a thin 12-year-old Portuguese boy kicking a ball against a stone wall under moonlight on a quiet Madeira street. Stars above. Bold outlines, animated quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
                 ),
+                "static_image_url": "https://commons.wikimedia.org/wiki/Special:FilePath/Cristiano_Ronaldo_2018.jpg",
+                "image_credit": "Photo: Wikimedia Commons",
             },
             {
                 "page_number": 7,
@@ -288,8 +299,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "As a young teenager in Switzerland, Roger Federer had a serious problem: he kept losing his temper. He would throw his racket, scream at himself, and storm off the court even after winning. His coaches almost gave up on him. One day, sitting alone after another tantrum, Roger decided he was tired of being his own enemy. He learned to breathe between points, to smile even when losing, to bow slightly to the crowd. {name}, the biggest opponent in any game is rarely the person on the other side of the net — it is usually yourself."
                 ),
                 "image_prompt_template": (
-                    "Children's storybook illustration in vibrant cel-shaded style: a 12-year-old Swiss boy with curly brown hair sitting alone on a clay tennis court, a tennis racket on his lap, eyes closed in deep thought. Soft late afternoon light, empty stadium seats, a single yellow tennis ball at his feet. Calm and reflective mood. Bold outlines, bright soft colors, animated movie quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
+                    "Children's storybook illustration: a 12-year-old Swiss boy with curly brown hair sitting alone on a clay tennis court, racket on his lap, eyes closed in thought. Bold outlines, animated quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
                 ),
+                "static_image_url": "https://commons.wikimedia.org/wiki/Special:FilePath/R_Federer_2009_Madrid_(7).jpg",
+                "image_credit": "Photo: Wikimedia Commons",
             },
             {
                 "page_number": 8,
@@ -298,8 +311,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "In Compton, California, a father named Richard taught his two daughters — Venus and Serena — to play tennis on cracked public courts, sweeping broken glass off the lines before practice. They were the only Black children there, and people stared. Richard told them: 'You do not play tennis to belong — you play because you love it.' Serena trained six days a week from age four. She would grow up to win 23 Grand Slam titles, more than any other player in the open era. {name}, where you start does not decide where you finish."
                 ),
                 "image_prompt_template": (
-                    "Children's storybook illustration in vibrant cel-shaded style: two young African-American sisters around six and seven years old in matching white tennis outfits practicing on a cracked outdoor public court in Compton. A tall father in a tracksuit feeds them tennis balls from a basket. Chain-link fence, palm trees, warm late afternoon sun. Bold outlines, bright saturated colors, animated movie quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
+                    "Children's storybook illustration: two young African-American sisters around six and seven in white tennis outfits on a cracked Compton court, dad in a tracksuit feeding balls. Bold outlines, animated quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
                 ),
+                "static_image_url": "https://commons.wikimedia.org/wiki/Special:FilePath/Serena_Williams_at_2013_US_Open.jpg",
+                "image_credit": "Photo: Wikimedia Commons",
             },
             {
                 "page_number": 9,
@@ -308,8 +323,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "In Stevenage, England, an 8-year-old Lewis Hamilton was already winning go-kart championships. His dad worked four jobs at once to pay for the kart parts. At ten, Lewis walked up to McLaren's team boss at an awards ceremony and shook his hand: 'One day, sir, I want to race for you.' He was told to come back when he was older. Nine years later, he signed for McLaren. He became the first Black driver in Formula 1 and tied the record for most championships ever — seven. {name}, when you say what you want out loud to the right people, the world starts listening differently."
                 ),
                 "image_prompt_template": (
-                    "Children's storybook illustration in vibrant cel-shaded style: a 10-year-old Black British boy in a yellow racing suit holding a small trophy, shaking hands with a smiling team principal in a smart suit at an indoor karting awards event. Other kid racers and parents in the background applauding gently. Warm fluorescent lights, racing posters on the walls. Bold outlines, bright saturated colors, animated movie quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
+                    "Children's storybook illustration: a 10-year-old Black British boy in a yellow racing suit shaking hands with a smiling team principal at an indoor karting awards event. Bold outlines, animated quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
                 ),
+                "static_image_url": "https://commons.wikimedia.org/wiki/Special:FilePath/Lewis_Hamilton_2016_Malaysia_2.jpg",
+                "image_credit": "Photo: Wikimedia Commons",
             },
             {
                 "page_number": 10,
@@ -318,18 +335,22 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "Carlos Sainz Jr.'s father was already a two-time World Rally Champion — one of the most famous racers Spain had ever produced. Imagine starting a sport where everyone whispers, 'Yes, but his dad…' Carlos refused to coast on the surname. He moved to Italy alone at sixteen to race karts, lived in a small apartment, learned three languages, and beat drivers who had been racing on faster karts than him for years. He fought his way into Formula 1 on his own terms. {name}, no shadow is so big that you cannot grow taller than it — but you have to be willing to grow."
                 ),
                 "image_prompt_template": (
-                    "Children's storybook illustration in vibrant cel-shaded style: a 16-year-old Spanish boy in a karting suit standing alone next to his go-kart in a small Italian paddock at sunrise. Light fog, scattered toolboxes, a determined look on his face. A photograph of his famous rally-champion father pinned to the toolbox. Bold outlines, bright saturated colors, animated movie quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
+                    "Children's storybook illustration: a 16-year-old Spanish boy in a karting suit alone next to his go-kart in a small Italian paddock at sunrise. A photo of his rally-champion father pinned to the toolbox. Bold outlines, animated quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
                 ),
+                "static_image_url": "https://commons.wikimedia.org/wiki/Special:FilePath/Carlos_Sainz_Jr.,_2017_Malaysia_2.jpg",
+                "image_credit": "Photo: Wikimedia Commons",
             },
             {
                 "page_number": 11,
-                "profession_title": "The Boy Who Drew at the Grandmaster",
+                "profession_title": "The Boy Who Drew with the Grandmaster",
                 "text_template": (
                     "In Norway, a five-year-old boy named Magnus Carlsen could already solve jigsaw puzzles with five hundred pieces. By eight he started chess. By thirteen he was a Grandmaster — the third youngest in history. At a tournament in Iceland, 13-year-old Magnus drew against the legendary Garry Kasparov, the world's greatest player. People say Kasparov could not believe what he was seeing. Magnus would go on to become World Champion five times. {name}, your brain is a muscle. Most of being a genius is just being deeply curious for longer than anyone else thought to be."
                 ),
                 "image_prompt_template": (
-                    "Children's storybook illustration in vibrant cel-shaded style: a focused 13-year-old Norwegian boy with messy blond hair sitting across a chess board from a much older, world-famous chess champion. A large chess clock between them, tournament hall in soft focus behind. The boy's hand hovers thoughtfully over a knight. Bold outlines, bright but soft colors, animated movie quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
+                    "Children's storybook illustration: a focused 13-year-old Norwegian boy with messy blond hair sitting across a chess board from a much older world-famous champion. Bold outlines, animated quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
                 ),
+                "static_image_url": "https://commons.wikimedia.org/wiki/Special:FilePath/Magnus_Carlsen_(30238051906)_(cropped).jpg",
+                "image_credit": "Photo: Wikimedia Commons",
             },
             {
                 "page_number": 12,
@@ -338,8 +359,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "In Chennai, India, a small boy named Praggnanandhaa learned chess at age three from his older sister Vaishali, who had taken up the game because their parents wanted to limit her TV time. At ten he became the youngest International Master in history. At twelve, the youngest Grandmaster ever. At eighteen he beat Magnus Carlsen — the World Champion — three times in the same year. His mother Nagalakshmi travelled with him to every tournament, cooking his food and packing his clothes. {name}, behind every champion you'll meet, there is someone quietly making the small things possible."
                 ),
                 "image_prompt_template": (
-                    "Children's storybook illustration in vibrant cel-shaded style: a small 10-year-old Indian boy in a tournament shirt staring intently at a chessboard. His mother sits a few rows back in the audience in a sari, smiling proudly. Other Grandmasters at adjacent boards. Soft hall lighting, warm Chennai afternoon glow through tall windows. Bold outlines, bright saturated colors, animated movie quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
+                    "Children's storybook illustration: a small Indian boy in a tournament shirt staring intently at a chessboard. His mother in a sari smiles proudly from a few rows back. Bold outlines, animated quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
                 ),
+                "static_image_url": "https://commons.wikimedia.org/wiki/Special:FilePath/Praggnanandhaa_R_2018.jpg",
+                "image_credit": "Photo: Wikimedia Commons",
             },
             {
                 "page_number": 13,
@@ -348,8 +371,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "In a tiny town in Jamaica called Sherwood Content, a tall, lanky boy named Usain Bolt was always running — to the shop for his mother, between cricket wickets in the schoolyard, anywhere his long legs could carry him. His childhood dream was actually cricket, but a coach noticed him sprinting and said, 'Boy, you are not a cricketer, you are a sprinter.' At fifteen, Bolt won his first World Junior Gold. He would later run 100 metres in 9.58 seconds — the fastest human ever timed. {name}, sometimes the thing you do without thinking is the very thing the world needs to see."
                 ),
                 "image_prompt_template": (
-                    "Children's storybook illustration in vibrant cel-shaded style: a tall, lanky 12-year-old Jamaican boy sprinting barefoot through a sun-drenched grassy field toward a small village shop, laughing freely. A few other village kids run far behind, cannot keep up. Bright blue sky, palm trees, vibrant Caribbean colors. Bold outlines, bright saturated colors, animated movie quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
+                    "Children's storybook illustration: a tall lanky 12-year-old Jamaican boy sprinting barefoot through a sun-drenched field. Other kids run far behind. Bold outlines, animated quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
                 ),
+                "static_image_url": "https://commons.wikimedia.org/wiki/Special:FilePath/Usain_Bolt_Rio_100m_final_2016k.jpg",
+                "image_credit": "Photo: Wikimedia Commons",
             },
             {
                 "page_number": 14,
@@ -358,8 +383,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "In a small village called Khandra in Haryana, India, a slightly overweight 11-year-old boy named Neeraj Chopra was sent by his family to a local stadium to lose weight by jogging. While there, he saw older boys throwing a javelin. He picked one up. It felt right. He had no proper shoes, no proper coach, no proper grounds — just a long stick and a stubborn dream. Years later, at the Tokyo Olympics, Neeraj threw a javelin 87.58 metres and won India its first ever Olympic Athletics gold. {name}, the path nobody else is walking is often the one waiting for you."
                 ),
                 "image_prompt_template": (
-                    "Children's storybook illustration in vibrant cel-shaded style: an 11-year-old Indian boy in a t-shirt and shorts at a dusty village stadium in Haryana, picking up a long javelin for the first time. Older athletes practice in the background. Late afternoon sun, golden dust haze, a small audience of curious children watching. Bold outlines, bright saturated colors, animated movie quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
+                    "Children's storybook illustration: an 11-year-old Indian boy in t-shirt and shorts at a dusty village stadium in Haryana, picking up a long javelin for the first time. Bold outlines, animated quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
                 ),
+                "static_image_url": "https://commons.wikimedia.org/wiki/Special:FilePath/Neeraj_Chopra_(2018).jpg",
+                "image_credit": "Photo: Wikimedia Commons",
             },
             {
                 "page_number": 15,
@@ -368,8 +395,10 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "In Baltimore, USA, a hyperactive boy named Michael Phelps was so restless in class his teacher told his mother, 'Your son will never be able to focus on anything.' His mother put him in swimming. At first he was scared to put his face under water. So a coach taught him to float on his back. By fifteen, Michael was at the Olympics. By twenty-seven, he had won 23 Olympic gold medals — more than any human in history. {name}, what looks like a weakness in one room is often a superpower in another. You just have to find the right pool."
                 ),
                 "image_prompt_template": (
-                    "Children's storybook illustration in vibrant cel-shaded style: a 10-year-old American boy floating on his back in a swimming pool, arms outstretched, eyes wide with wonder at the ceiling. A patient coach stands at the pool's edge, smiling. Soft turquoise water, gentle ceiling lights reflecting on the surface. Bold outlines, bright saturated colors, animated movie quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
+                    "Children's storybook illustration: a 10-year-old American boy floating on his back in a swimming pool, arms outstretched, coach smiling at the pool's edge. Bold outlines, animated quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
                 ),
+                "static_image_url": "https://commons.wikimedia.org/wiki/Special:FilePath/Michael_Phelps_Rio_2016.jpg",
+                "image_credit": "Photo: Wikimedia Commons",
             },
             {
                 "page_number": 16,
@@ -378,17 +407,67 @@ DEFAULT_TEMPLATES: List[Dict] = [
                     "As a 15-year-old in North Carolina, USA, Michael Jordan tried out for his high school's varsity basketball team — and was cut. His name was not on the list. He went home, locked himself in his room, and cried. Then he decided to use the pain. He practised harder than anyone, sometimes alone in the dark in the school gym. The next year, he made the team. He would later become the player most people on Earth still call the greatest basketball player of all time. {name}, the day someone tells you no can become the day you start saying yes — to yourself."
                 ),
                 "image_prompt_template": (
-                    "Children's storybook illustration in vibrant cel-shaded style: a 15-year-old African-American boy in a school gym, alone, practising a layup as the sun sets through high windows. Empty bleachers, a single basketball hoop, a clipboard with a team list on the floor without his name on it. Bold outlines, bright but moody colors, animated movie quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
+                    "Children's storybook illustration: a 15-year-old African-American boy alone in a school gym, practising a layup as the sun sets through high windows. Bold outlines, animated quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
                 ),
+                "static_image_url": "https://commons.wikimedia.org/wiki/Special:FilePath/Michael_Jordan_in_2014.jpg",
+                "image_credit": "Photo: Wikimedia Commons",
             },
             {
                 "page_number": 17,
+                "profession_title": "The Girl Who Tumbled Into History",
+                "text_template": (
+                    "In Ohio, USA, a tiny 6-year-old named Simone Biles was on a school day trip to a gym when she copied a routine she had seen on TV. The coach called her parents that evening: 'Your daughter is a once-in-a-generation talent.' Adopted as a young girl, Simone grew up grateful — and stubborn. She trained for fifteen years to land moves no other human being has ever landed. She has won seven Olympic medals and thirty World Championship medals — more than any gymnast in history. {name}, your superpower might already be living quietly inside you, waiting for the moment you say yes to it."
+                ),
+                "image_prompt_template": (
+                    "Children's storybook illustration: a tiny 6-year-old African-American girl in a leotard mid-cartwheel on a sunlit gymnasium mat, a kind coach clapping from the side. Bold outlines, animated quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
+                ),
+                "static_image_url": "https://commons.wikimedia.org/wiki/Special:FilePath/Simone_Biles_at_2016_Olympics_all-around_gold_medal_(28262782114).jpg",
+                "image_credit": "Photo: Wikimedia Commons",
+            },
+            {
+                "page_number": 18,
+                "profession_title": "The Girl from Manipur Who Boxed in Secret",
+                "text_template": (
+                    "In a small village in Manipur, India, a girl named Mary Kom helped her parents on their farm. At fourteen she watched a boxer return home wearing a champion's medal — and knew, instantly, what she wanted. Mary trained in secret because her father thought boxing was 'too rough for a daughter.' When she finally won her first national title, her father came to watch. He cried. Mary went on to win SIX World Boxing Championships and an Olympic medal — the only woman boxer in history with that record. {name}, the people who once said 'no' often become the proudest when you say 'yes.'"
+                ),
+                "image_prompt_template": (
+                    "Children's storybook illustration: a 14-year-old Manipuri girl shadow-boxing alone at dusk in a quiet barn, hand wraps on, sunset light pouring through gaps in the wood. Bold outlines, animated quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
+                ),
+                "static_image_url": "https://commons.wikimedia.org/wiki/Special:FilePath/Mary_Kom_at_Rio_(cropped).jpg",
+                "image_credit": "Photo: Wikimedia Commons",
+            },
+            {
+                "page_number": 19,
+                "profession_title": "The Girl Who Lifted Up Her Whole Village",
+                "text_template": (
+                    "As a 12-year-old in Manipur, India, Mirabai Chanu could carry firewood bundles heavier than the weights other children her age struggled with. Watching her, a coach said quietly, 'This girl is meant for the barbell.' She took it up. Her family could barely afford proper shoes — Mirabai trained in flip-flops, sometimes barefoot. Years later at the Tokyo Olympics, she lifted 202 kilograms above her head and won India its very first medal of the entire Games — silver in weightlifting. {name}, the strength you do not know you have is usually the one that has always been with you."
+                ),
+                "image_prompt_template": (
+                    "Children's storybook illustration: a 12-year-old Manipuri girl carrying a tall bundle of firewood on her head along a hillside path at dawn, smiling with effort. Bold outlines, animated quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
+                ),
+                "static_image_url": "https://commons.wikimedia.org/wiki/Special:FilePath/Mirabai_Chanu_at_Khel_Ratna_Award_2018.jpg",
+                "image_credit": "Photo: Wikimedia Commons",
+            },
+            {
+                "page_number": 20,
+                "profession_title": "The Girl Who Trained at Four in the Morning",
+                "text_template": (
+                    "In Hyderabad, India, an 8-year-old PV Sindhu watched her parents — both former national volleyball players — practise in the evenings. She picked up a badminton racket and would not put it down. Her coach Pullela Gopichand soon made her wake at 4 a.m. every morning to train. She practised on her birthday. She practised on holidays. At twenty-one, she became the first Indian woman to win an Olympic silver medal in badminton — and later a bronze too. {name}, the smallest sacrifices, repeated daily, are how big dreams quietly come true."
+                ),
+                "image_prompt_template": (
+                    "Children's storybook illustration: an 8-year-old Indian girl in tracksuit holding a badminton racket in a dim hall at dawn, just a single ceiling light on, coach feeding shuttlecocks. Bold outlines, animated quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
+                ),
+                "static_image_url": "https://commons.wikimedia.org/wiki/Special:FilePath/Pusarla_Venkata_Sindhu_(cropped).jpg",
+                "image_credit": "Photo: Wikimedia Commons",
+            },
+            {
+                "page_number": 21,
                 "profession_title": "And Now… It's Your Turn, {name}",
                 "text_template": (
                     "Did you notice something, {name}? Every legend in this book started as a child. Tiny. Doubted. Sometimes ignored. None of them knew yet that they would change the world. They just kept showing up, kept practising, kept caring — even on the days nobody was watching. Somewhere right now, a future legend is reading these very words. Maybe that legend is you. {name}, the world is waiting for the story only you can write. Start today."
                 ),
                 "image_prompt_template": (
-                    "Children's storybook illustration in vibrant cel-shaded style: a young child silhouetted at sunrise on a hill, arms wide open, looking toward a horizon filled with soft glowing silhouettes — a tennis racket, a cricket bat, a football, a chess king, a javelin, a swim cap, a basketball, a racing helmet — all rising in a warm halo of light. Hopeful, dreamy, cinematic mood. Bold outlines, bright saturated colors, golden hour palette, animated movie quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
+                    "Children's storybook illustration: a young child silhouetted at sunrise on a hill, arms wide open, looking toward a horizon filled with soft glowing silhouettes — tennis racket, cricket bat, football, chess king, javelin, swim cap, basketball, racing helmet — all rising in a warm halo of light. Bold outlines, animated quality, no text. If a child reference photo is provided, also include the child (clearly matching the reference face) standing next to the main subject in the same scene, doing the same activity in the same posture, looking like a friend or teammate; child sized appropriately, expression admiring or joyful. If no reference photo is provided, draw only the main subject as described."
                 ),
             },
         ],
@@ -2624,7 +2703,14 @@ def generate_template_book(api_key: str, book_data: Dict):
 
 
 def _template_page_image_to_pil(page: Dict) -> Optional[Image.Image]:
-    """Convert template page image_url (data URL) to PIL Image."""
+    """Convert template page image_url to a PIL Image.
+
+    Supports:
+      * data:image/*;base64,... URLs (everything the AI pipeline produces)
+      * http(s) URLs (real-photo pages like the Legends template — Wikipedia
+        Commons portraits). Downloaded on first use; the PDF generator
+        already calls this per page so caching here would be premature.
+    """
     url = page.get("image_url")
     if not url:
         return None
@@ -2632,12 +2718,19 @@ def _template_page_image_to_pil(page: Dict) -> Optional[Image.Image]:
         if url.startswith("data:image"):
             b64 = url.split(",", 1)[-1]
             raw = base64.b64decode(b64)
-            img = Image.open(io.BytesIO(raw)).convert("RGB")
-            return img
-        return None
+            return Image.open(io.BytesIO(raw)).convert("RGB")
+        if url.startswith(("http://", "https://")):
+            import urllib.request
+            req = urllib.request.Request(
+                url,
+                headers={"User-Agent": "StorytimeStudioBook/1.0 (https://example.com)"},
+            )
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                raw = resp.read()
+            return Image.open(io.BytesIO(raw)).convert("RGB")
     except Exception as e:
         logger.warning(f"Could not decode template page image: {e}")
-        return None
+    return None
 
 
 def create_template_pdf(book_data: Dict, output_path_or_buffer):

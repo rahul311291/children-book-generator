@@ -194,6 +194,17 @@ def build_book_from_assets(
     )
     book_pages = []
     for page in pages:
+        # Templates that ship a real photo (e.g. Legends — Wikipedia Commons
+        # portraits) skip the AI asset lookup entirely. This makes the page
+        # show the actual person instead of a random AI-generated face, and
+        # avoids the cost of pre-rendering for those pages.
+        static_url = page.get("static_image_url")
+        if static_url:
+            page_image_url = static_url
+        else:
+            page_image_url = get_asset(
+                template_id, page["page_number"], gender, age
+            )
         book_pages.append(
             {
                 "page_number": page["page_number"],
@@ -206,7 +217,9 @@ def build_book_from_assets(
                 "image_prompt": personalize_template_image_prompt(
                     page["image_prompt_template"], child_name, gender, age
                 ),
-                "image_url": get_asset(template_id, page["page_number"], gender, age),
+                "image_url": page_image_url,
+                "image_credit": page.get("image_credit", ""),
+                "static_image_url": static_url or "",
             }
         )
     return {
@@ -238,6 +251,10 @@ def personalize_book_with_photo(
     for i, page in enumerate(pages):
         if progress_cb:
             progress_cb(f"Illustrating page {i + 1} of {total}…", i / max(total, 1))
+        # Pages backed by a real photo (Wikipedia portraits) skip the photo
+        # personalisation — the legend image stays as the real person.
+        if page.get("static_image_url"):
+            continue
         try:
             new_url = generate_page_image(
                 api_key,
