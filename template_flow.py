@@ -724,8 +724,9 @@ def render_template_studio(api_key: str):
         return
     st.markdown("## 🎨 Template Studio")
     st.caption(
-        "Pre-render every template page once per gender/age variant. "
-        "Customers then get instant books at zero generation cost."
+        "Pre-render one canonical sample per template page. The customer "
+        "build picks up whatever variant is available (gender / age "
+        "fallback is automatic), so a single render per page is enough."
     )
 
     diag = cashfree_diagnostics()
@@ -735,38 +736,45 @@ def render_template_studio(api_key: str):
 
     templates = get_available_templates()
 
-    # ---- Global overview: which templates have ANY images rendered ----
+    # ---- Global overview: 'pages with any image' / total ---------------
+    # No per-variant breakdown — the build flow auto-falls-back to whatever
+    # rendered variant exists for a page, so one sample per page is enough.
     st.markdown("#### All templates — pre-render status")
+    SAMPLE_GENDER = "boy"
+    SAMPLE_AGE_GROUP = "4-6"
     overview_rows = []
-    incomplete_ids = []
+    incomplete_names = []
     for t in templates:
         t_id = t["id"]
         t_pages = get_template_pages(t_id)
         t_status = asset_status(t_id)
         total_pages = len(t_pages)
-        pages_with_any = sum(1 for pg in t_pages if t_status.get(pg["page_number"]))
-        pct = int(round(100 * pages_with_any / total_pages)) if total_pages else 0
-        first_done = "✅" if t_pages and t_status.get(t_pages[0]["page_number"]) else "—"
-        if pages_with_any < total_pages:
-            incomplete_ids.append(t["name"])
+        # Pages backed by a real photo (Legends) never need pre-rendering.
+        static_pages = sum(1 for pg in t_pages if pg.get("static_image_url"))
+        gen_pages = total_pages - static_pages
+        rendered = sum(1 for pg in t_pages if t_status.get(pg["page_number"]))
+        covered = rendered + static_pages  # static + AI-rendered both count
+        pct = int(round(100 * covered / total_pages)) if total_pages else 0
+        if covered < total_pages:
+            incomplete_names.append(t["name"])
         overview_rows.append({
             "Template": t["name"],
             "Pages": total_pages,
-            "Pages w/ image": pages_with_any,
-            "% rendered": f"{pct}%",
-            "First page": first_done,
-            "Status": "✅ complete" if pages_with_any == total_pages and total_pages > 0
-                       else ("⏳ partial" if pages_with_any > 0 else "❌ none"),
+            "Real-photo pages": static_pages or "—",
+            "AI-rendered": f"{rendered}/{gen_pages}" if gen_pages else "n/a",
+            "Overall": f"{pct}%",
+            "Status": "complete" if covered == total_pages
+                      else ("partial" if covered > 0 else "none"),
         })
     st.dataframe(overview_rows, use_container_width=True, hide_index=True)
-    if incomplete_ids:
+    if incomplete_names:
         st.warning(
-            "Templates missing one or more images: "
-            + ", ".join(incomplete_ids)
-            + ". Pick one below and click Pre-render assets to fill it in."
+            "These templates still need pre-rendering: "
+            + ", ".join(incomplete_names)
+            + ". Pick one below and click 'Pre-render this template'."
         )
     else:
-        st.success("Every template has at least one rendered variant for every page.")
+        st.success("Every template has every page covered.")
 
     st.divider()
 
@@ -778,28 +786,25 @@ def render_template_studio(api_key: str):
         return
     template_id = template["id"]
 
-    # Coverage matrix
     pages = get_template_pages(template_id)
     status = asset_status(template_id)
-    st.markdown("#### Coverage")
-    rows = []
-    for gender in GENDERS:
-        for group in AGE_GROUPS:
-            vk = f"{gender}_{group}"
-            done = sum(1 for p in pages if vk in status.get(p["page_number"], []))
-            rows.append({"Variant": vk, "Rendered": f"{done}/{len(pages)}",
-                         "Complete": "✅" if done == len(pages) else "⏳"})
-    st.dataframe(rows, use_container_width=True, hide_index=True)
+    static_pages = sum(1 for pg in pages if pg.get("static_image_url"))
+    ai_pages = len(pages) - static_pages
+    rendered = sum(1 for pg in pages if status.get(pg["page_number"]))
 
-    st.markdown("#### Generate")
-    c1, c2 = st.columns(2)
-    with c1:
-        sel_genders = st.multiselect("Genders", GENDERS, default=GENDERS)
-    with c2:
-        sel_groups = st.multiselect("Age groups", AGE_GROUPS, default=["4-6"])
+    st.markdown(f"**{template['name']}** — {len(pages)} pages.")
+    if static_pages:
+        st.markdown(
+            f"- {static_pages} pages ship a real photo (no AI render needed)."
+        )
+    if ai_pages:
+        st.markdown(
+            f"- {rendered} of {ai_pages} AI-generated pages have a sample."
+        )
+
     overwrite = st.checkbox("Overwrite existing assets", value=False)
 
-    if st.button("🚀 Pre-render assets", type="primary"):
+    if st.button("🚀 Pre-render this template", type="primary"):
         if not api_key:
             st.error("Configure a Gemini API key first (sidebar).")
             return
@@ -809,7 +814,8 @@ def render_template_studio(api_key: str):
         prog = st.progress(0.0, text="Starting…")
         result = generate_assets_for_template(
             template_id, api_key, openrouter_key=openrouter_key,
-            genders=sel_genders, age_groups=sel_groups, overwrite=overwrite,
+            genders=[SAMPLE_GENDER], age_groups=[SAMPLE_AGE_GROUP],
+            overwrite=overwrite,
             progress_cb=lambda msg, frac: prog.progress(min(frac, 1.0), text=msg),
         )
         prog.empty()
